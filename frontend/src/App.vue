@@ -2,7 +2,7 @@
   <div class="app-container">
     <header class="app-header">
       <div class="header-left">
-        <h1>🎮 DLC解锁工具 v2.0</h1>
+        <h1>🎮 DLC解锁工具 v1.0</h1>
       </div>
       <div class="header-right">
         <button
@@ -22,7 +22,9 @@
           class="steam-status"
           :class="steamPath ? 'status-ok' : 'status-error'"
         >
-          <span v-if="steamPath">✅ Steam 路径: {{ steamPath }}</span>
+          <span v-if="steamPath"
+            >✅成功检测到你的 Steam 路径啦！: {{ steamPath }}</span
+          >
           <span v-else-if="steamError">❌ {{ steamError }}</span>
           <span v-else>⏳ 正在检测 Steam...</span>
         </div>
@@ -131,7 +133,10 @@
     </main>
 
     <footer class="app-footer">
-      <p>© 2026 windchan | DLC解锁工具 v2.0</p>
+      <p>
+        copyright © 2026 by 没有未来的小风酱 |
+        此软件在qwq.windchan0v0.xyz免费发布！如果你花钱购买了此工具，说明你被骗了QAQ
+      </p>
     </footer>
   </div>
 </template>
@@ -172,7 +177,7 @@ interface GamePackage {
 }
 
 // 状态
-const isDarkTheme = ref(true);
+const isDarkTheme = ref(false);
 const isDragOver = ref(false);
 const steamPath = ref("");
 const steamError = ref("");
@@ -299,6 +304,41 @@ const processFile = async (filePath: string) => {
 const installSelectedDLCs = async () => {
   if (!gameData.value || selectedDLCs.value.length === 0) return;
 
+  // 显示免责声明
+  const disclaimer = `声明
+
+【本工具用途】
+本工具仅供学习、研究和个人使用。严禁用于商业目的。
+
+【使用风险声明】
+✓ 本工具修改 Steam 配置文件，可能影响游戏正常运行
+✓ 使用本工具安装的 DLC 不受官方支持
+✓ 因使用本工具导致的任何问题，开发者不承担责任
+✓ 你需要自行承担所有可能的后果
+
+【法律声明】
+✓ 本工具不提供任何形式的保证或担保
+✓ 使用本工具即表示你已了解上述风险
+✓ 你同意在任何情况下不追究开发者的法律责任
+
+【防诈骗提示】
+⚠️  此软件完全免费！
+⚠️  如果你花钱购买了此工具，说明你被骗了！
+
+【继续操作】
+点击"确定"即表示你已阅读并同意上述所有条款。
+点击"取消"将放弃本次操作。
+
+═══════════════════════════════════════════════════════════`;
+
+  if (!confirm(disclaimer)) {
+    return;
+  }
+
+  if (!confirm(disclaimer)) {
+    return;
+  }
+
   isProcessing.value = true;
   resultMsg.value = "";
   progressPercent.value = 20;
@@ -306,13 +346,12 @@ const installSelectedDLCs = async () => {
 
   try {
     progressPercent.value = 50;
-    progressMessage.value = "正在安装 DLC...";
+    progressMessage.value = `正在安装 ${selectedDLCs.value.length} 个 DLC...`;
 
     const result = await InstallDLCs(gameData.value, selectedDLCs.value);
 
     progressPercent.value = 100;
     resultSuccess.value = result.success;
-    resultMsg.value = result.message;
 
     if (result.success) {
       // 更新已安装状态
@@ -321,10 +360,13 @@ const installSelectedDLCs = async () => {
           dlc.isInstalled = true;
         }
       });
+      resultMsg.value = `✨ 成功安装 ${selectedDLCs.value.length} 个 DLC！\n\n${result.message}\n\n💡 提示：请重启 Steam 以加载新的 DLC。`;
+    } else {
+      resultMsg.value = `❌ 安装失败\n\n${result.message}`;
     }
   } catch (e: any) {
     resultSuccess.value = false;
-    resultMsg.value = e.message || "安装失败";
+    resultMsg.value = `❌ 安装出错\n\n${e.message || "未知错误"}`;
   } finally {
     isProcessing.value = false;
     progressMessage.value = "";
@@ -334,12 +376,23 @@ const installSelectedDLCs = async () => {
 // 清除所有 DLC
 const removeAllDLCs = async () => {
   if (!gameData.value) return;
-  if (
-    !confirm(
-      "确定要清除该游戏所有伪入库的 DLC 吗？\n此操作会关闭 Steam 并修改配置文件。",
-    )
-  )
+
+  const confirmMsg = `⚠️ 确认清除操作
+
+游戏: ${gameData.value.gameName}
+将清除: ${gameData.value.dlcs.length} 个 DLC
+
+此操作将：
+✓ 删除 depotcache 中的清单文件
+✓ 从 config.vdf 中移除密钥
+✓ 从 Steamtools.lua 中移除 addappid
+
+此操作会关闭 Steam 并修改配置文件。
+确定要继续吗？`;
+
+  if (!confirm(confirmMsg)) {
     return;
+  }
 
   isProcessing.value = true;
   resultMsg.value = "";
@@ -348,23 +401,25 @@ const removeAllDLCs = async () => {
 
   try {
     progressPercent.value = 50;
-    progressMessage.value = "正在清除 DLC...";
+    progressMessage.value = `正在清除 ${gameData.value.dlcs.length} 个 DLC...`;
 
     const result = await RemoveAllDLCs(gameData.value);
 
     progressPercent.value = 100;
     resultSuccess.value = result.success;
-    resultMsg.value = result.message;
 
     if (result.success) {
       gameData.value.dlcs.forEach((dlc) => {
         dlc.isInstalled = false;
       });
       selectedDLCs.value = [];
+      resultMsg.value = `✨ 成功清除所有 DLC！\n\n${result.message}\n\n💡 提示：请重启 Steam 以完成清除。`;
+    } else {
+      resultMsg.value = `❌ 清除失败\n\n${result.message}`;
     }
   } catch (e: any) {
     resultSuccess.value = false;
-    resultMsg.value = e.message || "清除失败";
+    resultMsg.value = `❌ 清除出错\n\n${e.message || "未知错误"}`;
   } finally {
     isProcessing.value = false;
     progressMessage.value = "";
