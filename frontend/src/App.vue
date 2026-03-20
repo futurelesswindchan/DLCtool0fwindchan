@@ -2,7 +2,7 @@
   <div class="app-container">
     <header class="app-header">
       <div class="header-left">
-        <h1>🎮 DLC解锁工具 v1.0</h1>
+        <h1>🎮 DLC解锁工具 v1.1</h1>
       </div>
       <div class="header-right">
         <button
@@ -142,7 +142,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, nextTick } from "vue";
 import {
   GetSteamPath,
   SelectZipFile,
@@ -203,6 +203,14 @@ onMounted(async () => {
   } catch (e: any) {
     steamError.value = e.message || "无法找到 Steam 安装路径";
   }
+
+  window.addEventListener("dragover", (e) => {
+    e.preventDefault();
+  });
+
+  window.addEventListener("drop", (e) => {
+    e.preventDefault();
+  });
 });
 
 // 主题切换
@@ -232,30 +240,35 @@ const selectFile = async () => {
 const handleDrop = async (event: DragEvent) => {
   isDragOver.value = false;
   errorMsg.value = "";
+  isProcessing.value = true;
+  progressPercent.value = 10;
+  progressMessage.value = "正在读取文件...";
+  await nextTick();
 
   const files = event.dataTransfer?.files;
-  if (!files || files.length === 0) return;
+  if (!files || files.length === 0) {
+    isProcessing.value = false;
+    return;
+  }
 
   const file = files[0];
   if (!file.name.endsWith(".zip")) {
     errorMsg.value = "请选择 .zip 格式的压缩包";
+    isProcessing.value = false;
     return;
   }
 
   try {
-    isProcessing.value = true;
-    progressPercent.value = 10;
-    progressMessage.value = "正在读取文件...";
-
-    // 读取文件为 ArrayBuffer
+    // 读取文件数据时显示进度
     const arrayBuffer = await file.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
+    progressPercent.value = 50;
+    progressMessage.value = "正在解压文件...";
 
-    progressPercent.value = 30;
-    progressMessage.value = "正在处理拖拽文件...";
-
-    // 调用后端函数处理二进制数据
-    const result = await ProcessDroppedFile(file.name, Array.from(uint8Array));
+    // 调用后端API处理
+    const result = await ProcessDroppedFile(
+      file.name,
+      Array.from(new Uint8Array(arrayBuffer)),
+    );
 
     progressPercent.value = 100;
     progressMessage.value = "解析完成！";
@@ -266,11 +279,11 @@ const handleDrop = async (event: DragEvent) => {
     selectedDLCs.value = result.dlcs
       .filter((dlc: DLCInfo) => !dlc.isInstalled)
       .map((dlc: DLCInfo) => dlc.appID);
-
-    isProcessing.value = false;
   } catch (e: any) {
     errorMsg.value = e.message || "处理文件失败";
+  } finally {
     isProcessing.value = false;
+    progressMessage.value = "";
   }
 };
 
