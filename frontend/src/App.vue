@@ -2,7 +2,7 @@
   <div class="app-container">
     <header class="app-header">
       <div class="header-left">
-        <h1>🎮 DLC解锁工具 v1.1</h1>
+        <h1>🎮 DLC入库工具 v1.1</h1>
       </div>
       <div class="header-right">
         <button
@@ -37,7 +37,7 @@
           @drop.prevent="handleDrop"
         >
           <div class="upload-icon">📦</div>
-          <h2>拖拽DLC解锁压缩包到此处哦！</h2>
+          <h2>拖拽DLC解锁包到此处哦！</h2>
           <p>支持 .zip 格式压缩包</p>
           <button class="upload-btn" @click="selectFile" :disabled="!steamPath">
             📁 手动选择文件
