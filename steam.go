@@ -78,16 +78,10 @@ func (a *App) unzipFile(zipPath string, destDir string) (string, []string, error
 // ============================================================
 
 // parseLuaFile 解析 M 站格式的 Lua 文件，提取游戏信息、Depot 和 DLC 数据。
-//
-// Lua 文件格式示例：
-//
-//	-- 548430's Lua and Manifest Created by Morrenus
-//	-- Deep Rock Galactic
-//	addappid(548430, 1, "密钥")           → 主应用
-//	addappid(548431, 1, "密钥")           → Depot（带密钥）
-//	setManifestid(548431, "ManifestID", FileSize)
-//	addappid(801860)                       → DLC（无密钥）
-//	addappid(801860) -- DLC Name           → DLC（带注释名称）
+// 重点改进：
+// - 跳过注释掉的 addappid 调用（特别是 EXCLUDED DLCS 块）
+// - 过滤无 manifest 和密钥的空 Depot
+// parseLuaFile 解析 M 站格式的 Lua 文件
 func (a *App) parseLuaFile(luaPath string) (*GamePackage, error) {
 	contentBytes, err := os.ReadFile(luaPath)
 	if err != nil {
@@ -98,158 +92,165 @@ func (a *App) parseLuaFile(luaPath string) (*GamePackage, error) {
 
 	gp := &GamePackage{
 		LuaContent: content,
+		Depots:     []DepotInfo{},
+		DLCs:       []DLCInfo{},
 	}
 
 	// 正则表达式
-	reGameName := regexp.MustCompile(`^--\s+(.+)$`)
 	reAddAppIDWithKey := regexp.MustCompile(`addappid\((\d+),\s*1,\s*"([a-f0-9]+)"\)`)
 	reAddAppIDNoKey := regexp.MustCompile(`addappid\((\d+)\)\s*(?:--\s*(.*))?$`)
 	reSetManifest := regexp.MustCompile(`setManifestid\((\d+),\s*"(\d+)",\s*(\d+)\)`)
 
-	// 用于追踪哪些 AppID 有 setManifestid（即是 Depot 而非 DLC）
-	depotIDs := make(map[string]bool)
-	// 用于追踪已处理的 AppID（避免重复）
-	processedAppIDs := make(map[string]bool)
+	// 临时存储，用于合并多次出现的数据
+	tempDLCs := make(map[string]*DLCInfo)
+	tempDepots := make(map[string]*DepotInfo)
+	appIDOrder := []string{} // 保持解析顺序
 
-	// 第一遍：收集所有有 setManifestid 的 DepotID
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if matches := reSetManifest.FindStringSubmatch(line); matches != nil {
-			depotIDs[matches[1]] = true
-		}
-	}
+	inExcludedBlock := false
 
-	// 提取游戏名称（Lua 文件的第二行注释通常是游戏名称）
-	commentLineCount := 0
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "--") {
-			break
-		}
-		commentLineCount++
-		if commentLineCount == 2 {
-			if matches := reGameName.FindStringSubmatch(line); matches != nil {
-				gp.GameName = strings.TrimSpace(matches[1])
-			}
-		}
-	}
-
-	// 第二遍：解析所有 addappid 和 setManifestid
+	// 单遍扫描处理所有逻辑
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 
-		// 跳过注释行和空行
-		if line == "" || (strings.HasPrefix(line, "--") && !strings.Contains(line, "addappid")) {
-			continue
-		}
-
-		// 匹配 addappid(AppID, 1, "密钥")
-		if matches := reAddAppIDWithKey.FindStringSubmatch(line); matches != nil {
-			appID := matches[1]
-			key := matches[2]
-
-			if processedAppIDs[appID] {
-				continue
+		// 1. 处理块注释和排除块
+		if strings.HasPrefix(line, "--") {
+			if strings.Contains(line, "EXCLUDED DLCS") || strings.Contains(line, "EMPTY DEPOTS") {
+				inExcludedBlock = true
 			}
-			processedAppIDs[appID] = true
-
-			// 提取行尾注释作为名称
-			name := extractCommentName(line)
-
-			if gp.MainAppID == "" {
-				// 第一个带密钥的 addappid 是主应用
-				gp.MainAppID = appID
-				continue
-			}
-
-			if depotIDs[appID] {
-				// 这是一个 Depot
-				gp.Depots = append(gp.Depots, DepotInfo{
-					DepotID:       appID,
-					DecryptionKey: key,
-				})
-			} else {
-				// 这是一个带密钥的 DLC
-				gp.DLCs = append(gp.DLCs, DLCInfo{
-					AppID:         appID,
-					Name:          name,
-					HasKey:        true,
-					DecryptionKey: key,
-				})
-			}
-			continue
-		}
-
-		// 匹配 addappid(AppID) -- 无密钥
-		if matches := reAddAppIDNoKey.FindStringSubmatch(line); matches != nil {
-			appID := matches[1]
-
-			if processedAppIDs[appID] {
-				continue
-			}
-			processedAppIDs[appID] = true
-
-			// 跳过主应用的无密钥重复注册
-			if appID == gp.MainAppID {
-				continue
-			}
-
-			name := ""
-			if len(matches) > 2 {
-				name = strings.TrimSpace(matches[2])
-			}
-			if name == "" {
-				name = "DLC " + appID
-			}
-
-			// 检查是否是 Depot（有些 Depot 也有无密钥的 addappid）
-			if depotIDs[appID] {
-				continue
-			}
-
-			gp.DLCs = append(gp.DLCs, DLCInfo{
-				AppID:  appID,
-				Name:   name,
-				HasKey: false,
-			})
-			continue
-		}
-
-		// 匹配 setManifestid(DepotID, "ManifestID", FileSize)
-		if matches := reSetManifest.FindStringSubmatch(line); matches != nil {
-			depotID := matches[1]
-			manifestID := matches[2]
-
-			// 更新对应 Depot 的 ManifestID
-			for i := range gp.Depots {
-				if gp.Depots[i].DepotID == depotID {
-					gp.Depots[i].ManifestID = manifestID
-					break
+			// 提取游戏名称（通常是第二行）
+			if gp.GameName == "" && strings.Contains(line, "-- ") {
+				// 简单的 heuristic：寻找不含日期和网址的前几行注释
+				if !strings.Contains(line, "Created") && !strings.Contains(line, "Website") && !strings.Contains(line, "Total") {
+					name := strings.TrimSpace(strings.TrimPrefix(line, "-- "))
+					if name != "" && !strings.Contains(name, "'s Lua") {
+						gp.GameName = name
+					}
 				}
 			}
 			continue
+		} else if line == "" {
+			inExcludedBlock = false // 空行重置排除块状态
+			continue
+		}
+
+		if inExcludedBlock {
+			continue
+		}
+
+		// 2. 解析带密钥的 addappid
+		if matches := reAddAppIDWithKey.FindStringSubmatch(line); matches != nil {
+			id := matches[1]
+			key := matches[2]
+			name := extractCommentName(line)
+
+			// 记录主 AppID
+			if gp.MainAppID == "" {
+				gp.MainAppID = id
+				continue
+			}
+
+			// 更新或创建 Depot 信息
+			if _, ok := tempDepots[id]; !ok {
+				tempDepots[id] = &DepotInfo{DepotID: id}
+				appIDOrder = append(appIDOrder, id)
+			}
+			tempDepots[id].DecryptionKey = key
+
+			// 如果不是主应用，也可能是带密钥的 DLC
+			if _, ok := tempDLCs[id]; !ok {
+				tempDLCs[id] = &DLCInfo{AppID: id, Name: name}
+			}
+			tempDLCs[id].HasKey = true
+			tempDLCs[id].DecryptionKey = key
+			if name != "" && (tempDLCs[id].Name == "" || strings.HasPrefix(tempDLCs[id].Name, "DLC ")) {
+				tempDLCs[id].Name = name
+			}
+		}
+
+		// 3. 解析无密钥的 addappid (通常是 DLC 注册)
+		if matches := reAddAppIDNoKey.FindStringSubmatch(line); matches != nil {
+			id := matches[1]
+			name := strings.TrimSpace(matches[2])
+
+			if id == gp.MainAppID {
+				continue
+			}
+
+			if _, ok := tempDLCs[id]; !ok {
+				tempDLCs[id] = &DLCInfo{AppID: id, Name: name}
+				if !contains(appIDOrder, id) {
+					appIDOrder = append(appIDOrder, id)
+				}
+			}
+			if name != "" {
+				tempDLCs[id].Name = name
+			}
+		}
+
+		// 4. 解析 setManifestid
+		if matches := reSetManifest.FindStringSubmatch(line); matches != nil {
+			id := matches[1]
+			mid := matches[2]
+
+			if _, ok := tempDepots[id]; !ok {
+				tempDepots[id] = &DepotInfo{DepotID: id}
+				if !contains(appIDOrder, id) {
+					appIDOrder = append(appIDOrder, id)
+				}
+			}
+			tempDepots[id].ManifestID = mid
 		}
 	}
 
-	// 如果没有解析到游戏名称，使用主 AppID
+	// 5. 组装结果并进行最终过滤
+	processedDLCs := make(map[string]bool)
+	for _, id := range appIDOrder {
+		// 添加有效的 Depot (必须有 Key 和 Manifest)
+		if d, ok := tempDepots[id]; ok && d.DecryptionKey != "" && d.ManifestID != "" {
+			gp.Depots = append(gp.Depots, *d)
+		}
+
+		// 添加 DLC (排除主 App，排除已处理)
+		if dlc, ok := tempDLCs[id]; ok && id != gp.MainAppID && !processedDLCs[id] {
+			if dlc.Name == "" {
+				dlc.Name = "DLC " + id
+			}
+			gp.DLCs = append(gp.DLCs, *dlc)
+			processedDLCs[id] = true
+		}
+	}
+
 	if gp.GameName == "" {
 		gp.GameName = "游戏 " + gp.MainAppID
+	}
+
+	// 检查解析是否彻底失败
+	if gp.MainAppID == "" || (len(gp.DLCs) == 0 && len(gp.Depots) == 0) {
+		return nil, fmt.Errorf("解析结果为空或格式不正确，请检查 LUA 文件内容")
 	}
 
 	return gp, nil
 }
 
-// extractCommentName 从 Lua 行中提取行尾注释作为名称。
-// 例如：addappid(801860) -- Deep Rock Galactic - Supporter Upgrade
-// 返回："Deep Rock Galactic - Supporter Upgrade"
+// 辅助函数：判断切片是否包含字符串
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
+}
+
+// extractCommentName 提取行尾名
 func extractCommentName(line string) string {
 	idx := strings.Index(line, "-- ")
 	if idx == -1 {
 		return ""
 	}
 	name := strings.TrimSpace(line[idx+3:])
-	// 去掉 "Depot XXXXX" 这种格式
-	if strings.HasPrefix(name, "Depot ") {
+	// 过滤掉 Morrenus 自动生成的 "Depot XXXXX" 占位符
+	if strings.HasPrefix(name, "Depot ") && len(name) < 15 {
 		return ""
 	}
 	return name

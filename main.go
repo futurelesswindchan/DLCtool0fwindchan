@@ -16,7 +16,7 @@ func main() {
 	app := NewApp()
 
 	err := wails.Run(&options.App{
-		Title:     "DLC入库工具 v1.1",
+		Title:     "DLC入库工具 v1.2",
 		Width:     1000,
 		Height:    700,
 		MinWidth:  800,

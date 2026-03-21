@@ -2,7 +2,7 @@
   <div class="app-container">
     <header class="app-header">
       <div class="header-left">
-        <h1>🎮 DLC入库工具 v1.1</h1>
+        <h1>🎮 DLC入库工具 v1.2</h1>
       </div>
       <div class="header-right">
         <button
@@ -348,10 +348,6 @@ const installSelectedDLCs = async () => {
     return;
   }
 
-  if (!confirm(disclaimer)) {
-    return;
-  }
-
   isProcessing.value = true;
   resultMsg.value = "";
   progressPercent.value = 20;
@@ -373,7 +369,7 @@ const installSelectedDLCs = async () => {
           dlc.isInstalled = true;
         }
       });
-      resultMsg.value = `✨ 成功安装 ${selectedDLCs.value.length} 个 DLC！\n\n${result.message}\n\n💡 提示：请重启 Steam 以加载新的 DLC。`;
+      resultMsg.value = `✨ 成功安装 ${selectedDLCs.value.length} 个 DLC！\n\n${result.message}\n\n💡 请重启 Steam 以加载新的 DLC。`;
     } else {
       resultMsg.value = `❌ 安装失败\n\n${result.message}`;
     }
@@ -426,7 +422,7 @@ const removeAllDLCs = async () => {
         dlc.isInstalled = false;
       });
       selectedDLCs.value = [];
-      resultMsg.value = `✨ 成功清除所有 DLC！\n\n${result.message}\n\n💡 提示：请重启 Steam 以完成清除。`;
+      resultMsg.value = `✨ 成功清除所有 DLC！\n\n${result.message}\n\n💡 请重启 Steam 以完成清除。`;
     } else {
       resultMsg.value = `❌ 清除失败\n\n${result.message}`;
     }
