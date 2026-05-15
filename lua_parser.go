@@ -125,17 +125,14 @@ func parseCommentHeader(content string) *CommentMetadata {
 	return meta
 }
 
-// ============================================================
-// DLC 名称映射
-// ============================================================
-
 // buildDLCNameMap 从 Lua 文件注释中建立 AppID → DLC 名称的映射表。
 //
-// M 站生成的 Lua 文件中，每个 DLC 块前都有格式化的注释行：
-//   -- Monster Hunter Stories 3 ... (AppID: 3581270)
+// M 站生成的 Lua 文件中，DLC 名称出现在两种位置：
+//   1. 独立注释行：-- Monster Hunter Stories 3 ... (AppID: 3581270)
+//   2. 行尾注释：  addappid(3581270) -- DLC Name
 //
-// 本函数通过正则匹配这些注释行，提取 AppID 和对应的名称。
-// 这是唯一仍需要正则的地方，但它只处理注释格式，不涉及代码逻辑。
+// 本函数同时匹配这两种格式，优先使用格式 1（更完整），
+// 格式 2 作为兜底补充（适用于 DLCS WITHOUT DEDICATED DEPOTS 区域）。
 //
 // 参数：
 //   - content: Lua 文件的完整文本内容
@@ -145,13 +142,32 @@ func parseCommentHeader(content string) *CommentMetadata {
 func buildDLCNameMap(content string) map[string]string {
 	nameMap := make(map[string]string)
 
-	// 匹配格式：-- DLC名称 (AppID: XXXXX)
-	re := regexp.MustCompile(`--\s*(.+?)\s*\(AppID:\s*(\d+)\)`)
-
-	for _, match := range re.FindAllStringSubmatch(content, -1) {
+	// 格式 1：独立注释行 -- DLC名称 (AppID: XXXXX)
+	reBlock := regexp.MustCompile(`--\s*(.+?)\s*\(AppID:\s*(\d+)\)`)
+	for _, match := range reBlock.FindAllStringSubmatch(content, -1) {
 		name := strings.TrimSpace(match[1])
 		appID := match[2]
 		nameMap[appID] = name
+	}
+
+	// 格式 2：行尾注释 addappid(XXXXX) -- DLC Name
+	// 仅匹配无密钥的单参数形式（带密钥的通常是 Depot，不是 DLC 显示名）
+	reInline := regexp.MustCompile(`addappid\((\d+)\)\s*--\s*(.+)$`)
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		// 跳过被注释掉的行（EXCLUDED DLCS 区域）
+		if strings.HasPrefix(trimmed, "--") {
+			continue
+		}
+		if match := reInline.FindStringSubmatch(trimmed); match != nil {
+			appID := match[1]
+			name := strings.TrimSpace(match[2])
+			// 仅在格式 1 未覆盖时才写入（格式 1 优先级更高）
+			if _, exists := nameMap[appID]; !exists {
+				nameMap[appID] = name
+			}
+		}
 	}
 
 	return nameMap
