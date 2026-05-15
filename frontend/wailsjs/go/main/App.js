@@ -25,3 +25,7 @@ export function RemoveAllDLCs(arg1) {
 export function SelectZipFile() {
   return window['go']['main']['App']['SelectZipFile']();
 }
+
+export function SetSteamPath(arg1) {
+  return window['go']['main']['App']['SetSteamPath'](arg1);
+}
