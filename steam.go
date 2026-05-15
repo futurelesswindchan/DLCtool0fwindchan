@@ -353,17 +353,53 @@ func (a *App) detectInstalledDLCs(gp *GamePackage) {
 // Steam 进程管理
 // ============================================================
 
-// killSteam 强制终止 Steam 进程。
+// KillSteamResult 表示关闭 Steam 操作的结果状态。
+type KillSteamResult int
+
+const (
+	// SteamKilled 表示 Steam 进程已被成功终止。
+	SteamKilled KillSteamResult = iota
+	// SteamNotRunning 表示 Steam 进程未在运行，无需关闭。
+	SteamNotRunning
+	// SteamKillFailed 表示尝试关闭 Steam 失败（可能是权限不足等原因）。
+	SteamKillFailed
+)
+
+// killSteam 尝试终止 Steam 进程，并返回分级结果。
 //
-// 使用 Windows taskkill 命令强制关闭 Steam。
-// 执行结果被静默忽略，因为 Steam 可能本来就未运行。
+// 通过 tasklist 先检测 Steam 是否在运行，再决定是否执行 taskkill。
+// 这样可以区分"本来就没开"和"关闭失败"两种情况，
+// 为上层调用方提供更精确的状态反馈。
 //
-// 已知局限：
-//   - 无法区分"Steam 未运行"和"权限不足导致关闭失败"
-//   - 仅适用于 Windows 平台
-func (a *App) killSteam() {
-	cmd := exec.Command("taskkill", "/F", "/IM", SteamProcessName)
-	cmd.Run() // 忽略错误；Steam 可能未运行
+// 返回值：
+//   - KillSteamResult: 操作结果枚举
+//   - error:           仅在 taskkill 执行出错时返回具体错误信息
+func (a *App) killSteam() (KillSteamResult, error) {
+	// 先检测 Steam 是否在运行
+	checkCmd := exec.Command("tasklist", "/FI", "IMAGENAME eq "+SteamProcessName)
+	output, err := checkCmd.Output()
+	if err != nil {
+		// tasklist 本身执行失败，无法判断状态，尝试直接 kill
+		killCmd := exec.Command("taskkill", "/F", "/IM", SteamProcessName)
+		if killErr := killCmd.Run(); killErr != nil {
+			return SteamKillFailed, fmt.Errorf("无法确认 Steam 状态且关闭失败: %w", killErr)
+		}
+		return SteamKilled, nil
+	}
+
+	// 检查 tasklist 输出中是否包含 steam.exe
+	if !strings.Contains(strings.ToLower(string(output)), strings.ToLower(SteamProcessName)) {
+		// Steam 未运行，无需关闭
+		return SteamNotRunning, nil
+	}
+
+	// Steam 正在运行，执行强制关闭
+	killCmd := exec.Command("taskkill", "/F", "/IM", SteamProcessName)
+	if err := killCmd.Run(); err != nil {
+		return SteamKillFailed, fmt.Errorf("关闭 Steam 失败（可能权限不足）: %w", err)
+	}
+
+	return SteamKilled, nil
 }
 
 // ============================================================
@@ -682,16 +718,20 @@ func (a *App) collectAllAppIDs(gp *GamePackage) []string {
 // removeManifests 从 depotcache 目录中删除指定 AppID 的 manifest 文件。
 //
 // 遍历 depotcache 目录，将文件名前缀匹配到 appIDs 集合中的文件全部删除。
-// 删除失败时静默忽略（文件可能已被其他操作清理）。
+// 与之前静默忽略不同，现在会收集所有删除失败的错误并返回，
+// 让调用方可以决定是否告知用户。
 //
 // 参数：
 //   - appIDs: 需要清理的 AppID 列表
-func (a *App) removeManifests(appIDs []string) {
+//
+// 返回值：
+//   - []error: 删除失败的错误列表；全部成功时返回 nil
+func (a *App) removeManifests(appIDs []string) []error {
 	depotcachePath := a.depotcachePath()
 
 	entries, err := os.ReadDir(depotcachePath)
 	if err != nil {
-		return
+		return []error{fmt.Errorf("读取 depotcache 目录失败: %w", err)}
 	}
 
 	idSet := make(map[string]bool)
@@ -699,6 +739,7 @@ func (a *App) removeManifests(appIDs []string) {
 		idSet[id] = true
 	}
 
+	var errs []error
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -715,9 +756,13 @@ func (a *App) removeManifests(appIDs []string) {
 
 		if idSet[parts[0]] {
 			filePath := filepath.Join(depotcachePath, fileName)
-			os.Remove(filePath)
+			if err := os.Remove(filePath); err != nil {
+				errs = append(errs, fmt.Errorf("删除 %s 失败: %w", fileName, err))
+			}
 		}
 	}
+
+	return errs
 }
 
 // unpatchConfigVDF 从 config.vdf 中移除指定游戏的所有密钥条目。

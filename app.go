@@ -206,9 +206,18 @@ func (a *App) InstallDLCs(gamePackage *GamePackage, selectedAppIDs []string) (*O
 		return nil, fmt.Errorf("Steam 路径未初始化")
 	}
 
-	// 关闭 Steam 进程
-	a.killSteam()
-	time.Sleep(time.Duration(KillSteamWaitDuration) * time.Second)
+	// 关闭 Steam 进程（写入配置前必须确保 Steam 未锁定文件）
+	killResult, killErr := a.killSteam()
+	if killResult == SteamKillFailed {
+		return &OperationResult{
+			Success: false,
+			Message: fmt.Sprintf("无法关闭 Steam 进程，请手动关闭后重试: %v", killErr),
+		}, nil
+	}
+	// 仅在确实关闭了 Steam 时才等待进程退出
+	if killResult == SteamKilled {
+		time.Sleep(time.Duration(KillSteamWaitDuration) * time.Second)
+	}
 
 	// 构建选中的 DLC 集合
 	selectedSet := make(map[string]bool)
@@ -218,17 +227,17 @@ func (a *App) InstallDLCs(gamePackage *GamePackage, selectedAppIDs []string) (*O
 
 	// 步骤 1：复制 Manifest 文件到 depotcache
 	if err := a.copyManifests(gamePackage, selectedSet); err != nil {
-		return &OperationResult{Success: false, Message: fmt.Sprintf("复制清单文件失败: %v", err)}, nil
+		return &OperationResult{Success: false, Message: fmt.Sprintf("[步骤1/3] 复制清单文件失败: %v", err)}, nil
 	}
 
 	// 步骤 2：修改 config.vdf
 	if err := a.patchConfigVDF(gamePackage, selectedSet); err != nil {
-		return &OperationResult{Success: false, Message: fmt.Sprintf("修改 config.vdf 失败: %v", err)}, nil
+		return &OperationResult{Success: false, Message: fmt.Sprintf("[步骤2/3] 修改 config.vdf 失败: %v", err)}, nil
 	}
 
 	// 步骤 3：修改 Steamtools.lua
 	if err := a.patchSteamtoolsLua(gamePackage, selectedSet); err != nil {
-		return &OperationResult{Success: false, Message: fmt.Sprintf("修改 Steamtools.lua 失败: %v", err)}, nil
+		return &OperationResult{Success: false, Message: fmt.Sprintf("[步骤3/3] 修改 Steamtools.lua 失败: %v", err)}, nil
 	}
 
 	return &OperationResult{
@@ -257,23 +266,39 @@ func (a *App) RemoveAllDLCs(gamePackage *GamePackage) (*OperationResult, error) 
 	}
 
 	// 关闭 Steam 进程
-	a.killSteam()
-	time.Sleep(time.Duration(KillSteamWaitDuration) * time.Second)
+	killResult, killErr := a.killSteam()
+	if killResult == SteamKillFailed {
+		return &OperationResult{
+			Success: false,
+			Message: fmt.Sprintf("无法关闭 Steam 进程，请手动关闭后重试: %v", killErr),
+		}, nil
+	}
+	if killResult == SteamKilled {
+		time.Sleep(time.Duration(KillSteamWaitDuration) * time.Second)
+	}
 
 	// 收集所有相关的 AppID
 	allAppIDs := a.collectAllAppIDs(gamePackage)
 
 	// 步骤 1：删除 depotcache 中的 manifest 文件
-	a.removeManifests(allAppIDs)
+	removeErrors := a.removeManifests(allAppIDs)
 
 	// 步骤 2：从 config.vdf 中移除密钥
 	if err := a.unpatchConfigVDF(gamePackage); err != nil {
-		return &OperationResult{Success: false, Message: fmt.Sprintf("恢复 config.vdf 失败: %v", err)}, nil
+		return &OperationResult{Success: false, Message: fmt.Sprintf("[步骤2/3] 恢复 config.vdf 失败: %v", err)}, nil
 	}
 
 	// 步骤 3：从 Steamtools.lua 中移除 addappid
 	if err := a.unpatchSteamtoolsLua(gamePackage); err != nil {
-		return &OperationResult{Success: false, Message: fmt.Sprintf("清理 Steamtools.lua 失败: %v", err)}, nil
+		return &OperationResult{Success: false, Message: fmt.Sprintf("[步骤3/3] 清理 Steamtools.lua 失败: %v", err)}, nil
+	}
+
+	// 汇总结果：即使 manifest 删除部分失败，也不阻断整体流程，但告知用户
+	if len(removeErrors) > 0 {
+		return &OperationResult{
+			Success: true,
+			Message: fmt.Sprintf("已清除伪入库 DLC，但有 %d 个 manifest 文件删除失败（不影响使用）。请重启 Steam。", len(removeErrors)),
+		}, nil
 	}
 
 	return &OperationResult{
