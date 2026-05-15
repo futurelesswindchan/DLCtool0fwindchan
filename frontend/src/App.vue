@@ -23,9 +23,11 @@
           :class="steamPath ? 'status-ok' : 'status-error'"
         >
           <span v-if="steamPath"
-            >✅成功检测到你的 Steam 路径啦！: {{ steamPath }}</span
+            >✅ 成功检测到你的 Steam 路径啦！: {{ steamPath }}</span
           >
-          <span v-else-if="steamError">❌ {{ steamError }}</span>
+          <span v-else-if="notification && notification.type === 'error'"
+            >❌ {{ notification.message }}</span
+          >
           <span v-else>⏳ 正在检测 Steam...</span>
         </div>
 
@@ -44,7 +46,13 @@
           </button>
         </div>
 
-        <div v-if="errorMsg" class="error-toast">❌ {{ errorMsg }}</div>
+        <!-- 统一通知：上传阶段的错误提示 -->
+        <div
+          v-if="notification && notification.type === 'error' && steamPath"
+          class="error-toast"
+        >
+          ❌ {{ notification.message }}
+        </div>
       </div>
 
       <!-- 游戏信息和 DLC 列表 -->
@@ -112,6 +120,7 @@
           </button>
         </div>
 
+        <!-- 进度条 -->
         <div v-if="isProcessing" class="progress-section">
           <div class="progress-bar">
             <div
@@ -119,15 +128,27 @@
               :style="{ width: progressPercent + '%' }"
             ></div>
           </div>
-          <p class="progress-text">{{ progressMessage }}</p>
+          <p class="progress-text">
+            {{ notification?.type === "progress" ? notification.message : "" }}
+          </p>
         </div>
 
+        <!-- 统一通知：操作结果 -->
         <div
-          v-if="resultMsg"
+          v-if="
+            notification && !isProcessing && notification.type !== 'progress'
+          "
           class="result-toast"
-          :class="resultSuccess ? 'result-success' : 'result-error'"
+          :class="{
+            'result-success': notification.type === 'success',
+            'result-error': notification.type === 'error',
+            'result-info': notification.type === 'info',
+          }"
         >
-          {{ resultSuccess ? "✅" : "❌" }} {{ resultMsg }}
+          <span v-if="notification.type === 'success'">✅</span>
+          <span v-else-if="notification.type === 'error'">❌</span>
+          <span v-else>ℹ️</span>
+          {{ notification.message }}
         </div>
       </div>
     </main>
@@ -142,7 +163,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import {
   GetSteamPath,
   SelectZipFile,
@@ -152,6 +173,11 @@ import {
   ProcessDroppedFile,
 } from "../wailsjs/go/main/App";
 
+// ============================================================
+// 类型定义
+// ============================================================
+
+/** DLC 信息，与后端 types.go 中的 DLCInfo 一一对应。 */
 interface DLCInfo {
   appID: string;
   name: string;
@@ -160,6 +186,7 @@ interface DLCInfo {
   isInstalled: boolean;
 }
 
+/** Depot 信息，与后端 types.go 中的 DepotInfo 一一对应。 */
 interface DepotInfo {
   depotID: string;
   decryptionKey: string;
@@ -167,6 +194,7 @@ interface DepotInfo {
   fileSize: number;
 }
 
+/** 游戏数据包，与后端 types.go 中的 GamePackage 一一对应。 */
 interface GamePackage {
   mainAppID: string;
   gameName: string;
@@ -176,103 +204,192 @@ interface GamePackage {
   manifestFiles: string[];
 }
 
-// 状态
-const isDarkTheme = ref(false);
-const isDragOver = ref(false);
-const steamPath = ref("");
-const steamError = ref("");
-const gameData = ref<GamePackage | null>(null);
-const selectedDLCs = ref<string[]>([]);
-const errorMsg = ref("");
-const isProcessing = ref(false);
-const progressPercent = ref(0);
-const progressMessage = ref("");
-const resultMsg = ref("");
-const resultSuccess = ref(false);
+/**
+ * 统一通知消息的类型枚举。
+ * 用于替代原先分散的 errorMsg / steamError / resultMsg / progressMessage。
+ */
+type NotificationType = "info" | "success" | "error" | "progress";
 
+/** 统一通知消息结构体。 */
+interface Notification {
+  type: NotificationType;
+  message: string;
+}
+
+// ============================================================
+// 响应式状态
+// ============================================================
+
+/** 当前是否为暗色主题。默认 true（应用默认暗色）。 */
+const isDarkTheme = ref(true);
+
+/** 拖拽悬停状态，用于 UI 高亮反馈。 */
+const isDragOver = ref(false);
+
+/** Steam 安装路径（由后端自动识别或手动设置）。 */
+const steamPath = ref("");
+
+/** 解析后的游戏数据包，null 表示尚未加载。 */
+const gameData = ref<GamePackage | null>(null);
+
+/** 用户选中的 DLC AppID 列表。 */
+const selectedDLCs = ref<string[]>([]);
+
+/** 是否正在执行异步操作（解析/安装/卸载）。 */
+const isProcessing = ref(false);
+
+/** 进度百分比（0-100），用于进度条展示。 */
+const progressPercent = ref(0);
+
+/**
+ * 统一通知状态。
+ * 替代原先的 errorMsg、steamError、resultMsg、progressMessage 四套状态。
+ * 为 null 时表示无通知需要展示。
+ */
+const notification = ref<Notification | null>(null);
+
+// ============================================================
 // 计算属性
+// ============================================================
+
+/** 已安装的 DLC 数量，基于后端检测结果统计。 */
 const installedCount = computed(() => {
   if (!gameData.value) return 0;
   return gameData.value.dlcs.filter((dlc) => dlc.isInstalled).length;
 });
 
+// ============================================================
+// 通知辅助函数
+// ============================================================
+
+/**
+ * 显示通知消息。
+ * @param {NotificationType} type - 通知类型
+ * @param {string} message - 通知内容
+ */
+const showNotification = (type: NotificationType, message: string) => {
+  notification.value = { type, message };
+};
+
+/** 清除当前通知。 */
+const clearNotification = () => {
+  notification.value = null;
+};
+
+/**
+ * 设置进度状态（同时更新进度条和通知消息）。
+ * @param {number} percent - 进度百分比
+ * @param {string} message - 进度描述文本
+ */
+const setProgress = (percent: number, message: string) => {
+  progressPercent.value = percent;
+  showNotification("progress", message);
+};
+
+// ============================================================
 // 生命周期
+// ============================================================
+
+/**
+ * 全局 dragover 事件处理器引用。
+ * 保存引用以便 onUnmounted 时正确移除监听。
+ */
+const onGlobalDragOver = (e: Event) => {
+  e.preventDefault();
+};
+
+/**
+ * 全局 drop 事件处理器引用。
+ * 防止浏览器默认的文件打开行为。
+ */
+const onGlobalDrop = (e: Event) => {
+  e.preventDefault();
+};
+
 onMounted(async () => {
+  // 注册全局拖拽事件拦截（防止浏览器默认行为）
+  window.addEventListener("dragover", onGlobalDragOver);
+  window.addEventListener("drop", onGlobalDrop);
+
+  // 自动检测 Steam 路径
   try {
     steamPath.value = await GetSteamPath();
   } catch (e: any) {
-    steamError.value = e.message || "无法找到 Steam 安装路径";
+    showNotification("error", e.message || "无法找到 Steam 安装路径");
   }
-
-  window.addEventListener("dragover", (e) => {
-    e.preventDefault();
-  });
-
-  window.addEventListener("drop", (e) => {
-    e.preventDefault();
-  });
 });
 
+/** 组件卸载时移除全局事件监听，防止内存泄漏和重复注册。 */
+onUnmounted(() => {
+  window.removeEventListener("dragover", onGlobalDragOver);
+  window.removeEventListener("drop", onGlobalDrop);
+});
+
+// ============================================================
 // 主题切换
+// ============================================================
+
+/**
+ * 切换深色/浅色主题。
+ * 暗色为默认状态（无额外 class），浅色通过 body 添加 light-theme class 实现。
+ */
 const toggleTheme = () => {
   isDarkTheme.value = !isDarkTheme.value;
-  if (isDarkTheme.value) {
-    document.body.classList.remove("light-theme");
-  } else {
-    document.body.classList.add("light-theme");
-  }
+  document.body.classList.toggle("light-theme", !isDarkTheme.value);
 };
 
-// 文件选择
+// ============================================================
+// 文件处理
+// ============================================================
+
+/** 通过系统对话框选择 zip 文件并处理。 */
 const selectFile = async () => {
   try {
-    errorMsg.value = "";
+    clearNotification();
     const filePath = await SelectZipFile();
     if (filePath) {
       await processFile(filePath);
     }
   } catch (e: any) {
-    errorMsg.value = e.message || "选择文件失败";
+    showNotification("error", e.message || "选择文件失败");
   }
 };
 
-// 拖拽处理
+/**
+ * 处理拖拽上传的文件。
+ * 改进：校验逻辑前置于 isProcessing 状态切换之前，避免 loading 状态闪烁。
+ * @param {DragEvent} event - 拖拽事件对象
+ */
 const handleDrop = async (event: DragEvent) => {
   isDragOver.value = false;
-  errorMsg.value = "";
-  isProcessing.value = true;
-  progressPercent.value = 10;
-  progressMessage.value = "正在读取文件...";
-  await nextTick();
+  clearNotification();
 
+  // 校验前置：在进入 processing 状态之前完成所有格式检查
   const files = event.dataTransfer?.files;
   if (!files || files.length === 0) {
-    isProcessing.value = false;
     return;
   }
 
   const file = files[0];
   if (!file.name.endsWith(".zip")) {
-    errorMsg.value = "请选择 .zip 格式的压缩包";
-    isProcessing.value = false;
+    showNotification("error", "请选择 .zip 格式的压缩包");
     return;
   }
 
-  try {
-    // 读取文件数据时显示进度
-    const arrayBuffer = await file.arrayBuffer();
-    progressPercent.value = 50;
-    progressMessage.value = "正在解压文件...";
+  // 校验通过，进入处理状态
+  isProcessing.value = true;
+  setProgress(10, "正在读取文件...");
 
-    // 调用后端API处理
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    setProgress(50, "正在解压文件...");
+
     const result = await ProcessDroppedFile(
       file.name,
       Array.from(new Uint8Array(arrayBuffer)),
     );
 
-    progressPercent.value = 100;
-    progressMessage.value = "解析完成！";
-
+    setProgress(100, "解析完成！");
     gameData.value = result;
 
     // 默认选中未安装的 DLC
@@ -280,560 +397,131 @@ const handleDrop = async (event: DragEvent) => {
       .filter((dlc: DLCInfo) => !dlc.isInstalled)
       .map((dlc: DLCInfo) => dlc.appID);
   } catch (e: any) {
-    errorMsg.value = e.message || "处理文件失败";
+    showNotification("error", e.message || "处理文件失败");
   } finally {
     isProcessing.value = false;
-    progressMessage.value = "";
   }
 };
 
-// 处理文件
+/**
+ * 处理已选择的 zip 文件路径（通用流程）。
+ * @param {string} filePath - zip 文件完整路径
+ */
 const processFile = async (filePath: string) => {
   try {
     isProcessing.value = true;
-    progressPercent.value = 30;
-    progressMessage.value = "正在解析压缩包...";
+    setProgress(30, "正在解析压缩包...");
 
     const result = await ProcessZipFile(filePath);
 
-    progressPercent.value = 100;
-    progressMessage.value = "解析完成！";
-
+    setProgress(100, "解析完成！");
     gameData.value = result;
 
     // 默认选中未安装的 DLC
     selectedDLCs.value = result.dlcs
       .filter((dlc: DLCInfo) => !dlc.isInstalled)
       .map((dlc: DLCInfo) => dlc.appID);
-
-    isProcessing.value = false;
   } catch (e: any) {
+    showNotification("error", e.message || "解析文件失败");
+  } finally {
     isProcessing.value = false;
-    errorMsg.value = e.message || "解析文件失败";
   }
 };
 
-// 安装选中的 DLC
+// ============================================================
+// DLC 安装与卸载
+// ============================================================
+
+/** 安装用户选中的 DLC。执行前展示免责声明确认框。 */
 const installSelectedDLCs = async () => {
   if (!gameData.value || selectedDLCs.value.length === 0) return;
 
-  // 显示免责声明
-  const disclaimer = `声明
+  const disclaimer = `声明\n\n【本工具用途】\n本工具仅供学习、研究和个人使用。严禁用于商业目的。\n\n【使用风险声明】\n✓ 本工具修改 Steam 配置文件，可能影响游戏正常运行\n✓ 使用本工具安装的 DLC 不受官方支持\n✓ 因使用本工具导致的任何问题，开发者不承担责任\n✓ 你需要自行承担所有可能的后果\n\n【法律声明】\n✓ 本工具不提供任何形式的保证或担保\n✓ 使用本工具即表示你已了解上述风险\n✓ 你同意在任何情况下不追究开发者的法律责任\n\n【防诈骗提示】\n⚠️ 此软件完全免费！\n⚠️ 如果你花钱购买了此工具，说明你被骗了！\n\n点击"确定"即表示你已阅读并同意上述所有条款。`;
 
-【本工具用途】
-本工具仅供学习、研究和个人使用。严禁用于商业目的。
-
-【使用风险声明】
-✓ 本工具修改 Steam 配置文件，可能影响游戏正常运行
-✓ 使用本工具安装的 DLC 不受官方支持
-✓ 因使用本工具导致的任何问题，开发者不承担责任
-✓ 你需要自行承担所有可能的后果
-
-【法律声明】
-✓ 本工具不提供任何形式的保证或担保
-✓ 使用本工具即表示你已了解上述风险
-✓ 你同意在任何情况下不追究开发者的法律责任
-
-【防诈骗提示】
-⚠️  此软件完全免费！
-⚠️  如果你花钱购买了此工具，说明你被骗了！
-
-【继续操作】
-点击"确定"即表示你已阅读并同意上述所有条款。
-点击"取消"将放弃本次操作。
-
-═══════════════════════════════════════════════════════════`;
-
-  if (!confirm(disclaimer)) {
-    return;
-  }
+  if (!confirm(disclaimer)) return;
 
   isProcessing.value = true;
-  resultMsg.value = "";
-  progressPercent.value = 20;
-  progressMessage.value = "正在关闭 Steam...";
+  clearNotification();
+  setProgress(20, "正在关闭 Steam...");
 
   try {
-    progressPercent.value = 50;
-    progressMessage.value = `正在安装 ${selectedDLCs.value.length} 个 DLC...`;
+    setProgress(50, `正在安装 ${selectedDLCs.value.length} 个 DLC...`);
 
     const result = await InstallDLCs(gameData.value, selectedDLCs.value);
-
     progressPercent.value = 100;
-    resultSuccess.value = result.success;
 
     if (result.success) {
-      // 更新已安装状态
+      // 更新本地已安装状态
       gameData.value.dlcs.forEach((dlc) => {
         if (selectedDLCs.value.includes(dlc.appID)) {
           dlc.isInstalled = true;
         }
       });
-      resultMsg.value = `✨ 成功安装 ${selectedDLCs.value.length} 个 DLC！\n\n${result.message}\n\n💡 请重启 Steam 以加载新的 DLC。`;
+      showNotification("success", result.message);
     } else {
-      resultMsg.value = `❌ 安装失败\n\n${result.message}`;
+      showNotification("error", result.message);
     }
   } catch (e: any) {
-    resultSuccess.value = false;
-    resultMsg.value = `❌ 安装出错\n\n${e.message || "未知错误"}`;
+    showNotification("error", e.message || "安装出错");
   } finally {
     isProcessing.value = false;
-    progressMessage.value = "";
   }
 };
 
-// 清除所有 DLC
+/** 清除当前游戏的所有已安装 DLC。执行前展示确认框。 */
 const removeAllDLCs = async () => {
   if (!gameData.value) return;
 
-  const confirmMsg = `⚠️ 确认清除操作
+  const confirmMsg = `⚠️ 确认清除操作\n\n游戏: ${gameData.value.gameName}\n将清除: ${gameData.value.dlcs.length} 个 DLC\n\n此操作将：\n✓ 删除 depotcache 中的清单文件\n✓ 从 config.vdf 中移除密钥\n✓ 从 Steamtools.lua 中移除 addappid\n\n此操作会关闭 Steam 并修改配置文件。\n确定要继续吗？`;
 
-游戏: ${gameData.value.gameName}
-将清除: ${gameData.value.dlcs.length} 个 DLC
-
-此操作将：
-✓ 删除 depotcache 中的清单文件
-✓ 从 config.vdf 中移除密钥
-✓ 从 Steamtools.lua 中移除 addappid
-
-此操作会关闭 Steam 并修改配置文件。
-确定要继续吗？`;
-
-  if (!confirm(confirmMsg)) {
-    return;
-  }
+  if (!confirm(confirmMsg)) return;
 
   isProcessing.value = true;
-  resultMsg.value = "";
-  progressPercent.value = 20;
-  progressMessage.value = "正在关闭 Steam...";
+  clearNotification();
+  setProgress(20, "正在关闭 Steam...");
 
   try {
-    progressPercent.value = 50;
-    progressMessage.value = `正在清除 ${gameData.value.dlcs.length} 个 DLC...`;
+    setProgress(50, `正在清除 ${gameData.value.dlcs.length} 个 DLC...`);
 
     const result = await RemoveAllDLCs(gameData.value);
-
     progressPercent.value = 100;
-    resultSuccess.value = result.success;
 
     if (result.success) {
       gameData.value.dlcs.forEach((dlc) => {
         dlc.isInstalled = false;
       });
       selectedDLCs.value = [];
-      resultMsg.value = `✨ 成功清除所有 DLC！\n\n${result.message}\n\n💡 请重启 Steam 以完成清除。`;
+      showNotification("success", result.message);
     } else {
-      resultMsg.value = `❌ 清除失败\n\n${result.message}`;
+      showNotification("error", result.message);
     }
   } catch (e: any) {
-    resultSuccess.value = false;
-    resultMsg.value = `❌ 清除出错\n\n${e.message || "未知错误"}`;
+    showNotification("error", e.message || "清除出错");
   } finally {
     isProcessing.value = false;
-    progressMessage.value = "";
   }
 };
 
-// 全选/全不选
+// ============================================================
+// 选择操作
+// ============================================================
+
+/** 全选所有 DLC。 */
 const selectAll = () => {
   if (!gameData.value) return;
   selectedDLCs.value = gameData.value.dlcs.map((dlc) => dlc.appID);
 };
 
+/** 取消全部选择。 */
 const selectNone = () => {
   selectedDLCs.value = [];
 };
 
-// 重置
+/** 重置到初始状态（返回上传页面）。 */
 const resetSelection = () => {
   gameData.value = null;
   selectedDLCs.value = [];
-  errorMsg.value = "";
-  resultMsg.value = "";
+  clearNotification();
   isProcessing.value = false;
 };
 </script>
-
-<style scoped>
-.app-container {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-}
-
-.app-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 24px;
-  background-color: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
-  -webkit-app-region: drag;
-}
-
-.app-header button {
-  -webkit-app-region: no-drag;
-}
-
-.header-left h1 {
-  font-size: 20px;
-  font-weight: 600;
-  margin: 0;
-}
-
-.theme-toggle {
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border-radius: 50%;
-  font-size: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.app-main {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px;
-}
-
-/* Steam 状态 */
-.steam-status {
-  text-align: center;
-  padding: 10px 16px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  font-size: 13px;
-}
-
-.status-ok {
-  background-color: rgba(76, 175, 80, 0.1);
-  color: var(--color-success);
-  border: 1px solid rgba(76, 175, 80, 0.3);
-}
-
-.status-error {
-  background-color: rgba(244, 67, 54, 0.1);
-  color: var(--color-error);
-  border: 1px solid rgba(244, 67, 54, 0.3);
-}
-
-/* 上传区域 */
-.upload-section {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: calc(100% - 60px);
-}
-
-.upload-area {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  max-width: 500px;
-  padding: 48px;
-  border: 2px dashed var(--border-color);
-  border-radius: 12px;
-  background-color: var(--bg-secondary);
-  text-align: center;
-  transition: all 0.3s ease;
-  cursor: pointer;
-}
-
-.upload-area.drag-over {
-  border-color: var(--color-primary);
-  background-color: rgba(74, 158, 255, 0.08);
-  transform: scale(1.02);
-}
-
-.upload-area:hover {
-  border-color: var(--color-primary);
-}
-
-.upload-icon {
-  font-size: 56px;
-  margin-bottom: 16px;
-}
-
-.upload-area h2 {
-  font-size: 18px;
-  margin-bottom: 8px;
-}
-
-.upload-area p {
-  color: var(--text-secondary);
-  margin-bottom: 24px;
-  font-size: 14px;
-}
-
-.upload-btn {
-  padding: 10px 24px;
-  font-size: 15px;
-}
-
-.error-toast {
-  margin-top: 16px;
-  padding: 10px 20px;
-  background-color: rgba(244, 67, 54, 0.1);
-  color: var(--color-error);
-  border: 1px solid rgba(244, 67, 54, 0.3);
-  border-radius: 8px;
-  font-size: 14px;
-}
-
-/* 游戏信息 */
-.game-section {
-  max-width: 800px;
-  margin: 0 auto;
-}
-
-.game-info {
-  background-color: var(--bg-secondary);
-  padding: 16px 20px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  border-left: 4px solid var(--color-primary);
-}
-
-.game-info-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.game-info-header h2 {
-  margin: 0;
-  font-size: 20px;
-}
-
-.btn-back {
-  background-color: var(--text-secondary);
-  padding: 6px 14px;
-  font-size: 13px;
-}
-
-.game-meta {
-  display: flex;
-  gap: 20px;
-  flex-wrap: wrap;
-}
-
-.meta-item {
-  color: var(--text-secondary);
-  font-size: 14px;
-}
-
-.meta-item code {
-  background-color: var(--bg-primary);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: "Courier New", monospace;
-  color: var(--color-primary);
-}
-
-/* DLC 列表 */
-.dlc-list {
-  margin-bottom: 20px;
-}
-
-.dlc-list-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.dlc-list-header h3 {
-  font-size: 15px;
-  margin: 0;
-}
-
-.select-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.btn-small {
-  padding: 4px 10px;
-  font-size: 12px;
-  background-color: var(--border-color);
-  color: var(--text-primary);
-}
-
-.btn-small:hover {
-  background-color: var(--text-secondary);
-  transform: none;
-  box-shadow: none;
-}
-
-.dlc-items {
-  background-color: var(--bg-secondary);
-  border-radius: 8px;
-  padding: 8px;
-  max-height: 320px;
-  overflow-y: auto;
-}
-
-.dlc-item {
-  display: flex;
-  align-items: center;
-  padding: 8px 10px;
-  border-radius: 6px;
-  transition: background-color 0.15s ease;
-}
-
-.dlc-item:hover {
-  background-color: var(--bg-primary);
-}
-
-.dlc-item input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  margin-right: 10px;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.dlc-item label {
-  flex: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  min-width: 0;
-}
-
-.dlc-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dlc-id {
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-family: "Courier New", monospace;
-  flex-shrink: 0;
-}
-
-.installed-badge {
-  background-color: var(--color-success);
-  color: white;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 500;
-  flex-shrink: 0;
-}
-
-.key-badge {
-  background-color: var(--color-primary);
-  color: white;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 500;
-  flex-shrink: 0;
-}
-
-/* 操作按钮 */
-.action-buttons {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.action-buttons button {
-  flex: 1;
-  padding: 12px 16px;
-  font-size: 14px;
-}
-
-.btn-primary {
-  background-color: var(--color-primary);
-}
-
-.btn-primary:hover {
-  background-color: var(--color-primary-hover);
-}
-
-.btn-danger {
-  background-color: var(--color-error);
-}
-
-.btn-danger:hover {
-  background-color: #d32f2f;
-}
-
-/* 进度条 */
-.progress-section {
-  background-color: var(--bg-secondary);
-  padding: 16px;
-  border-radius: 8px;
-  margin-bottom: 16px;
-}
-
-.progress-bar {
-  width: 100%;
-  height: 6px;
-  background-color: var(--border-color);
-  border-radius: 3px;
-  overflow: hidden;
-  margin-bottom: 10px;
-}
-
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(
-    90deg,
-    var(--color-primary),
-    var(--color-success)
-  );
-  transition: width 0.4s ease;
-}
-
-.progress-text {
-  text-align: center;
-  color: var(--text-secondary);
-  font-size: 13px;
-  margin: 0;
-}
-
-/* 结果提示 */
-.result-toast {
-  padding: 12px 20px;
-  border-radius: 8px;
-  font-size: 14px;
-  text-align: center;
-}
-
-.result-success {
-  background-color: rgba(76, 175, 80, 0.1);
-  color: var(--color-success);
-  border: 1px solid rgba(76, 175, 80, 0.3);
-}
-
-.result-error {
-  background-color: rgba(244, 67, 54, 0.1);
-  color: var(--color-error);
-  border: 1px solid rgba(244, 67, 54, 0.3);
-}
-
-/* Footer */
-.app-footer {
-  padding: 12px 24px;
-  background-color: var(--bg-secondary);
-  border-top: 1px solid var(--border-color);
-  text-align: center;
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-</style>
