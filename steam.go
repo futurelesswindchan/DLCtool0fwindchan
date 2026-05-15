@@ -33,6 +33,13 @@ import (
 // 预期的 zip 格式（M 站标准）：所有文件位于根目录，包含一个 .lua 和若干 .manifest 文件。
 // 解压时使用 filepath.Base 提取文件名，忽略 zip 内部的目录结构。
 //
+// 安全校验：
+//   - 跳过目录条目
+//   - 拒绝包含路径遍历字符（..）的文件名
+//   - 拒绝空文件名或以点开头的隐藏文件
+//   - 仅提取 .lua 和 .manifest 文件，忽略其他类型
+//   - 检测文件名冲突（同名文件会覆盖前一个）
+//
 // 参数：
 //   - zipPath: zip 文件的完整路径
 //   - destDir: 解压目标目录（应为临时目录）
@@ -58,7 +65,44 @@ func (a *App) unzipFile(zipPath string, destDir string) (string, []string, error
 		}
 
 		fileName := filepath.Base(f.Name)
+
+		// 安全校验：拒绝空文件名
+		if fileName == "" || fileName == "." {
+			continue
+		}
+
+		// 安全校验：拒绝包含路径遍历字符的文件名
+		if strings.Contains(f.Name, "..") {
+			continue
+		}
+
+		// 安全校验：跳过隐藏文件（以点开头）
+		if strings.HasPrefix(fileName, ".") {
+			continue
+		}
+
+		// 仅处理 .lua 和 .manifest 文件，忽略其他类型
+		lowerName := strings.ToLower(fileName)
+		isLua := strings.HasSuffix(lowerName, ".lua")
+		isManifest := strings.HasSuffix(lowerName, ".manifest")
+		if !isLua && !isManifest {
+			continue
+		}
+
 		destPath := filepath.Join(destDir, fileName)
+
+		// 安全校验：确保最终路径仍在目标目录内（防止符号链接等绕过）
+		absDestPath, err := filepath.Abs(destPath)
+		if err != nil {
+			continue
+		}
+		absDestDir, err := filepath.Abs(destDir)
+		if err != nil {
+			continue
+		}
+		if !strings.HasPrefix(absDestPath, absDestDir+string(filepath.Separator)) {
+			continue
+		}
 
 		// 创建目标文件
 		outFile, err := os.Create(destPath)
@@ -82,10 +126,9 @@ func (a *App) unzipFile(zipPath string, destDir string) (string, []string, error
 		}
 
 		// 按扩展名分类文件
-		lowerName := strings.ToLower(fileName)
-		if strings.HasSuffix(lowerName, ".lua") {
+		if isLua {
 			luaPath = destPath
-		} else if strings.HasSuffix(lowerName, ".manifest") {
+		} else if isManifest {
 			manifestFiles = append(manifestFiles, destPath)
 		}
 	}
@@ -687,31 +730,38 @@ func (a *App) patchSteamtoolsLua(gp *GamePackage, selectedSet map[string]bool) e
 
 // collectAllAppIDs 收集游戏包中所有相关的 AppID（主应用 + Depot + DLC）。
 //
-// 返回的切片用于 removeManifests 等批量清理操作。
-// 使用 map 去重后转为切片返回。
+// 返回的切片按以下顺序排列：主应用 AppID 在最前，
+// 随后是 Depot ID（按解析顺序），最后是 DLC AppID（按解析顺序）。
+// 使用 map 去重确保不会出现重复 ID。
 //
-// 已知局限：
-//   返回顺序不确定（map 遍历无序），若需要稳定输出应额外排序。
+// 返回值：
+//   - []string: 去重且有序的 AppID 列表
 func (a *App) collectAllAppIDs(gp *GamePackage) []string {
 	idSet := make(map[string]bool)
-
-	// 主应用
-	idSet[gp.MainAppID] = true
-
-	// 所有 Depot
-	for _, depot := range gp.Depots {
-		idSet[depot.DepotID] = true
-	}
-
-	// 所有 DLC
-	for _, dlc := range gp.DLCs {
-		idSet[dlc.AppID] = true
-	}
-
 	var ids []string
-	for id := range idSet {
-		ids = append(ids, id)
+
+	// 主应用排在最前
+	if gp.MainAppID != "" {
+		idSet[gp.MainAppID] = true
+		ids = append(ids, gp.MainAppID)
 	}
+
+	// 所有 Depot（按解析顺序）
+	for _, depot := range gp.Depots {
+		if !idSet[depot.DepotID] {
+			idSet[depot.DepotID] = true
+			ids = append(ids, depot.DepotID)
+		}
+	}
+
+	// 所有 DLC（按解析顺序）
+	for _, dlc := range gp.DLCs {
+		if !idSet[dlc.AppID] {
+			idSet[dlc.AppID] = true
+			ids = append(ids, dlc.AppID)
+		}
+	}
+
 	return ids
 }
 

@@ -32,14 +32,18 @@ import (
 type App struct {
 	ctx       context.Context
 	steamPath string
+	logger    *Logger
 }
 
 // NewApp 创建并返回一个新的 App 实例。
 //
-// 此时 steamPath 尚未初始化，需要在后续通过 GetSteamPath() 自动识别
+// 同时初始化日志记录器，确保从应用启动开始就能记录关键操作。
+// steamPath 尚未初始化，需要在后续通过 GetSteamPath() 自动识别
 // 或通过 SetSteamPath() 手动指定。
 func NewApp() *App {
-	return &App{}
+	return &App{
+		logger: NewLogger(),
+	}
 }
 
 // startup 是 Wails 框架的生命周期回调，在应用窗口创建后调用。
@@ -105,16 +109,19 @@ func (a *App) depotcachePath() string {
 func (a *App) GetSteamPath() (string, error) {
 	k, err := registry.OpenKey(registry.CURRENT_USER, SteamRegistryKey, registry.QUERY_VALUE)
 	if err != nil {
+		a.logger.Error("打开注册表失败: %v", err)
 		return "", fmt.Errorf("无法打开注册表: %w", err)
 	}
 	defer k.Close()
 
 	path, _, err := k.GetStringValue(SteamRegistryValueName)
 	if err != nil {
+		a.logger.Error("读取注册表 Steam 路径失败: %v", err)
 		return "", fmt.Errorf("无法读取 Steam 路径: %w", err)
 	}
 
 	a.steamPath = filepath.FromSlash(path)
+	a.logger.Info("Steam 路径已识别: %s", a.steamPath)
 	return a.steamPath, nil
 }
 
@@ -135,16 +142,19 @@ func (a *App) SetSteamPath(path string) error {
 	// 基本校验：确认路径存在
 	info, err := os.Stat(path)
 	if err != nil || !info.IsDir() {
+		a.logger.Error("手动指定的 Steam 路径无效: %s", path)
 		return fmt.Errorf("指定的路径不存在或不是目录: %s", path)
 	}
 
 	// 校验：确认路径下存在 config 目录（Steam 目录的基本特征）
 	configDir := filepath.Join(path, ConfigDir)
 	if _, err := os.Stat(configDir); err != nil {
+		a.logger.Error("指定路径下未找到 config 目录: %s", path)
 		return fmt.Errorf("指定路径下未找到 config 目录，请确认这是正确的 Steam 安装路径: %s", path)
 	}
 
 	a.steamPath = path
+	a.logger.Info("Steam 路径已手动设置: %s", a.steamPath)
 	return nil
 }
 
@@ -206,9 +216,13 @@ func (a *App) InstallDLCs(gamePackage *GamePackage, selectedAppIDs []string) (*O
 		return nil, fmt.Errorf("Steam 路径未初始化")
 	}
 
+	a.logger.Info("开始安装 DLC，游戏: %s (AppID: %s)，选中 %d 个",
+		gamePackage.GameName, gamePackage.MainAppID, len(selectedAppIDs))
+
 	// 关闭 Steam 进程（写入配置前必须确保 Steam 未锁定文件）
 	killResult, killErr := a.killSteam()
 	if killResult == SteamKillFailed {
+		a.logger.Error("关闭 Steam 失败: %v", killErr)
 		return &OperationResult{
 			Success: false,
 			Message: fmt.Sprintf("无法关闭 Steam 进程，请手动关闭后重试: %v", killErr),
@@ -216,7 +230,10 @@ func (a *App) InstallDLCs(gamePackage *GamePackage, selectedAppIDs []string) (*O
 	}
 	// 仅在确实关闭了 Steam 时才等待进程退出
 	if killResult == SteamKilled {
+		a.logger.Info("Steam 已关闭，等待进程退出...")
 		time.Sleep(time.Duration(KillSteamWaitDuration) * time.Second)
+	} else {
+		a.logger.Info("Steam 未在运行，跳过等待")
 	}
 
 	// 构建选中的 DLC 集合
@@ -227,19 +244,26 @@ func (a *App) InstallDLCs(gamePackage *GamePackage, selectedAppIDs []string) (*O
 
 	// 步骤 1：复制 Manifest 文件到 depotcache
 	if err := a.copyManifests(gamePackage, selectedSet); err != nil {
+		a.logger.Error("[步骤1/3] 复制清单文件失败: %v", err)
 		return &OperationResult{Success: false, Message: fmt.Sprintf("[步骤1/3] 复制清单文件失败: %v", err)}, nil
 	}
+	a.logger.Info("[步骤1/3] Manifest 文件复制完成")
 
 	// 步骤 2：修改 config.vdf
 	if err := a.patchConfigVDF(gamePackage, selectedSet); err != nil {
+		a.logger.Error("[步骤2/3] 修改 config.vdf 失败: %v", err)
 		return &OperationResult{Success: false, Message: fmt.Sprintf("[步骤2/3] 修改 config.vdf 失败: %v", err)}, nil
 	}
+	a.logger.Info("[步骤2/3] config.vdf 修改完成")
 
 	// 步骤 3：修改 Steamtools.lua
 	if err := a.patchSteamtoolsLua(gamePackage, selectedSet); err != nil {
+		a.logger.Error("[步骤3/3] 修改 Steamtools.lua 失败: %v", err)
 		return &OperationResult{Success: false, Message: fmt.Sprintf("[步骤3/3] 修改 Steamtools.lua 失败: %v", err)}, nil
 	}
+	a.logger.Info("[步骤3/3] Steamtools.lua 修改完成")
 
+	a.logger.Info("DLC 安装完成，共 %d 个", len(selectedAppIDs))
 	return &OperationResult{
 		Success: true,
 		Message: fmt.Sprintf("成功安装 %d 个 DLC！请重启 Steam。", len(selectedAppIDs)),
@@ -265,42 +289,61 @@ func (a *App) RemoveAllDLCs(gamePackage *GamePackage) (*OperationResult, error) 
 		return nil, fmt.Errorf("Steam 路径未初始化")
 	}
 
+	a.logger.Info("开始清除 DLC，游戏: %s (AppID: %s)",
+		gamePackage.GameName, gamePackage.MainAppID)
+
 	// 关闭 Steam 进程
 	killResult, killErr := a.killSteam()
 	if killResult == SteamKillFailed {
+		a.logger.Error("关闭 Steam 失败: %v", killErr)
 		return &OperationResult{
 			Success: false,
 			Message: fmt.Sprintf("无法关闭 Steam 进程，请手动关闭后重试: %v", killErr),
 		}, nil
 	}
 	if killResult == SteamKilled {
+		a.logger.Info("Steam 已关闭，等待进程退出...")
 		time.Sleep(time.Duration(KillSteamWaitDuration) * time.Second)
+	} else {
+		a.logger.Info("Steam 未在运行，跳过等待")
 	}
 
 	// 收集所有相关的 AppID
 	allAppIDs := a.collectAllAppIDs(gamePackage)
+	a.logger.Info("收集到 %d 个相关 AppID", len(allAppIDs))
 
 	// 步骤 1：删除 depotcache 中的 manifest 文件
 	removeErrors := a.removeManifests(allAppIDs)
+	if len(removeErrors) > 0 {
+		a.logger.Warn("[步骤1/3] %d 个 manifest 文件删除失败", len(removeErrors))
+	} else {
+		a.logger.Info("[步骤1/3] Manifest 文件清理完成")
+	}
 
 	// 步骤 2：从 config.vdf 中移除密钥
 	if err := a.unpatchConfigVDF(gamePackage); err != nil {
+		a.logger.Error("[步骤2/3] 恢复 config.vdf 失败: %v", err)
 		return &OperationResult{Success: false, Message: fmt.Sprintf("[步骤2/3] 恢复 config.vdf 失败: %v", err)}, nil
 	}
+	a.logger.Info("[步骤2/3] config.vdf 恢复完成")
 
 	// 步骤 3：从 Steamtools.lua 中移除 addappid
 	if err := a.unpatchSteamtoolsLua(gamePackage); err != nil {
+		a.logger.Error("[步骤3/3] 清理 Steamtools.lua 失败: %v", err)
 		return &OperationResult{Success: false, Message: fmt.Sprintf("[步骤3/3] 清理 Steamtools.lua 失败: %v", err)}, nil
 	}
+	a.logger.Info("[步骤3/3] Steamtools.lua 清理完成")
 
-	// 汇总结果：即使 manifest 删除部分失败，也不阻断整体流程，但告知用户
+	// 汇总结果
 	if len(removeErrors) > 0 {
+		a.logger.Warn("DLC 清除完成，但有 %d 个 manifest 删除失败", len(removeErrors))
 		return &OperationResult{
 			Success: true,
 			Message: fmt.Sprintf("已清除伪入库 DLC，但有 %d 个 manifest 文件删除失败（不影响使用）。请重启 Steam。", len(removeErrors)),
 		}, nil
 	}
 
+	a.logger.Info("DLC 清除全部完成")
 	return &OperationResult{
 		Success: true,
 		Message: "已成功清除所有伪入库 DLC！请重启 Steam。",
@@ -368,6 +411,8 @@ func (a *App) ProcessDroppedFile(fileName string, fileData []byte) (*GamePackage
 //   - *GamePackage: 解析后的完整游戏数据包
 //   - error:       任何步骤失败时返回错误（失败时会清理临时目录）
 func (a *App) processZipFromPath(zipPath string) (*GamePackage, error) {
+	a.logger.Info("开始处理压缩包: %s", filepath.Base(zipPath))
+
 	// 确保 Steam 路径已获取
 	if a.steamPath == "" {
 		if _, err := a.GetSteamPath(); err != nil {
@@ -378,28 +423,43 @@ func (a *App) processZipFromPath(zipPath string) (*GamePackage, error) {
 	// 创建临时目录用于解压
 	tempDir, err := os.MkdirTemp("", TempDirPrefix)
 	if err != nil {
+		a.logger.Error("创建临时目录失败: %v", err)
 		return nil, fmt.Errorf("创建临时目录失败: %w", err)
 	}
+	a.logger.Info("临时目录已创建: %s", tempDir)
 
 	// 解压 zip 文件
 	luaPath, manifestFiles, err := a.unzipFile(zipPath, tempDir)
 	if err != nil {
 		os.RemoveAll(tempDir)
+		a.logger.Error("解压失败: %v", err)
 		return nil, err
 	}
+	a.logger.Info("解压完成，Lua: %s，Manifest 数量: %d", filepath.Base(luaPath), len(manifestFiles))
 
 	// 解析 Lua 文件
 	gamePackage, err := a.parseLuaFile(luaPath)
 	if err != nil {
 		os.RemoveAll(tempDir)
+		a.logger.Error("Lua 解析失败: %v", err)
 		return nil, err
 	}
+	a.logger.Info("解析完成，游戏: %s (AppID: %s)，DLC 数量: %d，Depot 数量: %d",
+		gamePackage.GameName, gamePackage.MainAppID, len(gamePackage.DLCs), len(gamePackage.Depots))
 
 	// 保存 manifest 文件路径供后续安装使用
 	gamePackage.ManifestFiles = manifestFiles
 
 	// 检测已安装的 DLC
 	a.detectInstalledDLCs(gamePackage)
+
+	installedCount := 0
+	for _, dlc := range gamePackage.DLCs {
+		if dlc.IsInstalled {
+			installedCount++
+		}
+	}
+	a.logger.Info("检测完成，已安装: %d/%d", installedCount, len(gamePackage.DLCs))
 
 	return gamePackage, nil
 }
