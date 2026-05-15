@@ -170,60 +170,20 @@ func (a *App) SelectZipFile() (string, error) {
 
 // ProcessZipFile 处理用户通过文件对话框选择的 zip 文件。
 //
-// 完整流程：
-//   1. 创建临时目录
-//   2. 解压 zip 文件，提取 .lua 和 .manifest 文件
-//   3. 解析 Lua 文件，构建 GamePackage 数据结构
-//   4. 检测系统中已安装的 DLC 状态
+// 该方法是对外暴露的公开 API，内部委托 processZipFromPath 完成实际工作。
 //
 // 参数：
 //   - zipPath: zip 文件的完整路径
 //
 // 返回值：
 //   - *GamePackage: 解析后的完整游戏数据包
-//   - error:       任何步骤失败时返回错误（失败时会清理临时目录）
-//
-// 注意：成功时临时目录不会被立即清理，因为 ManifestFiles 中的路径
-// 在后续安装步骤中仍需使用。
+//   - error:       文件为空或处理失败时返回错误
 func (a *App) ProcessZipFile(zipPath string) (*GamePackage, error) {
 	if zipPath == "" {
 		return nil, fmt.Errorf("未选择文件")
 	}
 
-	// 确保 Steam 路径已获取
-	if a.steamPath == "" {
-		if _, err := a.GetSteamPath(); err != nil {
-			return nil, err
-		}
-	}
-
-	// 创建临时目录用于解压
-	tempDir, err := os.MkdirTemp("", TempDirPrefix)
-	if err != nil {
-		return nil, fmt.Errorf("创建临时目录失败: %w", err)
-	}
-
-	// 解压 zip 文件
-	luaPath, manifestFiles, err := a.unzipFile(zipPath, tempDir)
-	if err != nil {
-		os.RemoveAll(tempDir)
-		return nil, err
-	}
-
-	// 解析 Lua 文件
-	gamePackage, err := a.parseLuaFile(luaPath)
-	if err != nil {
-		os.RemoveAll(tempDir)
-		return nil, err
-	}
-
-	// 将临时目录中的 manifest 文件路径保存到 GamePackage
-	gamePackage.ManifestFiles = manifestFiles
-
-	// 检测已安装的 DLC
-	a.detectInstalledDLCs(gamePackage)
-
-	return gamePackage, nil
+	return a.processZipFromPath(zipPath)
 }
 
 // InstallDLCs 执行 DLC 安装操作。
@@ -325,7 +285,7 @@ func (a *App) RemoveAllDLCs(gamePackage *GamePackage) (*OperationResult, error) 
 // ProcessDroppedFile 处理通过拖拽方式上传的文件。
 //
 // 与 ProcessZipFile 的区别在于：拖拽文件以二进制数据形式传入，
-// 需要先写入临时文件再进行解压处理。
+// 需要先写入临时文件再委托 processZipFromPath 完成后续处理。
 //
 // 参数：
 //   - fileName: 拖拽文件的原始文件名（用于格式校验和临时文件命名）
@@ -333,12 +293,7 @@ func (a *App) RemoveAllDLCs(gamePackage *GamePackage) (*OperationResult, error) 
 //
 // 返回值：
 //   - *GamePackage: 解析后的完整游戏数据包
-//   - error:       格式不支持、解压失败或解析失败时返回错误
-//
-// 临时文件管理：
-//   使用 defer os.RemoveAll 确保临时目录在函数返回时被清理。
-//   注意：这意味着 ManifestFiles 中的路径在返回后即失效，
-//   后续安装步骤需要重新从 fileData 解压（当前实现的已知局限）。
+//   - error:       格式不支持、写入失败或解析失败时返回错误
 func (a *App) ProcessDroppedFile(fileName string, fileData []byte) (*GamePackage, error) {
 	if fileName == "" || len(fileData) == 0 {
 		return nil, fmt.Errorf("文件数据为空")
@@ -348,6 +303,46 @@ func (a *App) ProcessDroppedFile(fileName string, fileData []byte) (*GamePackage
 		return nil, fmt.Errorf("只支持 .zip 格式文件")
 	}
 
+	// 创建临时目录，将二进制数据落盘为 zip 文件
+	tempDir, err := os.MkdirTemp("", TempDirPrefix)
+	if err != nil {
+		return nil, fmt.Errorf("创建临时目录失败: %w", err)
+	}
+
+	tempZipPath := filepath.Join(tempDir, fileName)
+	if err := os.WriteFile(tempZipPath, fileData, 0644); err != nil {
+		os.RemoveAll(tempDir)
+		return nil, fmt.Errorf("保存临时文件失败: %w", err)
+	}
+
+	// 委托通用处理流程
+	return a.processZipFromPath(tempZipPath)
+}
+
+// ============================================================
+// 内部方法
+// ============================================================
+
+// processZipFromPath 是 ProcessZipFile 和 ProcessDroppedFile 的通用实现。
+//
+// 统一处理流程：
+//   1. 确保 Steam 路径已初始化
+//   2. 创建临时目录并解压 zip 文件
+//   3. 解析 Lua 文件，构建 GamePackage
+//   4. 检测已安装的 DLC 状态
+//
+// 临时目录生命周期说明：
+//   成功时临时目录不会被立即清理，因为 ManifestFiles 中的路径
+//   在后续 InstallDLCs 步骤中仍需使用（复制到 depotcache）。
+//   临时目录会在下次启动工具或系统清理时被回收。
+//
+// 参数：
+//   - zipPath: zip 文件的完整路径（可以是用户选择的原始文件，也可以是临时落盘的文件）
+//
+// 返回值：
+//   - *GamePackage: 解析后的完整游戏数据包
+//   - error:       任何步骤失败时返回错误（失败时会清理临时目录）
+func (a *App) processZipFromPath(zipPath string) (*GamePackage, error) {
 	// 确保 Steam 路径已获取
 	if a.steamPath == "" {
 		if _, err := a.GetSteamPath(); err != nil {
@@ -355,32 +350,27 @@ func (a *App) ProcessDroppedFile(fileName string, fileData []byte) (*GamePackage
 		}
 	}
 
-	// 创建临时目录
+	// 创建临时目录用于解压
 	tempDir, err := os.MkdirTemp("", TempDirPrefix)
 	if err != nil {
 		return nil, fmt.Errorf("创建临时目录失败: %w", err)
 	}
-	defer os.RemoveAll(tempDir)
-
-	// 将二进制数据写入临时 zip 文件
-	tempZipPath := filepath.Join(tempDir, fileName)
-	if err := os.WriteFile(tempZipPath, fileData, 0644); err != nil {
-		return nil, fmt.Errorf("保存临时文件失败: %w", err)
-	}
 
 	// 解压 zip 文件
-	luaPath, manifestFiles, err := a.unzipFile(tempZipPath, tempDir)
+	luaPath, manifestFiles, err := a.unzipFile(zipPath, tempDir)
 	if err != nil {
+		os.RemoveAll(tempDir)
 		return nil, err
 	}
 
 	// 解析 Lua 文件
 	gamePackage, err := a.parseLuaFile(luaPath)
 	if err != nil {
+		os.RemoveAll(tempDir)
 		return nil, err
 	}
 
-	// 保存 manifest 文件路径
+	// 保存 manifest 文件路径供后续安装使用
 	gamePackage.ManifestFiles = manifestFiles
 
 	// 检测已安装的 DLC
