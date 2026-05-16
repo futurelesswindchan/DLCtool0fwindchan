@@ -3,6 +3,7 @@ module dlctool
 go 1.23
 
 require (
+	github.com/andygrunwald/vdf v1.1.0
 	github.com/wailsapp/wails/v2 v2.11.0
 	github.com/yuin/gopher-lua v1.1.2
 	golang.org/x/sys v0.30.0
