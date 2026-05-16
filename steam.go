@@ -145,15 +145,16 @@ func (a *App) unzipFile(zipPath string, destDir string) (string, []string, error
 
 // detectInstalledDLCs 扫描 Steam 配置文件，检测哪些 DLC 已经安装。
 //
-// 检测逻辑：
-//   1. 在 Steamtools.lua 中查找 addappid(AppID) 或 addappid(AppID, ...) 调用
-//   2. 在 config.vdf 中查找 "AppID" 字符串（带引号匹配，降低误判）
+// 检测逻辑（双重来源）：
+//   1. 在 Steamtools.lua 中查找 addappid(AppID) 调用（正则容错匹配）
+//   2. 在 config.vdf 的 depots 节点中查找 AppID 子键（精确树状解析）
 //
 // 任一条件命中即标记 DLC 为已安装状态。
 // 若配置文件不存在（如首次使用），则所有 DLC 均标记为未安装。
 //
-// 已知局限：
-//   config.vdf 中的字符串包含检查仍可能产生误判（如 AppID 出现在无关节点中）。
+// VDF 检测策略：
+//   优先使用 VDF 解析器精确提取 depots 节点的 key 集合（零误判）。
+//   若解析失败，fallback 到 findDepotsSection 范围限定搜索（仍优于全文搜索）。
 func (a *App) detectInstalledDLCs(gp *GamePackage) {
 	// 读取 Steamtools.lua
 	luaBytes, err := os.ReadFile(a.steamtoolsLuaPath())
@@ -169,20 +170,39 @@ func (a *App) detectInstalledDLCs(gp *GamePackage) {
 	}
 	vdfContent := string(vdfBytes)
 
+	// 尝试用 VDF 解析器精确提取 depots 节点的 key 集合
+	depotsKeys := parseDepotsKeys(vdfContent)
+
+	// 若解析失败，fallback 到范围限定搜索
+	var depotsRange string
+	if depotsKeys == nil {
+		_, openIdx, closeIdx, findErr := findDepotsSection(vdfContent)
+		if findErr == nil {
+			depotsRange = vdfContent[openIdx : closeIdx+1]
+		}
+	}
+
 	// 逐个检查每个 DLC 的安装状态
 	for i := range gp.DLCs {
 		dlc := &gp.DLCs[i]
 
-		// 优先在 Steamtools.lua 中检查（更精确）
-		if strings.Contains(luaContent, "addappid("+dlc.AppID+")") ||
-			strings.Contains(luaContent, "addappid("+dlc.AppID+",") {
+		// 优先在 Steamtools.lua 中检查（正则容错匹配）
+		if luaContainsAppID(luaContent, dlc.AppID) {
 			dlc.IsInstalled = true
 			continue
 		}
 
-		// 在 config.vdf 中检查（带引号匹配以降低误判概率）
-		if strings.Contains(vdfContent, `"`+dlc.AppID+`"`) {
-			dlc.IsInstalled = true
+		// 在 config.vdf 的 depots 节点中检查
+		if depotsKeys != nil {
+			// 精确模式：直接查 map key
+			if depotsKeys[dlc.AppID] {
+				dlc.IsInstalled = true
+			}
+		} else if depotsRange != "" {
+			// Fallback 模式：范围内带引号搜索
+			if strings.Contains(depotsRange, `"`+dlc.AppID+`"`) {
+				dlc.IsInstalled = true
+			}
 		}
 	}
 }
@@ -326,9 +346,11 @@ func (a *App) copyManifests(gp *GamePackage, selectedSet map[string]bool) []erro
 // patchConfigVDF 修改 config.vdf，在 depots 节点中添加解密密钥。
 //
 // 写入策略：
-//   1. 定位 "depots" 节点的起始大括号
-//   2. 在大括号之后插入新的 VDF 键值块
-//   3. 通过字符串包含检查实现幂等性（已存在的 ID 不会重复写入）
+//   1. 用 findDepotsSection 精确定位 depots 节点的 { } 范围
+//   2. 用 inferIndent 从现有内容推断缩进风格（自适应格式）
+//   3. 用 buildDepotBlock 按推断缩进生成 VDF 块
+//   4. 在 depots 开括号之后插入新块
+//   5. 幂等性检查限定在 depots 范围内（避免其他节点的同名 key 干扰）
 //
 // 写入前会创建 .bak 备份文件。
 //
@@ -338,10 +360,6 @@ func (a *App) copyManifests(gp *GamePackage, selectedSet map[string]bool) []erro
 //
 // 返回值：
 //   - error: 文件读写失败或 depots 节点定位失败时返回错误
-//
-// 已知局限：
-//   对 config.vdf 的原始排版和节点结构高度敏感，
-//   若文件格式与预期差异较大，插入位置可能不准确。
 func (a *App) patchConfigVDF(gp *GamePackage, selectedSet map[string]bool) error {
 	vdfPath := a.configVDFPath()
 
@@ -352,42 +370,41 @@ func (a *App) patchConfigVDF(gp *GamePackage, selectedSet map[string]bool) error
 	content := string(contentBytes)
 
 	// 备份原始文件
-	backupPath := vdfPath + BackupSuffix
-	os.WriteFile(backupPath, contentBytes, 0644)
+	os.WriteFile(vdfPath+BackupSuffix, contentBytes, 0644)
+
+	// 精确定位 depots 节点
+	_, openIdx, closeIdx, err := findDepotsSection(content)
+	if err != nil {
+		return err
+	}
+
+	// 推断缩进风格
+	entryIndent, innerIndent := inferIndent(content, openIdx, closeIdx)
+
+	// 提取 depots 范围内的文本用于幂等性检查
+	depotsContent := content[openIdx : closeIdx+1]
 
 	modified := false
 
 	// 添加所有 Depot 的解密密钥
 	for _, depot := range gp.Depots {
-		keyCheck := fmt.Sprintf(`"%s"`, depot.DepotID)
-
-		// 幂等性检查：如果已存在则跳过
-		if strings.Contains(content, keyCheck) {
+		// 幂等性检查：仅在 depots 范围内查找
+		if strings.Contains(depotsContent, `"`+depot.DepotID+`"`) {
 			continue
 		}
 
-		// 定位 "depots" 节点
-		depotsIndex := strings.Index(content, `"depots"`)
-		if depotsIndex == -1 {
-			return fmt.Errorf("在 config.vdf 中找不到 \"depots\" 节点")
-		}
-
-		// 找到 "depots" 之后的开括号
-		openBraceIndex := strings.Index(content[depotsIndex:], "{")
-		if openBraceIndex == -1 {
-			return fmt.Errorf("找不到 depots 的起始括号")
-		}
-
-		// 构建 VDF 格式的密钥块
-		vdfBlock := fmt.Sprintf(`
-				"%s"
-				{
-					"DecryptionKey"		"%s"
-				}`, depot.DepotID, depot.DecryptionKey)
+		block := buildDepotBlock(depot.DepotID, depot.DecryptionKey, entryIndent, innerIndent)
 
 		// 在开括号之后插入
-		insertIndex := depotsIndex + openBraceIndex + 1
-		content = content[:insertIndex] + vdfBlock + content[insertIndex:]
+		insertIdx := openIdx + 1
+		content = content[:insertIdx] + block + content[insertIdx:]
+
+		// 插入后需要重新定位（内容已变化）
+		_, openIdx, closeIdx, err = findDepotsSection(content)
+		if err != nil {
+			return fmt.Errorf("插入 Depot %s 后重新定位失败: %w", depot.DepotID, err)
+		}
+		depotsContent = content[openIdx : closeIdx+1]
 		modified = true
 	}
 
@@ -397,29 +414,20 @@ func (a *App) patchConfigVDF(gp *GamePackage, selectedSet map[string]bool) error
 			continue
 		}
 
-		keyCheck := fmt.Sprintf(`"%s"`, dlc.AppID)
-		if strings.Contains(content, keyCheck) {
+		if strings.Contains(depotsContent, `"`+dlc.AppID+`"`) {
 			continue
 		}
 
-		depotsIndex := strings.Index(content, `"depots"`)
-		if depotsIndex == -1 {
-			return fmt.Errorf("在 config.vdf 中找不到 \"depots\" 节点")
+		block := buildDepotBlock(dlc.AppID, dlc.DecryptionKey, entryIndent, innerIndent)
+
+		insertIdx := openIdx + 1
+		content = content[:insertIdx] + block + content[insertIdx:]
+
+		_, openIdx, closeIdx, err = findDepotsSection(content)
+		if err != nil {
+			return fmt.Errorf("插入 DLC %s 后重新定位失败: %w", dlc.AppID, err)
 		}
-
-		openBraceIndex := strings.Index(content[depotsIndex:], "{")
-		if openBraceIndex == -1 {
-			return fmt.Errorf("找不到 depots 的起始括号")
-		}
-
-		vdfBlock := fmt.Sprintf(`
-				"%s"
-				{
-					"DecryptionKey"		"%s"
-				}`, dlc.AppID, dlc.DecryptionKey)
-
-		insertIndex := depotsIndex + openBraceIndex + 1
-		content = content[:insertIndex] + vdfBlock + content[insertIndex:]
+		depotsContent = content[openIdx : closeIdx+1]
 		modified = true
 	}
 
@@ -438,7 +446,7 @@ func (a *App) patchConfigVDF(gp *GamePackage, selectedSet map[string]bool) error
 // 写入策略：
 //   1. 确保 stplug-in 目录存在
 //   2. 读取现有文件内容（不存在则视为空文件）
-//   3. 通过 strings.Contains 检查实现幂等性
+//   3. 通过正则匹配检查实现幂等性（容忍空格、注释等格式变体）
 //   4. 将新增行追加到文件末尾
 //
 // 写入前会创建 .bak 备份文件。
@@ -449,9 +457,6 @@ func (a *App) patchConfigVDF(gp *GamePackage, selectedSet map[string]bool) error
 //
 // 返回值：
 //   - error: 目录创建或文件写入失败时返回错误
-//
-// 已知局限：
-//   幂等性检查基于简单字符串包含，对空格、注释等格式变体不够容错。
 func (a *App) patchSteamtoolsLua(gp *GamePackage, selectedSet map[string]bool) error {
 	luaPath := a.steamtoolsLuaPath()
 
@@ -474,18 +479,15 @@ func (a *App) patchSteamtoolsLua(gp *GamePackage, selectedSet map[string]bool) e
 	var linesToAdd []string
 
 	// 添加主应用的 addappid 调用
-	mainLine := fmt.Sprintf("addappid(%s)", gp.MainAppID)
-	if !strings.Contains(content, "addappid("+gp.MainAppID+")") &&
-		!strings.Contains(content, "addappid("+gp.MainAppID+",") {
-		linesToAdd = append(linesToAdd, mainLine)
+	if !luaContainsAppID(content, gp.MainAppID) {
+		linesToAdd = append(linesToAdd, fmt.Sprintf("addappid(%s)", gp.MainAppID))
 	}
 
 	// 添加所有 Depot（带密钥）
 	for _, depot := range gp.Depots {
-		line := fmt.Sprintf(`addappid(%s, 1, "%s")`, depot.DepotID, depot.DecryptionKey)
-		if !strings.Contains(content, "addappid("+depot.DepotID+",") &&
-			!strings.Contains(content, "addappid("+depot.DepotID+")") {
-			linesToAdd = append(linesToAdd, line)
+		if !luaContainsAppID(content, depot.DepotID) {
+			linesToAdd = append(linesToAdd,
+				fmt.Sprintf(`addappid(%s, 1, "%s")`, depot.DepotID, depot.DecryptionKey))
 		}
 	}
 
@@ -495,16 +497,16 @@ func (a *App) patchSteamtoolsLua(gp *GamePackage, selectedSet map[string]bool) e
 			continue
 		}
 
-		var line string
-		if dlc.HasKey {
-			line = fmt.Sprintf(`addappid(%s, 1, "%s")`, dlc.AppID, dlc.DecryptionKey)
-		} else {
-			line = fmt.Sprintf("addappid(%s)", dlc.AppID)
+		if luaContainsAppID(content, dlc.AppID) {
+			continue
 		}
 
-		if !strings.Contains(content, "addappid("+dlc.AppID+",") &&
-			!strings.Contains(content, "addappid("+dlc.AppID+")") {
-			linesToAdd = append(linesToAdd, line)
+		if dlc.HasKey {
+			linesToAdd = append(linesToAdd,
+				fmt.Sprintf(`addappid(%s, 1, "%s")`, dlc.AppID, dlc.DecryptionKey))
+		} else {
+			linesToAdd = append(linesToAdd,
+				fmt.Sprintf("addappid(%s)", dlc.AppID))
 		}
 	}
 
@@ -617,18 +619,17 @@ func (a *App) removeManifests(appIDs []string) []error {
 // unpatchConfigVDF 从 config.vdf 中移除指定游戏的所有密钥条目。
 //
 // 移除策略：
-//   构建与写入时完全相同格式的 VDF 块文本，通过 strings.ReplaceAll 精确删除。
-//   写入前会创建 .bak.remove 备份文件。
+//   使用正则匹配删除，容忍缩进和空白格式变体。
+//   无论 config.vdf 被 Steam 客户端重新格式化过，还是被手动编辑过，
+//   只要 "DepotID" + { + "DecryptionKey" + } 的结构存在即可匹配。
+//
+// 写入前会创建 .bak.remove 备份文件。
 //
 // 参数：
 //   - gp: 游戏数据包（用于确定需要移除的 Depot 和 DLC 密钥块）
 //
 // 返回值：
 //   - error: 文件读写失败时返回错误
-//
-// 已知局限：
-//   依赖与写入时完全一致的文本格式进行匹配删除。
-//   若 config.vdf 被手动编辑导致缩进/空格变化，可能无法匹配成功。
 func (a *App) unpatchConfigVDF(gp *GamePackage) error {
 	vdfPath := a.configVDFPath()
 
@@ -645,14 +646,9 @@ func (a *App) unpatchConfigVDF(gp *GamePackage) error {
 
 	// 移除所有 Depot 的密钥块
 	for _, depot := range gp.Depots {
-		block := fmt.Sprintf(`
-				"%s"
-				{
-					"DecryptionKey"		"%s"
-				}`, depot.DepotID, depot.DecryptionKey)
-
-		if strings.Contains(content, block) {
-			content = strings.ReplaceAll(content, block, "")
+		result, changed := removeDepotBlock(content, depot.DepotID)
+		if changed {
+			content = result
 			modified = true
 		}
 	}
@@ -662,14 +658,9 @@ func (a *App) unpatchConfigVDF(gp *GamePackage) error {
 		if !dlc.HasKey {
 			continue
 		}
-		block := fmt.Sprintf(`
-				"%s"
-				{
-					"DecryptionKey"		"%s"
-				}`, dlc.AppID, dlc.DecryptionKey)
-
-		if strings.Contains(content, block) {
-			content = strings.ReplaceAll(content, block, "")
+		result, changed := removeDepotBlock(content, dlc.AppID)
+		if changed {
+			content = result
 			modified = true
 		}
 	}
@@ -683,9 +674,10 @@ func (a *App) unpatchConfigVDF(gp *GamePackage) error {
 // unpatchSteamtoolsLua 从 Steamtools.lua 中移除指定游戏的所有 addappid 调用。
 //
 // 移除策略：
-//   1. 构建所有需要移除的 addappid 模式列表
-//   2. 逐行扫描文件，跳过匹配到模式的行
-//   3. 清理移除后产生的多余空行（连续三个以上空行压缩为两个）
+//   1. 收集所有需要移除的 AppID 列表
+//   2. 逐行扫描文件，使用正则匹配判断是否为目标行（容忍空格和格式变体）
+//   3. 跳过被注释的行（以 -- 开头），避免误删 EXCLUDED DLCS 区域
+//   4. 清理移除后产生的多余空行（连续三个以上空行压缩为两个）
 //
 // 写入前会创建 .bak.remove 备份文件。
 //
@@ -694,9 +686,6 @@ func (a *App) unpatchConfigVDF(gp *GamePackage) error {
 //
 // 返回值：
 //   - error: 文件写入失败时返回错误；文件不存在时返回 nil（无需清理）
-//
-// 已知局限：
-//   逐行字符串匹配对格式变体（空格、注释、参数顺序）不够容错。
 func (a *App) unpatchSteamtoolsLua(gp *GamePackage) error {
 	luaPath := a.steamtoolsLuaPath()
 
@@ -709,36 +698,29 @@ func (a *App) unpatchSteamtoolsLua(gp *GamePackage) error {
 	// 备份
 	os.WriteFile(luaPath+BackupRemoveSuffix, contentBytes, 0644)
 
-	// 收集所有要移除的模式字符串
-	var removePatterns []string
+	// 收集所有要移除的 AppID
+	var removeIDs []string
 
 	// 主应用
-	removePatterns = append(removePatterns, fmt.Sprintf("addappid(%s)", gp.MainAppID))
+	removeIDs = append(removeIDs, gp.MainAppID)
 
 	// 所有 Depot
 	for _, depot := range gp.Depots {
-		removePatterns = append(removePatterns,
-			fmt.Sprintf(`addappid(%s, 1, "%s")`, depot.DepotID, depot.DecryptionKey))
+		removeIDs = append(removeIDs, depot.DepotID)
 	}
 
 	// 所有 DLC
 	for _, dlc := range gp.DLCs {
-		if dlc.HasKey {
-			removePatterns = append(removePatterns,
-				fmt.Sprintf(`addappid(%s, 1, "%s")`, dlc.AppID, dlc.DecryptionKey))
-		}
-		removePatterns = append(removePatterns,
-			fmt.Sprintf("addappid(%s)", dlc.AppID))
+		removeIDs = append(removeIDs, dlc.AppID)
 	}
 
-	// 逐行过滤：跳过匹配到移除模式的行
+	// 逐行过滤：使用正则匹配判断是否需要移除
 	lines := strings.Split(content, "\n")
 	var newLines []string
 	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
 		shouldRemove := false
-		for _, pattern := range removePatterns {
-			if strings.Contains(trimmed, pattern) {
+		for _, id := range removeIDs {
+			if luaLineMatchesAppID(line, id) {
 				shouldRemove = true
 				break
 			}
