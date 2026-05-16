@@ -172,37 +172,15 @@ import {
   RemoveAllDLCs,
   ProcessDroppedFile,
 } from "../wailsjs/go/main/App";
+import { main } from "../wailsjs/go/models";
 
 // ============================================================
 // 类型定义
 // ============================================================
-
-/** DLC 信息，与后端 types.go 中的 DLCInfo 一一对应。 */
-interface DLCInfo {
-  appID: string;
-  name: string;
-  hasKey: boolean;
-  decryptionKey: string;
-  isInstalled: boolean;
-}
-
-/** Depot 信息，与后端 types.go 中的 DepotInfo 一一对应。 */
-interface DepotInfo {
-  depotID: string;
-  decryptionKey: string;
-  manifestID: string;
-  fileSize: number;
-}
-
-/** 游戏数据包，与后端 types.go 中的 GamePackage 一一对应。 */
-interface GamePackage {
-  mainAppID: string;
-  gameName: string;
-  depots: DepotInfo[];
-  dlcs: DLCInfo[];
-  luaContent: string;
-  manifestFiles: string[];
-}
+// 从 Wails 生成的 models 中复用类型，确保前后端类型完全一致。
+type GamePackage = main.GamePackage;
+type DLCInfo = main.DLCInfo;
+// type DepotInfo = main.DepotInfo;
 
 /**
  * 统一通知消息的类型枚举。
