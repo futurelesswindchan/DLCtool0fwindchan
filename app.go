@@ -243,11 +243,26 @@ func (a *App) InstallDLCs(gamePackage *GamePackage, selectedAppIDs []string) (*O
 	}
 
 	// 步骤 1：复制 Manifest 文件到 depotcache
-	if err := a.copyManifests(gamePackage, selectedSet); err != nil {
-		a.logger.Error("[步骤1/3] 复制清单文件失败: %v", err)
-		return &OperationResult{Success: false, Message: fmt.Sprintf("[步骤1/3] 复制清单文件失败: %v", err)}, nil
+	// copyManifests 返回错误列表而非单个 error，单文件失败不阻断整体流程。
+	// 仅当首个错误为目录创建失败时视为致命错误，直接返回失败结果。
+	copyErrors := a.copyManifests(gamePackage, selectedSet)
+	if len(copyErrors) > 0 {
+	    // 检查是否为致命错误（目录创建失败，此时只会有一个错误）
+	    if strings.Contains(copyErrors[0].Error(), "depotcache 目录失败") {
+	        a.logger.Error("[步骤1/3] 复制清单文件失败: %v", copyErrors[0])
+	        return &OperationResult{
+	            Success: false,
+	            Message: fmt.Sprintf("[步骤1/3] 复制清单文件失败: %v", copyErrors[0]),
+	        }, nil
+	    }
+	    // 非致命错误：部分文件复制失败，记录警告但继续流程
+	    a.logger.Warn("[步骤1/3] %d 个 manifest 文件复制失败", len(copyErrors))
+	    for _, e := range copyErrors {
+	        a.logger.Warn("  - %v", e)
+	    }
+	} else {
+	    a.logger.Info("[步骤1/3] Manifest 文件复制完成")
 	}
-	a.logger.Info("[步骤1/3] Manifest 文件复制完成")
 
 	// 步骤 2：修改 config.vdf
 	if err := a.patchConfigVDF(gamePackage, selectedSet); err != nil {
@@ -262,6 +277,16 @@ func (a *App) InstallDLCs(gamePackage *GamePackage, selectedAppIDs []string) (*O
 		return &OperationResult{Success: false, Message: fmt.Sprintf("[步骤3/3] 修改 Steamtools.lua 失败: %v", err)}, nil
 	}
 	a.logger.Info("[步骤3/3] Steamtools.lua 修改完成")
+
+	// 汇总结果
+	if len(copyErrors) > 0 {
+	    a.logger.Warn("DLC 安装完成，但有 %d 个 manifest 复制失败", len(copyErrors))
+	    return &OperationResult{
+	        Success: true,
+	        Message: fmt.Sprintf("成功安装 %d 个 DLC，但有 %d 个 manifest 文件复制失败",
+	            len(selectedAppIDs), len(copyErrors)),
+	    }, nil
+	}
 
 	a.logger.Info("DLC 安装完成，共 %d 个", len(selectedAppIDs))
 	return &OperationResult{
