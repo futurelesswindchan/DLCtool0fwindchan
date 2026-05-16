@@ -2,7 +2,7 @@
   <div class="app-container">
     <header class="app-header">
       <div class="header-left">
-        <h1>🎮 DLC入库工具 v1.2</h1>
+        <h1>🎮 DLC入库工具 v1.3</h1>
       </div>
       <div class="header-right">
         <button
