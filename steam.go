@@ -240,28 +240,25 @@ func (a *App) killSteam() (KillSteamResult, error) {
 	return SteamKilled, nil
 }
 
-// ============================================================
-// Manifest 文件操作
-// ============================================================
-
 // copyManifests 将解压后的 manifest 文件复制到 Steam 的 depotcache 目录。
 //
 // 复制前会清理目标目录中同 DepotID 的旧版本 manifest，确保不会残留过期文件。
 // manifest 文件命名格式为 <DepotID>_<ManifestID>.manifest。
+//
+// 错误处理策略：
+//   单个文件复制失败不会阻断整体流程，而是收集到错误列表中返回，
+//   由调用方决定是否告知用户。仅 depotcache 目录创建失败视为致命错误。
 //
 // 参数：
 //   - gp:          游戏数据包（包含 ManifestFiles 路径列表）
 //   - selectedSet: 用户选中的 DLC AppID 集合（当前未用于过滤，预留扩展）
 //
 // 返回值：
-//   - error: depotcache 目录创建失败时返回错误；单个文件复制失败会被静默跳过
-//
-// 已知局限：
-//   单个文件复制失败时使用 continue 跳过，外层无法精确知道哪些文件成功/失败。
-func (a *App) copyManifests(gp *GamePackage, selectedSet map[string]bool) error {
+//   - []error: 复制过程中遇到的所有错误；全部成功时返回 nil
+func (a *App) copyManifests(gp *GamePackage, selectedSet map[string]bool) []error {
 	destDir := a.depotcachePath()
 	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return fmt.Errorf("创建 depotcache 目录失败: %w", err)
+		return []error{fmt.Errorf("创建 depotcache 目录失败: %w", err)}
 	}
 
 	// 收集所有需要的 DepotID（来自选中的 DLC 和主应用的 Depot）
@@ -269,6 +266,8 @@ func (a *App) copyManifests(gp *GamePackage, selectedSet map[string]bool) error 
 	for _, depot := range gp.Depots {
 		neededDepotIDs[depot.DepotID] = true
 	}
+
+	var errs []error
 
 	for _, manifestPath := range gp.ManifestFiles {
 		fileName := filepath.Base(manifestPath)
@@ -297,6 +296,7 @@ func (a *App) copyManifests(gp *GamePackage, selectedSet map[string]bool) error 
 		// 复制新的 manifest 文件
 		srcFile, err := os.Open(manifestPath)
 		if err != nil {
+			errs = append(errs, fmt.Errorf("打开源文件 %s 失败: %w", fileName, err))
 			continue
 		}
 
@@ -304,15 +304,19 @@ func (a *App) copyManifests(gp *GamePackage, selectedSet map[string]bool) error 
 		destFile, err := os.Create(destPath)
 		if err != nil {
 			srcFile.Close()
+			errs = append(errs, fmt.Errorf("创建目标文件 %s 失败: %w", fileName, err))
 			continue
 		}
 
-		io.Copy(destFile, srcFile)
+		_, copyErr := io.Copy(destFile, srcFile)
 		destFile.Close()
 		srcFile.Close()
+		if copyErr != nil {
+			errs = append(errs, fmt.Errorf("复制 %s 内容失败: %w", fileName, copyErr))
+		}
 	}
 
-	return nil
+	return errs
 }
 
 // ============================================================
