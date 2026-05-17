@@ -375,6 +375,18 @@ func (a *App) parseLuaFile(luaPath string) (*GamePackage, error) {
 	L := lua.NewState()
 	defer L.Close()
 
+	// 设置全局表的兜底元方法：任何未注册的全局函数调用都静默忽略。
+	// 这确保了不同 Lua 生成器引入的未知函数不会导致执行失败，同时已注册的回调仍正常工作。
+	fallback := L.NewFunction(func(L *lua.LState) int {
+		return 0
+	})
+	mt := L.NewTable()
+	L.SetField(mt, "__index", L.NewFunction(func(L *lua.LState) int {
+		L.Push(fallback)
+		return 1
+	}))
+	L.SetMetatable(L.Get(lua.GlobalsIndex), mt)
+
 	// 注册 addappid 回调
 	// 支持两种调用形式：
 	//   addappid(appID)              → 无密钥的 DLC 注册
