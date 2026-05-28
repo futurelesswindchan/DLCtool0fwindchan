@@ -158,6 +158,23 @@ func (a *App) SetSteamPath(path string) error {
 	return nil
 }
 
+// SelectDirectory 打开系统文件选择对话框，让用户手动选择 Steam 安装目录。
+//
+// 使用 Wails 运行时提供的原生对话框。
+//
+// 返回值：
+//   - string: 用户选择的文件夹完整路径；若用户取消选择则返回空字符串
+//   - error:  对话框调用失败时返回错误
+func (a *App) SelectDirectory() (string, error) {
+	selection, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "请选择 Steam 安装目录",
+	})
+	if err != nil {
+		return "", err
+	}
+	return selection, nil
+}
+
 // SelectZipFile 打开系统文件选择对话框，让用户选择 DLC 压缩包。
 //
 // 使用 Wails 运行时提供的原生对话框，仅允许选择 .zip 格式文件。
