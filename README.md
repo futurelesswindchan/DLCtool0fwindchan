@@ -10,9 +10,16 @@
 >
 > A simple and elegant Steam DLC local unlocker and manager built with Wails, Vue 3 & Go.
 
-![示例图片1](https://github.com/futurelesswindchan/DLCtool0fwindchan/blob/main/.github/images/preview_light.png)
-![示例图片2](https://github.com/futurelesswindchan/DLCtool0fwindchan/blob/main/.github/images/preview_dark.png)
-
+<table>
+  <tr>
+    <td><img width="445" alt="preview_light" src="https://github.com/futurelesswindchan/DLCtool0fwindchan/blob/main/.github/images/preview_light.png" /></td>
+    <td><img width="445" alt="preview_dark" src="https://github.com/futurelesswindchan/DLCtool0fwindchan/blob/main/.github/images/preview_dark.png" /></td>
+  </tr>
+  <tr>
+    <td align="center">☀️ 浅色模式</td>
+    <td align="center">🌙 深色模式</td>
+  </tr>
+</table>
 ---
 
 ## 📖 项目简介 (Introduction)
