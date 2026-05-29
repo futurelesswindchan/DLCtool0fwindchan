@@ -22,6 +22,10 @@ export function RemoveAllDLCs(arg1) {
   return window['go']['main']['App']['RemoveAllDLCs'](arg1);
 }
 
+export function SelectDirectory() {
+  return window['go']['main']['App']['SelectDirectory']();
+}
+
 export function SelectZipFile() {
   return window['go']['main']['App']['SelectZipFile']();
 }

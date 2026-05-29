@@ -12,6 +12,8 @@ export function ProcessZipFile(arg1:string):Promise<main.GamePackage>;
 
 export function RemoveAllDLCs(arg1:main.GamePackage):Promise<main.OperationResult>;
 
+export function SelectDirectory():Promise<string>;
+
 export function SelectZipFile():Promise<string>;
 
 export function SetSteamPath(arg1:string):Promise<void>;
