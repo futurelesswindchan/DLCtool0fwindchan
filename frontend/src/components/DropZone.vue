@@ -3,21 +3,26 @@
     <!-- Steam 路径配置面板 (重构) -->
     <div class="steam-config flat-block">
       <div class="steam-header">
-        <div class="steam-status" :class="steamPath ? 'status-ok' : 'status-error'">
+        <div
+          class="steam-status"
+          :class="steamPath ? 'status-ok' : 'status-error'"
+        >
           <div class="status-dot"></div>
-          <span class="status-text">{{ steamPath ? 'Steam 已就绪' : '未找到 Steam' }}</span>
+          <span class="status-text">{{
+            steamPath ? "Steam 已就绪" : "未找到 Steam"
+          }}</span>
         </div>
         <button class="btn-text" @click="$emit('set-steam-path')">
-          {{ steamPath ? '修改' : '手动指定' }}
+          {{ steamPath ? "修改" : "手动指定" }}
         </button>
       </div>
       <div class="steam-path-detail" :title="steamPath || '需要手动指定'">
-        {{ steamPath || '请手动配置 Steam 安装目录...' }}
+        {{ steamPath || "请手动配置 Steam 安装目录..." }}
       </div>
     </div>
 
     <!-- 拖拽核心区 -->
-    <div 
+    <div
       class="drag-area flat-block"
       :class="{ 'is-dragover': isDragOver }"
       @dragover.prevent="isDragOver = true"
@@ -26,19 +31,19 @@
     >
       <div class="drag-content">
         <div class="icon-wrapper">
-          <span class="icon">{{ fileName ? '📦' : '📥' }}</span>
+          <span class="icon">{{ fileName ? "📦" : "📥" }}</span>
         </div>
-        
+
         <h3 class="title">
-          {{ fileName ? fileName : '拖拽 DLC 解锁包至此' }}
+          {{ fileName ? fileName : "拖拽 DLC 解锁包至此" }}
         </h3>
-        
+
         <p class="subtitle">
-          {{ fileName ? '随时拖入新 .zip 无缝替换' : '支持 .zip 格式压缩包' }}
+          {{ fileName ? "随时拖入新 .zip 无缝替换" : "支持 .zip 格式压缩包" }}
         </p>
 
-        <button 
-          class="btn-select flat-block" 
+        <button
+          class="btn-select flat-block"
           @click="$emit('file-select')"
           :disabled="!steamPath || isProcessing"
         >
@@ -50,29 +55,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref } from "vue";
 
 const props = defineProps<{
-  steamPath: string
-  isProcessing: boolean
-  fileName: string | null
-}>()
+  steamPath: string;
+  isProcessing: boolean;
+  fileName: string | null;
+}>();
 
 const emit = defineEmits<{
-  (e: 'file-drop', file: File): void
-  (e: 'file-select'): void
-  (e: 'set-steam-path'): void
-}>()
+  (e: "file-drop", file: File): void;
+  (e: "file-select"): void;
+  (e: "set-steam-path"): void;
+}>();
 
-const isDragOver = ref(false)
+const isDragOver = ref(false);
 
 const handleDrop = (event: DragEvent) => {
-  isDragOver.value = false
-  const files = event.dataTransfer?.files
+  isDragOver.value = false;
+  const files = event.dataTransfer?.files;
   if (files && files.length > 0) {
-    emit('file-drop', files[0])
+    emit("file-drop", files[0]);
   }
-}
+};
 </script>
 
 <style scoped>
@@ -113,11 +118,21 @@ const handleDrop = (event: DragEvent) => {
   border-radius: 50%;
 }
 
-.status-ok { color: var(--accent-success); }
-.status-ok .status-dot { background-color: var(--accent-success); box-shadow: 0 0 8px var(--accent-success); }
+.status-ok {
+  color: var(--accent-success);
+}
+.status-ok .status-dot {
+  background-color: var(--accent-success);
+  box-shadow: 0 0 8px var(--accent-success);
+}
 
-.status-error { color: var(--accent-danger); }
-.status-error .status-dot { background-color: var(--accent-danger); box-shadow: 0 0 8px var(--accent-danger); }
+.status-error {
+  color: var(--accent-danger);
+}
+.status-error .status-dot {
+  background-color: var(--accent-danger);
+  box-shadow: 0 0 8px var(--accent-danger);
+}
 
 .btn-text {
   background: transparent;

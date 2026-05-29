@@ -15,15 +15,26 @@
 
         <!-- 防倒卖与版权信息 -->
         <div class="anti-resale-info flat-block">
-          <a href="https://github.com/futurelesswindchan/DLCtool0fwindchan" target="_blank" class="warning-badge" title="访问 GitHub 仓库">
-            ⚠️ 免费开源工具，严禁倒卖！
+          <a
+            href="#"
+            @click.prevent="openGitHub"
+            class="github-link-badge"
+            title="访问 GitHub 仓库"
+          >
+            <span class="github-icon">🔗</span>
+            还请来Github仓库点个Star喔>w<
           </a>
+          <button class="theme-toggle-large-btn" @click="toggleTheme">
+            <span class="theme-icon">{{ isDarkTheme ? "☀️" : "🌙" }}</span>
+            <span class="theme-text">{{
+              isDarkTheme ? "切换至浅色模式" : "切换至深色模式"
+            }}</span>
+          </button>
           <div class="info-row">
-            <span class="author">作者: 没有未来的小风酱</span>
-            <button class="theme-toggle-btn" @click="toggleTheme" :title="isDarkTheme ? '切换浅色' : '切换深色'">
-              <span class="theme-icon">{{ isDarkTheme ? '☀️' : '🌙' }}</span>
-              <span class="theme-text">{{ isDarkTheme ? '亮色' : '暗色' }}</span>
-            </button>
+            <span class="warning-text">
+              开源免费软件喵，如果是花钱买来的...<br />说明老大你被坏蛋骗了哦QAQ！
+            </span>
+            <span class="author">Powered By Futurelesswindchan</span>
           </div>
         </div>
       </aside>
@@ -74,6 +85,11 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from "vue";
+import {
+  BrowserOpenURL,
+  WindowSetLightTheme,
+  WindowSetDarkTheme,
+} from "../wailsjs/runtime/runtime";
 import {
   GetSteamPath,
   SetSteamPath,
@@ -129,6 +145,15 @@ const setProgress = (percent: number, message: string) => {
 const toggleTheme = () => {
   isDarkTheme.value = !isDarkTheme.value;
   document.body.classList.toggle("light-theme", !isDarkTheme.value);
+  if (isDarkTheme.value) {
+    WindowSetDarkTheme();
+  } else {
+    WindowSetLightTheme();
+  }
+};
+
+const openGitHub = () => {
+  BrowserOpenURL("https://github.com/futurelesswindchan/DLCtool0fwindchan");
 };
 
 const toggleDlcSelection = (appID: string) => {
@@ -305,6 +330,14 @@ const onGlobalDrop = (e: Event) => e.preventDefault();
 onMounted(async () => {
   window.addEventListener("dragover", onGlobalDragOver);
   window.addEventListener("drop", onGlobalDrop);
+  
+  // 初始化窗口主题
+  if (isDarkTheme.value) {
+    WindowSetDarkTheme();
+  } else {
+    WindowSetLightTheme();
+  }
+
   try {
     steamPath.value = await GetSteamPath();
   } catch (e: any) {
@@ -371,38 +404,71 @@ onUnmounted(() => {
   font-size: 0.8rem;
 }
 
-.warning-badge {
-  color: var(--accent-warning);
-  font-weight: 600;
+.github-link-badge {
+  color: var(--accent-primary);
+  font-size: 0.75rem;
+  font-family: ui-monospace, monospace;
   text-align: center;
-  background-color: rgba(245, 158, 11, 0.1);
-  padding: 0.4rem;
+  background-color: rgba(59, 130, 246, 0.1);
+  padding: 0.5rem;
   border-radius: var(--radius-sm);
-  border: 1px dashed rgba(245, 158, 11, 0.3);
+  border: 1px dashed rgba(59, 130, 246, 0.3);
+  text-decoration: none;
+  word-break: break-all;
+  transition: all 0.2s;
+}
+
+.github-link-badge:hover {
+  background-color: rgba(59, 130, 246, 0.2);
+  color: var(--accent-hover);
+}
+
+.theme-toggle-large-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.75rem;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s var(--anim-smooth);
+}
+
+.theme-toggle-large-btn:hover {
+  background-color: var(--bg-card-hover);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.theme-toggle-large-btn:active {
+  transform: scale(0.98);
 }
 
 .info-row {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  justify-content: center;
   align-items: center;
+  gap: 0.4rem;
+  padding-top: 0.5rem;
+  text-align: center;
+}
+
+.warning-text {
+  color: var(--accent-warning);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .author {
   color: var(--text-muted);
-}
-
-.theme-toggle-btn {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  font-size: 1rem;
-  padding: 0.2rem;
-  border-radius: 4px;
-  transition: background-color 0.2s;
-}
-
-.theme-toggle-btn:hover {
-  background-color: var(--bg-card);
 }
 
 /* DLC 网格区 */

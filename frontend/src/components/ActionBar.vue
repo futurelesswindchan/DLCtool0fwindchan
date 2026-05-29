@@ -3,10 +3,13 @@
     <!-- 进度条模式（当正在处理时展示） -->
     <div v-if="isProcessing || notification" class="progress-mode">
       <div v-if="isProcessing" class="progress-track">
-        <div class="progress-fill" :style="{ width: progressPercent + '%' }"></div>
+        <div
+          class="progress-fill"
+          :style="{ width: progressPercent + '%' }"
+        ></div>
       </div>
       <div class="status-message" :class="notification?.type">
-        {{ notification?.message || '正在处理...' }}
+        {{ notification?.message || "正在处理..." }}
       </div>
     </div>
 
@@ -20,15 +23,15 @@
 
       <div class="right-actions">
         <!-- 内联确认：清除按钮 -->
-        <button 
-          class="btn-block btn-danger" 
+        <button
+          class="btn-block btn-danger"
           :class="{ 'is-confirming': confirmClear }"
           @click="handleClearClick"
         >
-          {{ confirmClear ? '点击确认清除' : `清除所有 (${totalCount})` }}
+          {{ confirmClear ? "点击确认清除" : `清除所有 (${totalCount})` }}
         </button>
 
-        <button 
+        <button
           class="btn-block btn-primary"
           @click="handleInstallClick"
           :disabled="selectedCount === 0"
@@ -41,47 +44,50 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch } from "vue";
 
 const props = defineProps<{
-  selectedCount: number
-  totalCount: number
-  isProcessing: boolean
-  progressPercent: number
-  notification: { type: string, message: string } | null
-}>()
+  selectedCount: number;
+  totalCount: number;
+  isProcessing: boolean;
+  progressPercent: number;
+  notification: { type: string; message: string } | null;
+}>();
 
 const emit = defineEmits<{
-  (e: 'select-all'): void
-  (e: 'select-none'): void
-  (e: 'clear-all'): void
-  (e: 'install-selected'): void
-}>()
+  (e: "select-all"): void;
+  (e: "select-none"): void;
+  (e: "clear-all"): void;
+  (e: "install-selected"): void;
+}>();
 
-const confirmClear = ref(false)
-let clearTimer: number | null = null
+const confirmClear = ref(false);
+let clearTimer: number | null = null;
 
 const handleClearClick = () => {
   if (confirmClear.value) {
-    emit('clear-all')
-    confirmClear.value = false
-    if (clearTimer) clearTimeout(clearTimer)
+    emit("clear-all");
+    confirmClear.value = false;
+    if (clearTimer) clearTimeout(clearTimer);
   } else {
-    confirmClear.value = true
+    confirmClear.value = true;
     clearTimer = window.setTimeout(() => {
-      confirmClear.value = false
-    }, 3000)
+      confirmClear.value = false;
+    }, 3000);
   }
-}
+};
 
 const handleInstallClick = () => {
-  emit('install-selected')
-}
+  emit("install-selected");
+};
 
 // 离开处理状态时，重置确认状态
-watch(() => props.isProcessing, (newVal) => {
-  if (newVal) confirmClear.value = false
-})
+watch(
+  () => props.isProcessing,
+  (newVal) => {
+    if (newVal) confirmClear.value = false;
+  },
+);
 </script>
 
 <style scoped>
@@ -202,7 +208,11 @@ watch(() => props.isProcessing, (newVal) => {
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--accent-primary), var(--accent-success));
+  background: linear-gradient(
+    90deg,
+    var(--accent-primary),
+    var(--accent-success)
+  );
   border-radius: 3px;
   transition: width 0.3s ease;
 }
@@ -213,7 +223,14 @@ watch(() => props.isProcessing, (newVal) => {
   font-weight: 500;
 }
 
-.status-message.success { color: var(--accent-success); }
-.status-message.error { color: var(--accent-danger); }
-.status-message.info, .status-message.progress { color: var(--text-main); }
+.status-message.success {
+  color: var(--accent-success);
+}
+.status-message.error {
+  color: var(--accent-danger);
+}
+.status-message.info,
+.status-message.progress {
+  color: var(--text-main);
+}
 </style>

@@ -1,10 +1,10 @@
 <template>
   <div class="game-header flat-block">
     <div class="game-title-row">
-      <h2 class="game-name">{{ gameData?.gameName || '载入中...' }}</h2>
-      <span class="game-id">AppID: {{ gameData?.mainAppID || '---' }}</span>
+      <h2 class="game-name">{{ gameData?.gameName || "载入中..." }}</h2>
+      <span class="game-id">AppID: {{ gameData?.mainAppID || "---" }}</span>
     </div>
-    
+
     <div class="stats-row">
       <div class="stat-item">
         <span class="stat-label">总 DLC 数</span>
@@ -20,12 +20,12 @@
 </template>
 
 <script setup lang="ts">
-import { main } from '../../wailsjs/go/models'
+import { main } from "../../wailsjs/go/models";
 
 defineProps<{
-  gameData: main.GamePackage | null
-  installedCount: number
-}>()
+  gameData: main.GamePackage | null;
+  installedCount: number;
+}>();
 </script>
 
 <style scoped>

@@ -1,5 +1,5 @@
 <template>
-  <div 
+  <div
     class="dlc-card flat-block"
     :class="{ 'is-selected': isSelected, 'is-installed': dlc.isInstalled }"
     :style="{ '--card-index': index }"
@@ -25,17 +25,17 @@
 </template>
 
 <script setup lang="ts">
-import { main } from '../../wailsjs/go/models'
+import { main } from "../../wailsjs/go/models";
 
 defineProps<{
-  dlc: main.DLCInfo
-  isSelected: boolean
-  index: number
-}>()
+  dlc: main.DLCInfo;
+  isSelected: boolean;
+  index: number;
+}>();
 
 defineEmits<{
-  (e: 'toggle', appID: string): void
-}>()
+  (e: "toggle", appID: string): void;
+}>();
 </script>
 
 <style scoped>
@@ -45,7 +45,7 @@ defineEmits<{
   padding: 1rem 1.25rem;
   cursor: pointer;
   gap: 1rem;
-  
+
   /* 瀑布流入场动画 */
   animation: slideUpFade 0.5s var(--anim-smooth) both;
   animation-delay: calc(var(--card-index) * 0.04s);
@@ -65,7 +65,12 @@ defineEmits<{
 .dlc-card.is-selected::before {
   /* 选中后保留一丝扫光底色 */
   left: 0;
-  background: linear-gradient(120deg, transparent, rgba(59, 130, 246, 0.1), transparent);
+  background: linear-gradient(
+    120deg,
+    transparent,
+    rgba(59, 130, 246, 0.1),
+    transparent
+  );
 }
 
 /* --- 状态指示器 (替代原生 Checkbox) --- */
