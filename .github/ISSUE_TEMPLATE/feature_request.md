@@ -6,7 +6,7 @@ labels: enhancement
 assignees: ""
 ---
 
-> **✨ 欢迎来到风纸的灵感许愿池！**
+> **✨ 欢迎来到风酱的灵感许愿池！**\
 > 在这里许下你对管理器下一步迭代的期望吧~ 只要是合理的（并且咱的技术力能达到的），都会尽量塞进开发日程表中！(o ゜ ▽ ゜)o☆
 
 ### 🎯 痛点与场景 (Is your request related to a problem?)
