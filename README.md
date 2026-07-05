@@ -58,6 +58,19 @@
 
 ---
 
+## 💬 反馈与许愿 (Issue & Feedback)
+
+> **遇到 Bug 报错了？或者有什么天马行空的新功能点子？**
+
+风酱非常欢迎大家来提交反馈！不过为了不让各种问题乱作一团，咱统一使用 GitHub 的 Issue 来进行追踪处理哦~
+
+- 🐞 遇到程序报错无法使用？👉 [点击这里提交 Bug 车祸现场](https://github.com/futurelesswindchan/DLCtool0fwindchan/issues/new/choose)
+- 💡 想要更好用的新功能？界面不好看？👉 [点击这里向灵感许愿池投币](https://github.com/futurelesswindchan/DLCtool0fwindchan/issues/new/choose)
+
+⚠️ 注意：如果您遇到的是 **Steam 无限崩溃重启/游戏闪退**，这是底层工具与 Steam 客户端神仙打架导致的，不关咱的管理器事哦awa！
+
+---
+
 ## 🛠️ 源码编译与本地开发 (Build & Develop)
 
 想亲自动手给工具加点料，或者自己从源码编译出绿色的 EXE？欢迎来到本地开发频道！(`・ω・´)
