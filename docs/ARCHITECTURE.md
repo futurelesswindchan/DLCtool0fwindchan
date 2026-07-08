@@ -1,10 +1,8 @@
-## 📄 docs/ARCHITECTURE.md
-
 # DLCtool v2.0 架构白皮书
 
 > 本文档是 v2.0 开发的"宪法"，开发时应当遵循此守则
 >
-> 最后更新：2025-07-07
+> 最后更新：2026-07-08
 
 ---
 
@@ -22,25 +20,39 @@
 
 ### 完全解耦的核心设计
 
+```plain
 ┌─────────────────────────────────────────────────┐
 │ 🌐 清单仓库层 (GitHub 仓库 / 镜像) │ ← 社区维护，咱不管内容生产
 └─────────────────────┬───────────────────────────┘
 │ 拉取/下载
 ┌─────────────────────▼───────────────────────────┐
-│ 📦 盒子层 (DLCtool v2.0) │ ← 这是咱
-│ "把正确的文件放到正确的地方" │
+│ 📦 盒子层 (kazeusa v2.0)                         │ ← 这是咱
+│ "把正确的文件放到正确的地方"                        │
 └─────────────────────┬───────────────────────────┘
-│ 部署文件到监控目录
+│ 部署 .lua 文件到 config/lua/
 ┌─────────────────────▼───────────────────────────┐
-│ 🔧 注入器层 (OpenSteamTool / 未来其他工具) │ ← 咱不管、不碰、不集成其内部逻辑
-│ 自行热重载 Lua，自动下载 manifest │
+│ 🔧 注入器层 (OpenSteamTool)                      │ ← 咱不管、不碰、不集成其内部逻辑
+│ 自行热重载 Lua（500ms），自动下载 manifest          │
 └─────────────────────────────────────────────────┘
+```
 
 **三条铁律：**
 
 - 盒子不写 `config.vdf`（那是注入器的事）
 - 盒子不写注入器自身的配置文件
 - 盒子不负责安装/更新/修复注入器
+
+### OST 源码研究确认的关键事实
+
+| 事实                                                 | 出处                                            | 对 kazeusa 的意义        |
+| ---------------------------------------------------- | ----------------------------------------------- | ------------------------ |
+| Lua 目录默认 `<Steam>/config/lua/`，可通过 toml 扩展 | `dllmain.cpp` + `Config.cpp`                    | deployer 目标目录确定    |
+| 热重载事件驱动 + 500ms 防抖                          | `LuaFileWatcher.cpp`                            | 文件落盘即生效，无需重启 |
+| Steam 库安装/卸载后自动刷新                          | `Hooks_SteamUI.cpp` + `Hooks_Package.cpp`       | UX 文案可写"已添加到库"  |
+| Manifest 下载全自动（三级回退）                      | `ManifestClient.cpp`                            | 不需要 manifest 相关功能 |
+| addappid 第二参数被忽略                              | `LuaConfig.cpp:lua_addappid()`                  | M 站/社区 Lua 直接兼容   |
+| 函数名大小写无关                                     | `LuaConfig.cpp:case_insensitive_global_index()` | 生成 Lua 用全小写即可    |
+| 环境检测 = 3 个 DLL 存在                             | OST 加载链分析                                  | detector 实现确定        |
 
 ---
 
@@ -68,39 +80,39 @@
 
 ## 三、模块清单与职责
 
-```
+```plain
 
-├── main.go            ← Wails 应用装配入口
-├── app.go             ← 前端 API 编排层（所有暴露给前端的方法）
-├── config.go          ← 配置持久化（读/写/原子落盘）
-├── deployer.go        ← 部署目标接口（抽象"把文件放到哪里"）
-├── deployer_ost.go    ← OST 部署器实现（放到 config/lua/）
-├── detector.go        ← 注入器环境检测接口
-├── detector_ost.go    ← OST 环境检测实现
-├── repo_client.go     ← 在线仓库拉取客户端（GitHub API + 镜像回退）
-├── history.go         ← 安装历史管理
-├── lua_parser.go      ← Lua VM 解析器（核心资产，从 v1.4 保留）
-├── constants.go       ← 路径常量
-├── types.go           ← 前后端共享 DTO
-├── logger.go          ← 日志系统（轮转 + tag + 路径迁移）
-└── frontend/          ← Vue3 + TypeScript 前端
+├── main.go ← Wails 应用装配入口
+├── app.go ← 前端 API 编排层（所有暴露给前端的方法）
+├── config.go ← 配置持久化（读/写/原子落盘）
+├── deployer.go ← 部署目标接口（抽象"把文件放到哪里"）
+├── deployer_ost.go ← OST 部署器实现（放到 config/lua/）
+├── detector.go ← 注入器环境检测接口
+├── detector_ost.go ← OST 环境检测实现
+├── repo_client.go ← 在线仓库拉取客户端（GitHub API + 镜像回退）
+├── history.go ← 安装历史管理
+├── lua_parser.go ← Lua VM 解析器（核心资产，从 v1.4 保留）
+├── constants.go ← 路径常量
+├── types.go ← 前后端共享 DTO
+├── logger.go ← 日志系统（轮转 + tag + 路径迁移）
+└── frontend/ ← Vue3 + TypeScript 前端
 
 ```
 
 ### 各模块说明
 
-| 模块              | 职责                                                       |
-| ----------------- | ---------------------------------------------------------- |
-| `app.go`          | 前端能调用的所有方法都在这里，纯编排不做业务               |
-| `config.go`       | 管理 `~/.dlctool/config.json`，启动读取、变更时原子写入    |
-| `deployer.go`     | 定义"部署"接口：把 Lua 文件放到注入器能读的目录            |
-| `deployer_ost.go` | OST 实现：写入 `<Steam>/config/lua/<GameID>.lua`           |
-| `detector.go`     | 定义"检测"接口：注入器是否安装就绪                         |
-| `detector_ost.go` | OST 实现：检查 DLL 文件是否存在于 Steam 目录               |
-| `repo_client.go`  | 从 GitHub 仓库拉取清单包列表/内容，含镜像回退和缓存        |
-| `history.go`      | 管理 `~/.dlctool/history.json`，记录安装/卸载操作          |
-| `lua_parser.go`   | 嵌入式 Lua VM 执行清单脚本，提取 AppID/密钥/manifest 信息  |
-| `logger.go`       | 统一日志，支持轮转（5MB/3份）、操作 tag、文件+控制台双输出 |
+| 模块              | 职责                                                                         |
+| ----------------- | ---------------------------------------------------------------------------- |
+| `app.go`          | 前端能调用的所有方法都在这里，纯编排不做业务                                 |
+| `config.go`       | 管理 `~/.kazeusa/config.json`，启动读取、变更时原子写入                      |
+| `deployer.go`     | 定义"部署"接口：把 Lua 文件放到注入器能读的目录                              |
+| `deployer_ost.go` | OST 实现：写入 `<Steam>/config/lua/<GameID>.lua`，使用 tmp+rename 原子写入   |
+| `detector.go`     | 定义"检测"接口：注入器是否安装就绪                                           |
+| `detector_ost.go` | OST 实现：检查 `dwmapi.dll` + `xinput1_4.dll` + `OpenSteamTool.dll` 是否存在 |
+| `repo_client.go`  | 从 GitHub 仓库拉取清单包列表/内容，含镜像回退和缓存                          |
+| `history.go`      | 管理 `~/.kazeusa/history.json`，记录安装/卸载操作                            |
+| `lua_parser.go`   | 嵌入式 Lua VM 执行清单脚本，提取 AppID/密钥/manifest 信息                    |
+| `logger.go`       | 统一日志，支持轮转（5MB/3份）、操作 tag、文件+控制台双输出                   |
 
 ---
 
@@ -108,15 +120,14 @@
 
 ### 存储位置
 
-```
-
-%USERPROFILE%/.dlctool/
+```plain
+%USERPROFILE%/.kazeusa/
 ├── config.json ← 用户配置
 ├── history.json ← 安装历史记录
 └── logs/
-├── dlctool.log ← 当前日志
-├── dlctool.log.1 ← 轮转备份
-└── dlctool.log.2
+├── kazeusa.log ← 当前日志
+├── kazeusa.log.1 ← 轮转备份
+└── kazeusa.log.2
 
 ```
 
@@ -166,10 +177,12 @@
 // Deployer 定义将清单文件部署到注入器监控目录的接口。
 type Deployer interface {
     // Deploy 将游戏的 Lua 配置写入注入器可读目录。
+    // 使用 tmp+rename 原子写入确保 OST FileWatcher 拿到完整内容。
     // 返回部署后的文件路径。
     Deploy(gp *GamePackage, selectedIDs []string) (string, error)
 
     // Remove 从注入器监控目录中移除指定游戏的配置。
+    // OST 会在 500ms 内自动检测到删除并从 Steam 库移除游戏。
     Remove(mainAppID string) error
 
     // DeployDir 返回当前部署目标目录的完整路径。
@@ -192,6 +205,7 @@ type DetectorResult struct {
 // Detector 定义注入器环境检测接口。
 type Detector interface {
     // Detect 检查注入器是否已安装且环境就绪。
+    // OST：检查 Steam 根目录下 dwmapi.dll + xinput1_4.dll + OpenSteamTool.dll
     Detect(steamPath string) *DetectorResult
 }
 ```
@@ -225,26 +239,15 @@ type Detector interface {
 | 底层工具     | SteamTools（已停更）              | OpenSteamTool（活跃维护）      |
 | 耦合度       | 硬耦合（直接写 config.vdf + Lua） | 完全解耦（只放文件到监控目录） |
 | 清单来源     | 用户手动下载 zip 拖入             | 在线仓库拉取 + 本地导入        |
-| 配置持久化   | 无（每次重新识别）                | 有（\~/.dlctool/config.json）  |
-| 安装历史     | 无                                | 有（\~/.dlctool/history.json） |
-| 需要关 Steam | 是（写 config.vdf 前必须）        | 否（OST 热重载）               |
+| 配置持久化   | 无（每次重新识别）                | 有（\~/.kazeusa/config.json）  |
+| 安装历史     | 无                                | 有（\~/.kazeusa/history.json） |
+| 需要关 Steam | 是（写 config.vdf 前必须）        | 否（OST 热重载，500ms 内生效） |
 | Lua 管理     | 追加到单文件                      | 每游戏独立文件                 |
+| 部署方式     | 直接写入                          | tmp+rename 原子写入            |
 
 ---
 
-## 七、待研究事项（标记为 🔬）
-
-以下决策尚未最终确定，需要实际研究 OST 后补充：
-
-1. 🔬 **OST 的 Lua 目录是否一定是** `<Steam>/config/lua/`**？** 是否可通过 toml 配置自定义？
-2. 🔬 **OST 是否完全自动下载 manifest？** 如果 API 不可达，是否需要 fallback 到手动部署 manifest？
-3. 🔬 **M 站 Lua 与 OST 的格式差异？** `addappid` 第二参数 `1` vs `0` 的语义确认。
-4. 🔬 **在线仓库的具体源？** 使用哪个 GitHub 仓库？API 结构和目录约定是什么？
-5. 🔬 **OST 环境检测的具体指标？** 检查哪些 DLL 文件存在即视为"已安装"？
-
----
-
-## 八、施工顺序（推荐）
+## 七、施工顺序（推荐）
 
 | 阶段 | 步骤              | 产出                              | 依赖 |
 | :--- | :---------------- | :-------------------------------- | :--- |
@@ -259,7 +262,7 @@ type Detector interface {
 
 ---
 
-## 九、用户迁移策略（v1.4 → v2.0）
+## 八、用户迁移策略（v1.4 → v2.0）
 
 v2.0 不提供自动迁移。用户需要：
 
@@ -267,6 +270,4 @@ v2.0 不提供自动迁移。用户需要：
 2. 删除 `<Steam>/config/stplug-in/` 目录
 3. 删除 `<Steam>/config/config.vdf`（Steam 会自动重新生成）
 4. 清空 `<Steam>/depotcache/` 中的旧 manifest
-5. 按照新教程安装 OpenSteamTool + DLCtool v2.0
-
-详细迁移教程将发布在个人博客上。
+5. 按照新教程安装 OpenSteamTool + kazeusa v2.0

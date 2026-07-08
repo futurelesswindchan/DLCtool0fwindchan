@@ -1,5 +1,3 @@
-## 📄 docs/DECISIONS.md
-
 # 决策日志
 
 > 记录每次重大架构/技术决策。
@@ -51,8 +49,8 @@
 
 **结论**：
 
-- 用户配置：`~/.dlctool/config.json`
-- 安装历史：`~/.dlctool/history.json`
+- 用户配置：`~/.kazeusa/config.json`
+- 安装历史：`~/.kazeusa/history.json`
 - 写入策略：先写 .tmp 再 rename（原子写入）
 - 零外部依赖，保持打包清爽
 
@@ -104,3 +102,44 @@
 - 初次维护阅读 `ARCHITECTURE.md` + `PROGRESS.md`
 - 每次重大决策追加到 `DECISIONS.md`
 - 每次开发进展更新 `PROGRESS.md`
+
+---
+
+## 2026-07-08: OST 源码研究确认——kazeusa 完全不需要参与 manifest 流程
+
+**背景**：研究 OST 源码时确认了 ManifestClient 的三级回退机制（Lua 自定义 → 内置 Provider API），以及 Hooks_NetPacket 自动注入访问令牌的流程。
+
+**结论**：
+
+- kazeusa 不需要提供 manifest 下载/部署/fallback 功能
+- kazeusa 不需要管 depotcache 目录
+- 用户只要把 .lua 放对位置，OST 全自动搞定后续
+- 如果上游 API 全部不可达，那是 OST/网络问题，不是 kazeusa 的责任
+
+---
+
+## 2026-07-08: 部署策略——推荐 tmp+rename 原子写入
+
+**背景**：OST 的 LuaFileWatcher 使用 ReadDirectoryChangesW 事件驱动 + 500ms 防抖窗口。如果先创建空文件再写内容，可能被中途触发解析。
+
+**结论**：
+
+- deployer_ost.go 写入 .lua 时，先写 `<filename>.tmp` 再 `os.Rename` 为 `.lua`
+- 这样 OST 只收到一次 RenamedNewName 事件，拿到完整内容
+- 不需要加锁、不需要通知 OST、不需要等待确认
+
+---
+
+## 2026-07-08: OST 环境检测方案确定
+
+**背景**：通过 OST 源码确认了加载链：dwmapi.dll / xinput1_4.dll 作为 DLL 劫持入口，加载 OpenSteamTool.dll。
+
+**结论**：
+
+- detector_ost.go 检测逻辑：在 Steam 根目录检查以下三个文件是否存在
+  - `dwmapi.dll`（入口代理 A）
+  - `xinput1_4.dll`（入口代理 B）
+  - `OpenSteamTool.dll`（核心 DLL）
+- 三者全部存在 → Available
+- 缺少任一 → Not Available，Message 提示缺少哪个文件
+- 不检测版本、不检测 pattern 缓存、不检测 toml 配置（那些是 OST 自己的事）
