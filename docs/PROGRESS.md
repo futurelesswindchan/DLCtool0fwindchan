@@ -6,31 +6,54 @@
 
 ---
 
-## 当前阶段：地基施工中（分支 `refactor/v2`）
+## 当前阶段：后端全部就绪，等待实机验证与前端设计（分支 `refactor/v2`）
 
-### ✅ 本轮完成（2026-07-26）
+### ✅ 本轮完成（2026-07-26 ~ 07-27）
+
+**地基四件套**
 
 - [x] **① config.go** — 配置持久化（`AppConfig` / `RepoSource` / `ConfigManager`，读-改-写全在锁内，JSON 原子落盘）
-- [x] **fileutil.go**（新增）— 公共文件基建：`atomicWriteFile` 原子写入、`webviewDataDir`、`cleanStaleTempDirs`、`fileExists`
 - [x] **② logger.go** — 日志迁至 `~/.kazeusa/logs/`（原在 `%TEMP%` 会被系统清理）、5MB × 3 份轮转、并发安全
-- [x] **文件卫生治理** — WebView2 数据目录收拢、`OnShutdown` 生命周期补全、临时目录兜底清理、窗口配置与背景色对齐
+- [x] **③ deployer.go + deployer_ost.go** — 部署器：生成 Lua 清单并原子写入 `<Steam>/config/lua/`
+- [x] **④ detector.go + detector_ost.go** — 环境检测：查三个 DLL，采用 ready/missing/unknown 三态
+
+**核心与整合**
+
+- [x] **⑥ history.go** — 安装历史，按 mainAppID 去重覆盖
+- [x] **⑦ app.go 重构** — 注入四模块，移除 `App.steamPath` 双源真相
+- [x] **⑨ 旧代码清理** — 删除 `vdf_helper.go` 与 `andygrunwald/vdf` 依赖，`steam.go` 由约 620 行精简至 215 行
+- [x] **前端清空** — 移除 v1.4 四个组件，`App.vue` 改为占位骨架，`style.css` 重写为设计令牌系统
+
+**基建与治理**
+
+- [x] **fileutil.go**（新增）— `atomicWriteFile` 原子写入、`webviewDataDir`、`cleanStaleTempDirs`、`fileExists`
+- [x] **lua_match.go**（新增）— 承接 `luaContainsAppID`
+- [x] **文件卫生治理** — WebView2 数据目录收拢、`OnShutdown` 生命周期补全、临时目录兜底清理、背景色三处对齐
 - [x] **命名统一** — exe → `kazeusa.exe`，标题 → `风兔盒 - 请问您今天要来点DLC吗？`
-- [x] 架构讨论落档 4 条新决策（事件总线 / 责任链 / 缓存分层 / 纯 CSS）
+- [x] 架构讨论落档 5 条新决策（事件总线 / 责任链 / 缓存分层 / 纯 CSS / 文件落点）
 
-### 📋 待开始（地基阶段剩余）
+### 📋 待开始
 
-- [ ] ③ deployer.go + deployer_ost.go — 部署器
-- [ ] ④ detector.go + detector_ost.go — 环境检测
-- [ ] ⑤ repo_client.go — 在线仓库客户端（L1 顺序回退 + L3 缓存）
-- [ ] ⑥ history.go — 安装历史
-- [ ] ⑦ app.go 重构 — 接入新架构
-- [ ] ⑧ 前端 v2.0 UI 设计与实现（先清空为最小骨架）
-- [ ] ⑨ 旧代码清理（移除 vdf_helper.go / steam.go 中的 patch 逻辑）
+- [ ] ⑤ repo_client.go — 在线仓库客户端（L1 顺序回退 + L3 缓存）**← 被仓库源决策阻塞**
+- [ ] ⑧ 前端 v2.0 UI 设计与实现（骨架已就绪，待设计）
+
+### ⚠️ 尚未验证（重要）
+
+当前后端**仅通过编译验证，未经实机运行**。下列行为需实测确认：
+
+- [ ] `~/.kazeusa/` 能否正确创建，`config.json` 与 `logs/` 是否正常落盘
+- [ ] WebView2 数据目录是否确实收拢至 `~/.kazeusa/webview2/`（而非旧的 `%APPDATA%\<exe名>\`）
+- [ ] 环境检测能否正确识别 OST 的三个 DLL
+- [ ] 部署器写出的 `.lua` 文件 OST 能否正常解析并刷新 Steam 库
+- [ ] 清单包解析 → 部署 → 历史记录的完整闭环
+
+前两项跑一次 `wails dev` 即可验证；后三项需 OST 环境与真实清单包。
 
 ### ⚠️ 遗留待办
 
 - [ ] 在线仓库源的具体地址仍未确定（属产品决策，可参考竞品做法）
 - [ ] 主人本机的 v1.4 残留需手动删除：`%APPDATA%\DLC入库工具.exe`、`%APPDATA%\DLC入库工具v1.4.exe`
+- [ ] `.gitignore` 忽略了 `frontend/dist/`，但 `main.go` 有 `//go:embed all:frontend/dist`——他人 clone 后无法直接 `go build`，待前端阶段处理
 
 ---
 
