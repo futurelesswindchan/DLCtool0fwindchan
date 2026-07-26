@@ -57,7 +57,7 @@
 
 ## OST 源码研究关键发现摘要
 
-> 详见 `docs/OST_Architecture_Analysis.md`
+> 详见 `docs/research/OST_Architecture_Analysis.md`
 
 | 发现                               | 对 kazeusa 的影响                             |
 | ---------------------------------- | --------------------------------------------- |
