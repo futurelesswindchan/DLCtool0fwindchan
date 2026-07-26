@@ -41,12 +41,18 @@ type DepotInfo struct {
 //   - HasKey:        是否携带解密密钥
 //   - DecryptionKey: 解密密钥（仅当 HasKey=true 时有效）
 //   - IsInstalled:   当前系统中是否已安装该 DLC（由检测逻辑填充）
+//   - ManifestID:    该 DLC 自带 Depot 的 manifest 标识符。带独立 Depot 的
+//     DLC（如 ARK 的各地图）必须连同 setManifestid 一起写出，
+//     否则 OST 无法确定下载哪个版本
+//   - FileSize:      manifest 声明的内容大小（字节）
 type DLCInfo struct {
 	AppID         string `json:"appID"`
 	Name          string `json:"name"`
 	HasKey        bool   `json:"hasKey"`
 	DecryptionKey string `json:"decryptionKey"`
 	IsInstalled   bool   `json:"isInstalled"`
+	ManifestID    string `json:"manifestID"`
+	FileSize      int64  `json:"fileSize"`
 }
 
 // GamePackage 表示从 Lua 压缩包中解析出的完整游戏数据包。
@@ -60,6 +66,9 @@ type DLCInfo struct {
 //
 // 字段说明：
 //   - MainAppID:     主游戏的 AppID（Lua 文件中第一个 addappid 调用的参数）
+//   - MainKey:       主游戏自身的解密密钥。必须原样透传到生成的脚本中——
+//     早期版本丢失此字段，导致 OST 无法解密主 App，
+//     已安装本体的游戏会让 Steam 在校验时崩溃
 //   - GameName:      游戏名称（从 Lua 注释中启发式提取）
 //   - Depots:        所有有效 Depot 的列表（必须同时具备密钥和 manifest）
 //   - DLCs:          所有可安装 DLC 的列表
@@ -67,6 +76,7 @@ type DLCInfo struct {
 //   - ManifestFiles: 解压后 manifest 文件的本地临时路径列表
 type GamePackage struct {
 	MainAppID     string      `json:"mainAppID"`
+	MainKey       string      `json:"mainKey"`
 	GameName      string      `json:"gameName"`
 	Depots        []DepotInfo `json:"depots"`
 	DLCs          []DLCInfo   `json:"dlcs"`

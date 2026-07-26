@@ -7,10 +7,12 @@
 // 解析脚本、自动获取 manifest 与 depot 密钥、刷新 Steam 库界面。
 // 本工具既不需要通知 OST，也不需要等待确认，更不必关闭 Steam。
 //
-// 生成脚本的格式约定（依据 OST 源码分析）：
-//   - 函数名大小写无关，统一用小写 addappid
-//   - addappid 的第二参数被 OST 完全忽略，故只输出 AppID 与密钥两种形态
-//   - 携带密钥的条目输出三参数形式，无密钥的输出单参数形式
+// 生成脚本的格式约定（依据 OST 源码分析 + 2026-07-27 实机验证）：
+//   - 函数名大小写无关，统一用小写 addappid / setManifestid
+//   - addappid 的第二参数被 OST 完全忽略，固定填 1 仅为与社区脚本一致
+//   - 主游戏必须带自身密钥输出，缺失会导致已安装本体的游戏崩溃 Steam
+//   - 每个 Depot 的密钥与 setManifestid 必须成对出现，不可只写其一
+//   - 带独立 Depot 的 DLC 需写两行（裸 addappid 注册 App + 带 key 注册 Depot）
 
 package main
 
@@ -106,19 +108,46 @@ func (d *OSTDeployer) buildLuaScript(gp *GamePackage, selectedIDs []string) stri
 	b.WriteString("--\n")
 	b.WriteString("-- 本文件由工具自动生成，手动修改可能在下次部署时被覆盖。\n\n")
 
-	// 主游戏必须最先注册。
-	b.WriteString(fmt.Sprintf("addappid(%s)\n", gp.MainAppID))
+	// 主游戏必须最先注册，且必须带上自身密钥。
+	// 缺少密钥时 OST 无法解密主 App 内容——对已安装本体的游戏，
+	// Steam 会在校验阶段直接崩溃。
+	if gp.MainKey != "" {
+		b.WriteString(fmt.Sprintf("addappid(%s, 1, %q)\n", gp.MainAppID, gp.MainKey))
+	} else {
+		b.WriteString(fmt.Sprintf("addappid(%s)\n", gp.MainAppID))
+		d.warnf("清单包缺少主游戏密钥，AppID %s 可能无法正常解锁", gp.MainAppID)
+	}
 
-	// Depot 密钥：OST 凭此解密清单并下载内容。
-	// 无密钥的 Depot 不输出——OST 会自行尝试从上游 API 获取。
-	if len(gp.Depots) > 0 {
-		b.WriteString("\n-- Depots\n")
-		for _, depot := range gp.Depots {
-			if depot.DecryptionKey == "" {
-				continue
-			}
-			b.WriteString(fmt.Sprintf("addappid(%s, 1, %q)\n",
-				depot.DepotID, depot.DecryptionKey))
+	// Depot 密钥与 manifest 版本。两者必须成对写出：
+	// 只给密钥不给 manifest ID，Steam 会拿已安装内容去比对一个
+	// 未指定的清单版本，导致客户端崩溃。
+	//
+	// 跳过归属于 DLC 的 Depot：带独立 Depot 的 DLC，其 AppID 与 DepotID
+	// 相同，会同时出现在 Depots 与 DLCs 两个列表中。这类条目统一由
+	// DLC 段负责输出，否则不仅内容重复，更严重的是用户取消勾选某个
+	// DLC 后，此处仍会把它的密钥写出去，导致取消勾选失效。
+	dlcOwned := make(map[string]struct{}, len(gp.DLCs))
+	for i := range gp.DLCs {
+		dlcOwned[gp.DLCs[i].AppID] = struct{}{}
+	}
+
+	wroteDepotHeader := false
+	for _, depot := range gp.Depots {
+		if depot.DecryptionKey == "" {
+			continue
+		}
+		if _, isDLC := dlcOwned[depot.DepotID]; isDLC {
+			continue
+		}
+		if !wroteDepotHeader {
+			b.WriteString("\n-- Depots\n")
+			wroteDepotHeader = true
+		}
+		b.WriteString(fmt.Sprintf("addappid(%s, 1, %q)\n",
+			depot.DepotID, depot.DecryptionKey))
+		if depot.ManifestID != "" {
+			b.WriteString(fmt.Sprintf("setManifestid(%s, %q, %d)\n",
+				depot.DepotID, depot.ManifestID, depot.FileSize))
 		}
 	}
 
@@ -137,24 +166,46 @@ func (d *OSTDeployer) buildLuaScript(gp *GamePackage, selectedIDs []string) stri
 	return b.String()
 }
 
-// formatDLCLine 生成单个 DLC 的 addappid 调用语句。
+// formatDLCLine 生成单个 DLC 的注册语句。
 //
-// 携带密钥时输出三参数形式，否则输出单参数形式。
-// 第二参数固定填 1——OST 源码中该参数被完全忽略，填任何值都不影响
-// 行为，保留它只是为了与社区流传的清单脚本格式保持视觉一致。
+// 输出形态取决于该 DLC 是否自带独立 Depot：
 //
-// DLC 名称以行尾注释形式附上，方便用户直接阅读脚本了解装了什么。
+//	无独立 Depot（内容集成在本体内）：
+//	  addappid(2881150)  -- ARK Bobs Tall Tales
+//
+//	有独立 Depot（需单独下载，如 ARK 各地图）：
+//	  addappid(2827030)                       ← 注册为 App
+//	  addappid(2827030, 1, "ca47...")         ← 注册 Depot 密钥
+//	  setManifestid(2827030, "5346...", 9667911831)
+//
+// 后者写两行是有意为之：同一个 ID 既要以 App 身份出现在 Steam 的
+// DLC 列表中，又要以 Depot 身份持有解密密钥。社区清单包正是这么写的。
+//
+// NOTE: addappid 的第二参数被 OST 源码完全忽略（见 LuaConfig.cpp），
+// README 中「0:Depot 1:App」的说明与实现不符。区分 App 与 Depot 靠的是
+// 上述两行调用，而非该参数。此处固定填 1 仅为与社区脚本视觉一致。
+//
+// 缺少 setManifestid 的后果不是「版本不确定」而是「Steam 崩溃」——
+// 已安装本体的游戏会拿现有内容去比对未指定版本的清单。
 func (d *OSTDeployer) formatDLCLine(dlc *DLCInfo) string {
 	comment := ""
 	if dlc.Name != "" {
 		comment = fmt.Sprintf("  -- %s", sanitizeLuaComment(dlc.Name))
 	}
 
-	if dlc.HasKey && dlc.DecryptionKey != "" {
-		return fmt.Sprintf("addappid(%s, 1, %q)%s\n",
-			dlc.AppID, dlc.DecryptionKey, comment)
+	// 无密钥：单行注册即可，内容随本体下载。
+	if !dlc.HasKey || dlc.DecryptionKey == "" {
+		return fmt.Sprintf("addappid(%s)%s\n", dlc.AppID, comment)
 	}
-	return fmt.Sprintf("addappid(%s)%s\n", dlc.AppID, comment)
+
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("addappid(%s)%s\n", dlc.AppID, comment))
+	b.WriteString(fmt.Sprintf("addappid(%s, 1, %q)\n", dlc.AppID, dlc.DecryptionKey))
+	if dlc.ManifestID != "" {
+		b.WriteString(fmt.Sprintf("setManifestid(%s, %q, %d)\n",
+			dlc.AppID, dlc.ManifestID, dlc.FileSize))
+	}
+	return b.String()
 }
 
 // sanitizeLuaComment 清洗字符串使其可安全用作 Lua 行尾注释。
