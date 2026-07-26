@@ -2,11 +2,37 @@
 
 > 每次开发结束时更新本文件，下次开发接力时快速定位当前进度。
 >
-> 最后更新：2026-07-08
+> 最后更新：2026-07-26
 
 ---
 
-## 当前阶段：OST 源码研究完成，待研究项已全部确认，准备进入施工
+## 当前阶段：地基施工中（分支 `refactor/v2`）
+
+### ✅ 本轮完成（2026-07-26）
+
+- [x] **① config.go** — 配置持久化（`AppConfig` / `RepoSource` / `ConfigManager`，读-改-写全在锁内，JSON 原子落盘）
+- [x] **fileutil.go**（新增）— 公共文件基建：`atomicWriteFile` 原子写入、`webviewDataDir`、`cleanStaleTempDirs`、`fileExists`
+- [x] **② logger.go** — 日志迁至 `~/.kazeusa/logs/`（原在 `%TEMP%` 会被系统清理）、5MB × 3 份轮转、并发安全
+- [x] **文件卫生治理** — WebView2 数据目录收拢、`OnShutdown` 生命周期补全、临时目录兜底清理、窗口配置与背景色对齐
+- [x] **命名统一** — exe → `kazeusa.exe`，标题 → `风兔盒 - 请问您今天要来点DLC吗？`
+- [x] 架构讨论落档 4 条新决策（事件总线 / 责任链 / 缓存分层 / 纯 CSS）
+
+### 📋 待开始（地基阶段剩余）
+
+- [ ] ③ deployer.go + deployer_ost.go — 部署器
+- [ ] ④ detector.go + detector_ost.go — 环境检测
+- [ ] ⑤ repo_client.go — 在线仓库客户端（L1 顺序回退 + L3 缓存）
+- [ ] ⑥ history.go — 安装历史
+- [ ] ⑦ app.go 重构 — 接入新架构
+- [ ] ⑧ 前端 v2.0 UI 设计与实现（先清空为最小骨架）
+- [ ] ⑨ 旧代码清理（移除 vdf_helper.go / steam.go 中的 patch 逻辑）
+
+### ⚠️ 遗留待办
+
+- [ ] 在线仓库源的具体地址仍未确定（属产品决策，可参考竞品做法）
+- [ ] 主人本机的 v1.4 残留需手动删除：`%APPDATA%\DLC入库工具.exe`、`%APPDATA%\DLC入库工具v1.4.exe`
+
+---
 
 ### ✅ 已完成
 
@@ -30,18 +56,6 @@
 - [x] M 站 Lua 与 OST 格式差异：无差异，OST 的 addappid 兼容任何第二参数
 - [x] 在线仓库的具体源：待定（技术上无阻塞，属于产品决策）
 
-### 📋 待开始（地基阶段）
-
-- [ ] config.go — 配置持久化
-- [ ] logger.go — 日志增强（轮转 + 路径迁移）
-- [ ] deployer.go + deployer_ost.go — 部署器
-- [ ] detector.go + detector_ost.go — 环境检测
-- [ ] repo_client.go — 在线仓库客户端
-- [ ] history.go — 安装历史
-- [ ] app.go 重构 — 接入新架构
-- [ ] 前端 v2.0 UI 设计与实现
-- [ ] 旧代码清理（移除 vdf_helper / steam.go 中的 patch 逻辑）
-
 ---
 
 ## 版本里程碑
@@ -57,7 +71,7 @@
 
 ## OST 源码研究关键发现摘要
 
-> 详见 `docs/OST_Architecture_Analysis.md`
+> 详见 `docs/research/OST_Architecture_Analysis.md`
 
 | 发现                               | 对 kazeusa 的影响                             |
 | ---------------------------------- | --------------------------------------------- |
