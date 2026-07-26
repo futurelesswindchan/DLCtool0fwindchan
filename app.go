@@ -48,9 +48,29 @@ func NewApp() *App {
 
 // startup 是 Wails 框架的生命周期回调，在应用窗口创建后调用。
 //
+// 除保存运行时上下文外，还负责一次性的启动维护工作：
+// 清理进程被强制结束时遗留在 %TEMP% 下的解压目录。
+//
 // 参数 ctx 是 Wails 运行时上下文，用于调用对话框、事件等框架功能。
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.logger.Info("应用启动，日志位置: %s", a.logger.Path())
+
+	// 24 小时门槛可避免误删另一个同时运行的实例正在使用的目录。
+	if n := cleanStaleTempDirs(24 * time.Hour); n > 0 {
+		a.logger.Info("已清理 %d 个遗留的临时解压目录", n)
+	}
+}
+
+// shutdown 是 Wails 框架的生命周期回调，在应用即将退出时调用。
+//
+// 负责收尾工作，确保日志缓冲区完整落盘。
+//
+// NOTE: 后续新增需要优雅关闭的资源（下载协程、缓存写入等）
+// 都应在此处登记，这是应用唯一的退出钩子。
+func (a *App) shutdown(ctx context.Context) {
+	a.logger.Info("应用退出")
+	a.logger.Close()
 }
 
 // ============================================================
