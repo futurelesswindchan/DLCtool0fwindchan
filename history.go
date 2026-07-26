@@ -33,15 +33,22 @@ import (
 //   - GameName:     游戏名称
 //   - DLCCount:     清单包中可选 DLC 的总数，用于展示「已装 3 / 共 21」
 //   - InstalledIDs: 实际部署的 DLC AppID 列表
-//   - InstalledAt:  最近一次部署的时间
+//   - InstalledAt:  最近一次部署的时间，RFC 3339 格式字符串
 //   - LuaFileName:  部署产生的清单文件名（不含目录），供卸载时定位
+//
+// InstalledAt 用字符串而非 time.Time 的原因：
+//
+//	Wails 的 TypeScript 类型生成器无法处理 time.Time，会输出
+//	「Not found: time.Time」并让前端拿到无类型的字段。改用 RFC 3339
+//	字符串后，前端可直接 new Date(record.installedAt) 解析，
+//	JSON 中的表现形式也与 time.Time 序列化后完全一致。
 type GameRecord struct {
-	MainAppID    string    `json:"mainAppID"`
-	GameName     string    `json:"gameName"`
-	DLCCount     int       `json:"dlcCount"`
-	InstalledIDs []string  `json:"installedIDs"`
-	InstalledAt  time.Time `json:"installedAt"`
-	LuaFileName  string    `json:"luaFileName"`
+	MainAppID    string   `json:"mainAppID"`
+	GameName     string   `json:"gameName"`
+	DLCCount     int      `json:"dlcCount"`
+	InstalledIDs []string `json:"installedIDs"`
+	InstalledAt  string   `json:"installedAt"`
+	LuaFileName  string   `json:"luaFileName"`
 }
 
 // HistoryManager 管理安装历史的读取、更新与持久化。
@@ -136,8 +143,10 @@ func (hm *HistoryManager) List() []GameRecord {
 	out := make([]GameRecord, len(hm.records))
 	copy(out, hm.records)
 
+	// RFC 3339 是字典序可比的格式：年-月-日在前且位宽固定，
+	// 因此直接比较字符串即可得到正确的时间顺序，无需解析为 time.Time。
 	sort.Slice(out, func(i, j int) bool {
-		return out[i].InstalledAt.After(out[j].InstalledAt)
+		return out[i].InstalledAt > out[j].InstalledAt
 	})
 	return out
 }
@@ -192,7 +201,7 @@ func (hm *HistoryManager) Record(gp *GamePackage, selectedIDs []string, luaFileN
 		GameName:     gp.GameName,
 		DLCCount:     len(gp.DLCs),
 		InstalledIDs: ids,
-		InstalledAt:  time.Now(),
+		InstalledAt:  time.Now().Format(time.RFC3339),
 		LuaFileName:  luaFileName,
 	}
 

@@ -32,7 +32,7 @@ func webviewDataDir() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(dir, "webview2")
+	return filepath.Join(dir, WebviewDirName)
 }
 
 // cleanStaleTempDirs 清理 %TEMP% 下遗留的解压临时目录。
