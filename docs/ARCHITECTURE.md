@@ -48,11 +48,13 @@
 | ---------------------------------------------------- | ----------------------------------------------- | ------------------------ |
 | Lua 目录默认 `<Steam>/config/lua/`，可通过 toml 扩展 | `dllmain.cpp` + `Config.cpp`                    | deployer 目标目录确定    |
 | 热重载事件驱动 + 500ms 防抖                          | `LuaFileWatcher.cpp`                            | 文件落盘即生效，无需重启 |
-| Steam 库安装/卸载后自动刷新                          | `Hooks_SteamUI.cpp` + `Hooks_Package.cpp`       | UX 文案可写"已添加到库"  |
+| Steam 库安装后自动刷新                               | `Hooks_SteamUI.cpp` + `Hooks_Package.cpp`       | 安装文案可写"已添加到库" |
+| 卸载时 `IsOwned()` 的条目会被跳过移除                | 2026-07-27 实测 `steamui.log`                   | 卸载文案需提示可能重启   |
 | Manifest 下载全自动（三级回退）                      | `ManifestClient.cpp`                            | 不需要 manifest 相关功能 |
-| addappid 第二参数被忽略                              | `LuaConfig.cpp:lua_addappid()`                  | M 站/社区 Lua 直接兼容   |
+| addappid 第二参数被忽略                              | `LuaConfig.cpp:lua_addappid()` + 实测           | 填 1 即可，无语义        |
 | 函数名大小写无关                                     | `LuaConfig.cpp:case_insensitive_global_index()` | 生成 Lua 用全小写即可    |
 | 环境检测 = 3 个 DLL 存在                             | OST 加载链分析                                  | detector 实现确定        |
+| 文件名含非 ASCII 字符会令 OST `abort()`              | 2026-07-27 实测 `package.log`                   | 文件名必须清洗为纯 ASCII |
 
 ---
 
@@ -205,8 +207,40 @@ type Deployer interface {
 }
 ```
 
-### 5.2 Detector 接口（环境检测）
+#### 生成脚本的格式契约
 
+以下每一条都有实机验证支撑，违反其中任意一条都会导致 Steam 崩溃或功能静默失效。
+
+| 规则                                        | 违反后果                                     |
+| :------------------------------------------ | :------------------------------------------- |
+| 主游戏必须带自身密钥输出                    | 已安装本体的游戏会令 Steam 崩溃               |
+| 每个 Depot 的密钥与 `setManifestid` 成对出现 | manifest 版本无法钉住                        |
+| 带独立 Depot 的 DLC 写两行                  | App 与 Depot 身份无法同时成立                 |
+| Depots 段跳过 DLC 自有的 Depot              | 取消勾选失效，密钥仍被写出                    |
+| 文件名清洗为纯 ASCII                        | OST 在 `ParseFile` 前 `abort()`               |
+
+标准输出形态：
+
+```lua
+-- 主游戏：必须带密钥
+addappid(1364780, 1, "ab1ae48f...")
+
+-- 本体与共享 Depot：密钥 + manifest 成对
+addappid(1364781, 1, "cfec3971...")
+setManifestid(1364781, "4741141599989541719", 86803973402)
+
+-- 带独立 Depot 的 DLC：三行
+addappid(1792750)                          -- 注册 App 身份
+addappid(1792750, 1, "321dd0bd...")        -- 注册 Depot 密钥
+setManifestid(1792750, "6884397220835125615", 4643138331)
+
+-- 无独立 Depot 的 DLC：单行
+addappid(2224460)
+```
+
+`addappid` 第二参数无语义（详见 DECISIONS.md 2026-07-27 条），固定填 `1` 仅为与社区脚本视觉一致。
+
+### 5.2 Detector 接口（环境检测）
 ```go
 // detector.go
 
@@ -262,6 +296,9 @@ type Detector interface {
 
 返回切片的方法必须返回空切片而非 nil：Wails 会把 nil 切片序列化为 JSON `null`，
 前端 `v-for` 遍历时报错。
+
+`GamePackage.MainKey` 与 `DLCInfo.ManifestID` / `FileSize` 是生成合法脚本的必要
+字段，解析器必须完整填充——缺失时不会报错，只会静默产出无效脚本。
 
 ---
 
