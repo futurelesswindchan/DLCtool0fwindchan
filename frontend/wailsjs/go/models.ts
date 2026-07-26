@@ -64,6 +64,8 @@ export namespace main {
 	    hasKey: boolean;
 	    decryptionKey: string;
 	    isInstalled: boolean;
+	    manifestID: string;
+	    fileSize: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new DLCInfo(source);
@@ -76,6 +78,8 @@ export namespace main {
 	        this.hasKey = source["hasKey"];
 	        this.decryptionKey = source["decryptionKey"];
 	        this.isInstalled = source["isInstalled"];
+	        this.manifestID = source["manifestID"];
+	        this.fileSize = source["fileSize"];
 	    }
 	}
 	export class DepotInfo {
@@ -120,6 +124,7 @@ export namespace main {
 	}
 	export class GamePackage {
 	    mainAppID: string;
+	    mainKey: string;
 	    gameName: string;
 	    depots: DepotInfo[];
 	    dlcs: DLCInfo[];
@@ -133,6 +138,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.mainAppID = source["mainAppID"];
+	        this.mainKey = source["mainKey"];
 	        this.gameName = source["gameName"];
 	        this.depots = this.convertValues(source["depots"], DepotInfo);
 	        this.dlcs = this.convertValues(source["dlcs"], DLCInfo);
