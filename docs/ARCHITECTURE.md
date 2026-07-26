@@ -2,7 +2,7 @@
 
 > 本文档是 v2.0 开发的"宪法"，开发时应当遵循此守则
 >
-> 最后更新：2026-07-08
+> 最后更新：2026-07-27
 
 ---
 
@@ -85,6 +85,7 @@
 ├── main.go ← Wails 应用装配入口
 ├── app.go ← 前端 API 编排层（所有暴露给前端的方法）
 ├── config.go ← 配置持久化（读/写/原子落盘）
+├── fileutil.go ← 公共文件基建（原子写入 / 临时目录清理 / 路径工具）
 ├── deployer.go ← 部署目标接口（抽象"把文件放到哪里"）
 ├── deployer_ost.go ← OST 部署器实现（放到 config/lua/）
 ├── detector.go ← 注入器环境检测接口
@@ -92,9 +93,11 @@
 ├── repo_client.go ← 在线仓库拉取客户端（GitHub API + 镜像回退）
 ├── history.go ← 安装历史管理
 ├── lua_parser.go ← Lua VM 解析器（核心资产，从 v1.4 保留）
+├── lua_match.go ← Lua 脚本轻量文本匹配
+├── steam.go ← 清单包解压与已部署状态检测
 ├── constants.go ← 路径常量
 ├── types.go ← 前后端共享 DTO
-├── logger.go ← 日志系统（轮转 + tag + 路径迁移）
+├── logger.go ← 日志系统（轮转 + 路径迁移）
 └── frontend/ ← Vue3 + TypeScript 前端
 
 ```
@@ -105,14 +108,17 @@
 | ----------------- | ---------------------------------------------------------------------------- |
 | `app.go`          | 前端能调用的所有方法都在这里，纯编排不做业务                                 |
 | `config.go`       | 管理 `~/.kazeusa/config.json`，启动读取、变更时原子写入                      |
+| `fileutil.go`     | `atomicWriteFile` 原子写入、WebView2 目录解析、临时目录兜底清理              |
 | `deployer.go`     | 定义"部署"接口：把 Lua 文件放到注入器能读的目录                              |
-| `deployer_ost.go` | OST 实现：写入 `<Steam>/config/lua/<GameID>.lua`，使用 tmp+rename 原子写入   |
+| `deployer_ost.go` | OST 实现：写入 `<Steam>/config/lua/<GameName>_<AppID>.lua`，tmp+rename 原子写入 |
 | `detector.go`     | 定义"检测"接口：注入器是否安装就绪                                           |
 | `detector_ost.go` | OST 实现：检查 `dwmapi.dll` + `xinput1_4.dll` + `OpenSteamTool.dll` 是否存在 |
 | `repo_client.go`  | 从 GitHub 仓库拉取清单包列表/内容，含镜像回退和缓存                          |
 | `history.go`      | 管理 `~/.kazeusa/history.json`，记录安装/卸载操作                            |
 | `lua_parser.go`   | 嵌入式 Lua VM 执行清单脚本，提取 AppID/密钥/manifest 信息                    |
-| `logger.go`       | 统一日志，支持轮转（5MB/3份）、操作 tag、文件+控制台双输出                   |
+| `lua_match.go`    | 正则判断某 AppID 是否已在脚本中，用于不值得启动 VM 的轻量场景                |
+| `steam.go`        | 清单包解压（含路径遍历防护）、读取部署产物以标记 DLC 安装状态                |
+| `logger.go`       | 统一日志，支持轮转（5MB/3份）、级别标记、文件+控制台双输出                   |
 
 ---
 
@@ -124,27 +130,33 @@
 %USERPROFILE%/.kazeusa/
 ├── config.json ← 用户配置
 ├── history.json ← 安装历史记录
-└── logs/
-├── kazeusa.log ← 当前日志
-├── kazeusa.log.1 ← 轮转备份
-└── kazeusa.log.2
+├── logs/
+│   ├── kazeusa.log ← 当前日志
+│   ├── kazeusa.log.1 ← 轮转备份
+│   └── kazeusa.log.2
+├── cache/ ← 在线仓库缓存（⑤ 阶段建立）
+└── webview2/ ← WebView2 运行时数据
 
 ```
+
+此外仅有两处落盘：`<Steam>/config/lua/<游戏名>_<AppID>.lua`（部署产物），
+以及 `%TEMP%/dlctool_*`（解压临时目录，启动时清理超 24 小时的残留）。
 
 ### config.json 结构
 
 ```json
 {
-  "steamPath": "C:\\Program Files\\Steam",
+  "steamPath": "C:\\Program Files (x86)\\Steam",
   "theme": "dark",
-  "deployDir": "config/lua",
   "lastZipDir": "D:\\Downloads",
+  "autoDetect": true,
   "repoSources": [
     {
       "name": "默认仓库",
       "type": "github",
       "url": "https://github.com/xxx/xxx",
-      "mirror": "https://mirror.example.com/xxx"
+      "mirror": "https://mirror.example.com/xxx",
+      "enabled": true
     }
   ]
 }
@@ -159,11 +171,14 @@
     "gameName": "Monster Hunter Stories",
     "dlcCount": 21,
     "installedIDs": ["1361511", "1361512"],
-    "installedAt": "2025-07-07T15:30:00+08:00",
-    "luaFileName": "MonsterHunterStories_1361510.lua"
+    "installedAt": "2026-07-27T00:15:48+08:00",
+    "luaFileName": "Monster Hunter Stories_1361510.lua"
   }
 ]
 ```
+
+`installedAt` 为 RFC 3339 字符串而非 `time.Time`，原因见 DECISIONS.md。
+以 `mainAppID` 为唯一键去重覆盖：重复部署同一游戏是更新记录，不是追加条目。
 
 ---
 
@@ -212,23 +227,41 @@ type Detector interface {
 
 ### 5.3 前端 API（暴露给 wailsjs）
 
-| 方法                 | 签名                                        | 说明                   |
-| :------------------- | :------------------------------------------ | :--------------------- |
-| `GetConfig`          | `() → AppConfig`                            | 获取当前配置           |
-| `SaveConfig`         | `(AppConfig) → error`                       | 保存配置               |
-| `GetSteamPath`       | `() → (string, error)`                      | 从注册表自动识别       |
-| `SetSteamPath`       | `(string) → error`                          | 手动指定               |
-| `SelectDirectory`    | `() → string`                               | 打开文件夹选择对话框   |
-| `SelectZipFile`      | `() → string`                               | 打开 zip 选择对话框    |
-| `DetectEnvironment`  | `() → DetectorResult`                       | 检测注入器环境         |
-| `ProcessZipFile`     | `(string) → GamePackage`                    | 解析本地 zip           |
-| `ProcessDroppedFile` | `(name, data) → GamePackage`                | 解析拖拽文件           |
-| `InstallDLCs`        | `(GamePackage, []string) → OperationResult` | 部署清单到注入器目录   |
-| `RemoveDLCs`         | `(string) → OperationResult`                | 按 mainAppID 移除      |
-| `GetHistory`         | `() → []GameRecord`                         | 获取安装历史           |
-| `FetchRepoList`      | `() → []RepoGameEntry`                      | 从在线仓库获取游戏列表 |
-| `DownloadFromRepo`   | `(appID) → GamePackage`                     | 从仓库下载并解析       |
-| `GetRecentLogs`      | `(n int) → []string`                        | 获取最近 n 条日志      |
+> 以下为 2026-07-27 实际实现的签名。返回 `OperationResult` 的方法不返回 error——
+> 失败信息经 `Message` 字段传达，前端只需判断 `Success` 一处，无需同时处理
+> 异常与失败结果两套分支。
+
+| 方法                 | 签名                                          | 说明                       |
+| :------------------- | :-------------------------------------------- | :------------------------- |
+| `GetConfig`          | `() → AppConfig`                              | 获取当前配置               |
+| `SaveConfig`         | `(AppConfig) → OperationResult`               | 保存配置，路径变更时重建部署器 |
+| `GetSteamPath`       | `() → (string, error)`                        | 从注册表识别并写入配置     |
+| `SetSteamPath`       | `(string) → OperationResult`                  | 手动指定，校验 config 子目录 |
+| `SelectDirectory`    | `() → (string, error)`                        | 文件夹选择对话框           |
+| `SelectZipFile`      | `() → (string, error)`                        | 清单包选择对话框，定位到上次目录 |
+| `DetectEnvironment`  | `() → DetectorResult`                         | 检测注入器环境（三态）     |
+| `GetDeployDir`       | `() → string`                                 | 清单文件将写入的目录       |
+| `ProcessZipFile`     | `(string) → (GamePackage, error)`             | 解析本地清单包             |
+| `ProcessDroppedFile` | `(name, data) → (GamePackage, error)`         | 解析拖拽文件               |
+| `InstallDLCs`        | `(GamePackage, []string) → OperationResult`   | 部署清单并记录历史         |
+| `RemoveDLCs`         | `(mainAppID) → OperationResult`               | 先删文件再删记录           |
+| `GetHistory`         | `() → []GameRecord`                           | 全部历史，按时间倒序       |
+| `FindHistory`        | `(mainAppID) → GameRecord`                    | 单条查询，用于带出上次勾选 |
+| `ClearHistory`       | `() → OperationResult`                        | 仅清空记录，不动已部署文件 |
+| `GetLogPath`         | `() → string`                                 | 当前日志文件路径           |
+| `OpenDataDir`        | `() → OperationResult`                        | 在文件管理器中打开数据目录 |
+| `FetchRepoList`      | `() → []RepoGameEntry`                        | **未实现**（⑤ 阶段）       |
+| `DownloadFromRepo`   | `(appID) → GamePackage`                       | **未实现**（⑤ 阶段）       |
+
+#### DTO 约束
+
+跨 Wails 边界的结构体**只使用基础类型**（string / number / bool / slice / map /
+自定义 struct）。标准库复合类型会让 `wails generate module` 静默丢字段——
+`GameRecord.InstalledAt` 曾用 `time.Time`，导致生成时报 `Not found: time.Time`，
+后改为 RFC 3339 字符串。
+
+返回切片的方法必须返回空切片而非 nil：Wails 会把 nil 切片序列化为 JSON `null`，
+前端 `v-for` 遍历时报错。
 
 ---
 
@@ -249,16 +282,20 @@ type Detector interface {
 
 ## 七、施工顺序（推荐）
 
-| 阶段 | 步骤              | 产出                              | 依赖 |
-| :--- | :---------------- | :-------------------------------- | :--- |
-| 地基 | ① 配置持久化      | `config.go`                       | 无   |
-| 地基 | ② 日志增强        | `logger.go` 改造                  | ①    |
-| 地基 | ③ 部署器接口+实现 | `deployer.go` + `deployer_ost.go` | ①    |
-| 地基 | ④ 环境检测        | `detector.go` + `detector_ost.go` | ①    |
-| 核心 | ⑤ 在线仓库客户端  | `repo_client.go`                  | ①    |
-| 核心 | ⑥ 安装历史        | `history.go`                      | ①    |
-| 整合 | ⑦ app.go 重构     | 接入新架构                        | ③④⑤⑥ |
-| 整合 | ⑧ 前端 v2.0       | 全新 UI                           | ⑦    |
+| 阶段 | 步骤              | 产出                              | 依赖 | 状态 |
+| :--- | :---------------- | :-------------------------------- | :--- | :--- |
+| 地基 | ① 配置持久化      | `config.go` + `fileutil.go`       | 无   | ✅   |
+| 地基 | ② 日志增强        | `logger.go` 改造                  | ①    | ✅   |
+| 地基 | ③ 部署器接口+实现 | `deployer.go` + `deployer_ost.go` | ①    | ✅   |
+| 地基 | ④ 环境检测        | `detector.go` + `detector_ost.go` | ①    | ✅   |
+| 核心 | ⑤ 在线仓库客户端  | `repo_client.go`                  | ①    | ⏸ 阻塞 |
+| 核心 | ⑥ 安装历史        | `history.go`                      | ①    | ✅   |
+| 整合 | ⑦ app.go 重构     | 接入新架构                        | ③④⑥  | ✅   |
+| 整合 | ⑧ 前端 v2.0       | 全新 UI                           | ⑦    | 🔜   |
+| 整合 | ⑨ 旧代码清理      | 移除 ST 遗留逻辑                  | ⑦    | ✅   |
+
+⑤ 被「在线仓库源地址未确定」阻塞，属产品决策而非技术问题。
+⑦ 与 ⑨ 实际必须一并完成——删除 ST 路径方法后其调用方立即编译失败。
 
 ---
 

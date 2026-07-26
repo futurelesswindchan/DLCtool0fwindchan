@@ -242,3 +242,36 @@ L2 不做自动后台探测的理由：启动时并发请求全部源，在防�
 - **不自动删除 v1.4 的 AppData 残留**：删除他人 `AppData` 目录需判断「是否为我所建」，判断失误即误删用户数据，此行为本身就不优雅。改由博客迁移教程指引用户手动清理
 
 **验收标准**：卸载 = 删 exe + 删 `~/.kazeusa/` 一个文件夹。
+
+---
+
+## 2026-07-27: Steam 路径的唯一权威是 config.json，Deployer 改路径后重建
+
+**背景**：v1.4 在 `App.steamPath` 字段与配置中各存一份 Steam 路径，导致用户在设置中改了路径后，部分操作仍使用旧值——这类双源真相引发的不一致极难排查。
+
+同时，`Deployer` 在构造时固定 `steamPath`，需决定路径变更后如何处理。
+
+**结论**：
+
+- **移除 `App.steamPath` 字段**。唯一权威是 `config.json`，需要时经 `a.steamPath()` 读取，且明确约定不缓存返回值
+- **Deployer 采用重建而非原地修改**（候选方案见下表）。改 Steam 路径是极低频操作，多数用户一生只做一次，为它污染接口签名不值得
+
+| 方案 | 做法 | 取舍 |
+| :--- | :--- | :--- |
+| A（采纳） | 路径变更时 `a.deployer = NewOSTDeployer(newPath, logger)` | 部署器内部无可变状态，也就无竞态；代价是调用方必须记得重建 |
+| B | 接口改为 `Deploy(steamPath, gp, ids)` | 无状态，但每个方法签名都要多带一个参数 |
+
+- 为防止「改了路径忘记重建」，将写配置与重建部署器打包为 `persistSteamPath`，`GetSteamPath` 与 `SetSteamPath` 均经由它执行。新增改路径入口时应沿用此函数
+
+---
+
+## 2026-07-27: GameRecord.InstalledAt 使用 RFC 3339 字符串而非 time.Time
+
+**背景**：`wails generate module` 在生成前端绑定时报 `Not found: time.Time`——Wails 的类型映射器不认识标准库的 `time.Time`，导致前端拿不到该字段的类型定义。
+
+**结论**：
+
+- 字段类型改为 `string`，存储 RFC 3339 格式（`time.Now().Format(time.RFC3339)`）
+- 排序直接比较字符串：RFC 3339 的年-月-日在前且位宽固定，字典序与时间顺序一致，无需解析回 `time.Time`
+- 前端可用 `new Date(installedAt)` 直接构造 Date 对象
+- 一般原则：**跨 Wails 边界的 DTO 只使用基础类型**（string / number / bool / slice / map / 自定义 struct）。引入标准库复合类型会让绑定生成静默丢字段
