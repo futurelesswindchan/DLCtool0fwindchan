@@ -15,7 +15,10 @@
 
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Deployer 定义将清单脚本部署到注入器监控目录的接口。
 //
@@ -56,8 +59,20 @@ var ErrEmptyPackage = fmt.Errorf("清单包为空或缺少主游戏 AppID")
 // 处理规则：
 //   - 保留字符 \ / : * ? " < > | 一律替换为下划线
 //   - 控制字符（ASCII < 0x20）同样替换
-//   - 首尾空格与点号被裁剪（Windows 不允许以点结尾的文件名）
+//   - 非 ASCII 字符（≥ 0x7F）一律丢弃，原因见下方 XXX
+//   - 连续下划线折叠为一个，首尾空格与点号被裁剪
 //   - 清洗后为空时返回 "unknown"，避免生成以下划线开头的怪异文件名
+//
+// XXX: 非 ASCII 字符必须过滤，这不是洁癖而是硬性兼容要求。
+// 2026-07-27 实测：部署 "Street Fighter™ 6_1364780.lua" 会让
+// OpenSteamTool 直接 abort()——其 package.log 打印出「Lua file added」
+// 后戛然而止，随即弹出 MSVC「abort() has been called」。同一时间
+// 纯 ASCII 名的 "ARK_ Survival Ascended_2399830.lua" 解析正常。
+// 推断为 OST 的 Encoding 模块在宽字符与 UTF-8 之间转换路径时触发断言。
+//
+// 丢弃而非替换为下划线，是为了避免中文名游戏被清洗成一串下划线
+// （如「原神」→「__」）——那样既丑陋又容易与其他游戏撞名。
+// 丢弃后若整个名字为空，会由 luaFileName 拼上 AppID 保证唯一性。
 //
 // NOTE: 不做长度截断——调用方拼接 AppID 后总长仍远低于
 // Windows 的 255 字符上限。
@@ -69,6 +84,9 @@ func sanitizeFileName(name string) string {
 		switch {
 		case r < 0x20:
 			runes = append(runes, '_')
+		case r >= 0x7F:
+			// 非 ASCII：直接丢弃，见上方 XXX 说明。
+			continue
 		case containsRune(reserved, r):
 			runes = append(runes, '_')
 		default:
@@ -76,11 +94,37 @@ func sanitizeFileName(name string) string {
 		}
 	}
 
-	cleaned := trimDotsAndSpaces(string(runes))
+	cleaned := collapseUnderscores(string(runes))
+	cleaned = trimDotsAndSpaces(cleaned)
 	if cleaned == "" {
 		return "unknown"
 	}
 	return cleaned
+}
+
+// collapseUnderscores 将连续的下划线与空格折叠为单个字符。
+//
+// 清洗保留字符与丢弃非 ASCII 后容易留下 "ARK_ Survival" 这类
+// 「下划线 + 空格」的尴尬组合，或多个相邻下划线。折叠后文件名更整洁，
+// 也便于用户在文件管理器中辨认。
+func collapseUnderscores(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+
+	prevWasSep := false
+	for _, r := range s {
+		isSep := r == '_' || r == ' '
+		if isSep && prevWasSep {
+			continue
+		}
+		if isSep {
+			b.WriteRune('_')
+		} else {
+			b.WriteRune(r)
+		}
+		prevWasSep = isSep
+	}
+	return b.String()
 }
 
 // containsRune 判断字符串中是否包含指定字符。
