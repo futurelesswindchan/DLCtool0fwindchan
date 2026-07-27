@@ -917,6 +917,72 @@ func zipContainsLua(zipPath string) (bool, error) {
 }
 
 // ============================================================
+// 认证型清单源（可选增强）
+// ============================================================
+
+// SetRepoToken 保存指定清单源的 API 凭据。
+//
+// 参数：
+//   - sourceName: 源名称
+//   - token:      API 凭据。传空字符串即清除，该源随即停止参与工作
+//
+// 返回值：
+//   - *OperationResult: 操作结果，Message 可直接展示
+//
+// NOTE: 凭据以明文存于 config.json。这在桌面应用中属常规做法，但意味着
+// 日志中绝不可输出它——本方法只记录「已设置/已清除」而不记内容。
+func (a *App) SetRepoToken(sourceName string, token string) *OperationResult {
+	if a.config == nil {
+		return failure("配置不可用，无法保存凭据")
+	}
+
+	token = strings.TrimSpace(token)
+	found := false
+	err := a.config.Update(func(c *AppConfig) {
+		for i := range c.RepoSources {
+			if !strings.EqualFold(c.RepoSources[i].Name, sourceName) {
+				continue
+			}
+			c.RepoSources[i].Token = token
+			found = true
+			return
+		}
+	})
+	if err != nil {
+		return failure(fmt.Sprintf("保存凭据失败：%v", err))
+	}
+	if !found {
+		return failure(fmt.Sprintf("未找到名为 %q 的清单源", sourceName))
+	}
+
+	if token == "" {
+		a.logger.Info("已清除源 %s 的 API 凭据", sourceName)
+		return success("已清除凭据，该源不再参与工作")
+	}
+	a.logger.Info("已设置源 %s 的 API 凭据", sourceName)
+	return success("凭据已保存")
+}
+
+// GetMSiteStats 查询认证型清单源的额度与凭据状态。
+//
+// 走该站的免额度端点，可在启动时与设置页打开时安全调用。
+//
+// 返回值：
+//   - *MSiteStats: 账户状态。未配置凭据时为 nil，前端据此隐藏相关区块
+//   - error:       凭据无效或网络失败时返回
+//
+// 界面应在 ExpiringSoon 为真时挂顶部横幅：该站凭据默认仅 7 天有效，
+// 不主动提示的话用户只会在某次下载失败时才发现，且无从判断原因。
+func (a *App) GetMSiteStats() (*MSiteStats, error) {
+	stats, err := a.repo.MSiteAccountStats()
+	if err != nil {
+		a.logger.Warn("查询清单源额度失败: %v", err)
+		return nil, err
+	}
+	return stats, nil
+}
+
+// ============================================================
 // 结果构造
 // ============================================================
 

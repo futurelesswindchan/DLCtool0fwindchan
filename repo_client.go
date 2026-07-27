@@ -44,6 +44,12 @@ const (
 	// 之所以现在就留出这个分支，是为了让 Kind 字段从第一天起就有实际语义，
 	// 而非等到新增第二种形态时再回头改数据结构。
 	KindZipTemplate RepoKind = "zip-template"
+
+	// KindAPIZip 表示需 Bearer 凭据的 API，返回含 .lua 与 .manifest 的 zip。
+	//
+	// 与前两种形态的实质差异：不走镜像链（认证请求经第三方代理转发等于
+	// 把凭据交给代理），且收录检测有专用的免额度端点，不必用 HEAD 猜。
+	KindAPIZip RepoKind = "api-zip"
 )
 
 const (
@@ -71,9 +77,12 @@ const (
 
 	// maxPackageSize 是允许下载的清单包体积上限。
 	//
-	// XXX: 这是防御性限制。清单包正常不超过几 MB，若某个 AppID 的分支
-	// 被塞入大文件（无论是误操作还是恶意），无上限的下载会耗尽磁盘。
-	maxPackageSize = 64 * 1024 * 1024
+	// XXX: 这是防御性限制。若某个 AppID 的分支被塞入大文件（无论是误操作
+	// 还是恶意），无上限的下载会耗尽磁盘。
+	//
+	// 取 512MB 是因为含 manifest 的完整包体积可观：实测 ARK 为 11.32MB，
+	// 而其单个主 Depot 的 manifest 就有 9.7MB——体量更大的游戏会显著更高。
+	maxPackageSize = 512 * 1024 * 1024
 )
 
 // downloadMirrors 是 codeload 地址的前置代理列表，按顺序尝试。
@@ -93,13 +102,18 @@ var downloadMirrors = []string{
 
 // defaultRepoSources 返回内置的清单仓库源列表。
 //
-// 三个源同为分支型形态，互为备份。顺序即查找与下载的优先级：
-// ManifestHub 收录量最大故置首位，其余两个作为补充。
+// 顺序即查找与下载的优先级。M 站置首位是因为其数据完整度显著更高——
+// 实测 ARK(2399830)：M 站给出 19 个 DLC 且 setManifestid 齐全，
+// MAU 只给出 4 个且仅主 Depot 有 manifest。
+//
+// 但 M 站需用户自备凭据，Token 为空时自动跳过，故 MAU 仍是默认路径。
+// 免凭据即可使用是底线，不能出现「没有 key 就不能用」的状态。
 //
 // 返回值：
-//   - []RepoSource: 全部启用的内置源，每次调用返回独立的新切片
+//   - []RepoSource: 内置源，每次调用返回独立的新切片
 func defaultRepoSources() []RepoSource {
 	return []RepoSource{
+		{Name: msiteSourceName, Kind: KindAPIZip, Repo: msiteBaseURL, Enabled: true},
 		// XXX: ManifestHub 目前已被清空，`git ls-remote --heads` 只返回 main
 		// 一个分支，所有 AppID 分支均返回 404。故默认停用，不让它参与工作——
 		// 启用只会让每次查找都多等一个必然失败的探测。
@@ -165,9 +179,17 @@ func (r *RepoClient) enabledSources() []RepoSource {
 
 	enabled := make([]RepoSource, 0, len(all))
 	for _, src := range all {
-		if src.Enabled && src.Repo != "" {
-			enabled = append(enabled, src)
+		if !src.Enabled || src.Repo == "" {
+			continue
 		}
+		// 需凭据的源在未配置凭据时静默跳过。
+		//
+		// 跳过而非报错：用户从未打算使用它，界面上不该出现「凭据缺失」
+		// 这类看似故障的提示。M 站对多数用户就是不存在的。
+		if src.Kind == KindAPIZip && strings.TrimSpace(src.Token) == "" {
+			continue
+		}
+		enabled = append(enabled, src)
 	}
 	return enabled
 }
@@ -234,6 +256,19 @@ func (r *RepoClient) Lookup(appID string) ([]string, error) {
 // 若因代理故障误报未收录，用户会被引向本地导入这条更麻烦的路。
 // 直连 HEAD 失败时宁可返回 false 并在下载阶段由镜像链兜底重试。
 func (r *RepoClient) probe(src RepoSource, appID string) bool {
+	// 认证型源有专用的免额度检测端点，比 HEAD 可靠：它明确区分
+	// 「未收录」与「已知但尚未生成清单」，还附带清单年龄。
+	if src.Kind == KindAPIZip {
+		status, err := r.msiteStatus(src, appID)
+		if err != nil {
+			r.log("源 %s 检测 AppID %s: %v", src.Name, appID, err)
+			return false
+		}
+		r.log("源 %s 收录 %s（%s），清单 %.1f 天前生成",
+			src.Name, appID, status.GameName, status.FileAgeDays)
+		return true
+	}
+
 	rawURL := sourceDownloadURL(src, appID)
 	if rawURL == "" {
 		return false
@@ -263,6 +298,8 @@ func sourceDownloadURL(src RepoSource, appID string) string {
 		return fmt.Sprintf("%s/%s/zip/refs/heads/%s", codeloadBase, src.Repo, appID)
 	case KindZipTemplate:
 		return strings.ReplaceAll(src.Repo, appIDPlaceholder, appID)
+	case KindAPIZip:
+		return strings.TrimSuffix(src.Repo, "/") + msiteManifestPath + appID
 	default:
 		return ""
 	}
@@ -334,10 +371,17 @@ func (r *RepoClient) Fetch(appID string, sourceName string) (string, error) {
 			continue
 		}
 
-		for _, mirror := range downloadMirrors {
+		// 认证型源不走镜像链：把带凭据的请求交给第三方公益代理转发，
+		// 等于把用户的凭据暴露给代理运营方。宁可直连失败。
+		mirrors := downloadMirrors
+		if src.Kind == KindAPIZip {
+			mirrors = []string{""}
+		}
+
+		for _, mirror := range mirrors {
 			attempts++
 			target := mirror + rawURL
-			if err := r.download(target, zipPath); err != nil {
+			if err := r.download(target, zipPath, src.Token); err != nil {
 				r.log("下载失败（源 %s / 第 %d 次尝试）: %v", src.Name, attempts, err)
 				continue
 			}
@@ -384,14 +428,29 @@ func (r *RepoClient) narrowToHits(candidates []RepoSource, appID string) []RepoS
 //
 // 下载至 .tmp 后重命名提交：中途失败时目标路径上不会留下半截 zip，
 // 否则下一轮镜像重试会误以为文件已就绪。
-func (r *RepoClient) download(rawURL string, destPath string) error {
-	resp, err := r.fetchHTTP.Get(rawURL)
+// token 非空时附加 Bearer 认证头。
+func (r *RepoClient) download(rawURL string, destPath string, token string) error {
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return fmt.Errorf("构造请求失败: %w", err)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := r.fetchHTTP.Do(req)
 	if err != nil {
 		return fmt.Errorf("请求失败: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
+		// 认证与额度问题需给出可操作的说明，不能只报状态码——
+		// 「401」对用户毫无意义，「凭据已过期，需去续期」才有。
+		if token != "" {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+			return msiteAuthError(resp.StatusCode, body)
+		}
 		return fmt.Errorf("返回状态码 %d", resp.StatusCode)
 	}
 

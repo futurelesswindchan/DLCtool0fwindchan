@@ -30,17 +30,23 @@ import (
 //   - Name:    源的显示名称，同时作为 GameRecord.Source 的取值
 //   - Kind:    访问形态，决定采用哪套下载逻辑，取值见 RepoKind
 //   - Repo:    仓库标识。Kind 为 KindGitHubBranch 时形如 "owner/name"；
-//     为 KindZipTemplate 时是含 {app_id} 占位符的完整 URL
+//     为 KindZipTemplate 时是含 {app_id} 占位符的完整 URL；
+//     为 KindAPIZip 时是 API 的基址
+//   - Token:   API 凭据，仅 KindAPIZip 使用。留空表示该源不参与工作
 //   - Enabled: 是否启用，禁用的源在查找与下载时都会被跳过
 //
 // NOTE: 此结构曾用 Type/URL/Mirror 三字段，镜像作为单个地址内联其中。
 // 改为 Kind/Repo 是因为实际的镜像回退是一条四级链（见 repo_client.go 的
 // downloadMirrors），塞不进一个字段，且回退链对所有 GitHub 源都相同，
 // 逐源重复配置没有意义。
+// NOTE: Token 是用户自愿提供的、代表其自身账户额度的凭据，性质等同于
+// 本地导入——都是可选增强而非底层主逻辑。盒子不内置任何共享凭据：
+// 分发的 exe 里的密钥必然被提取，且共享流量的特征与爬库无法区分。
 type RepoSource struct {
 	Name    string   `json:"name"`
 	Kind    RepoKind `json:"kind"`
 	Repo    string   `json:"repo"`
+	Token   string   `json:"token,omitempty"`
 	Enabled bool     `json:"enabled"`
 }
 
