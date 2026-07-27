@@ -23,21 +23,25 @@ import (
 
 // RepoSource 表示一个在线清单仓库源。
 //
-// 本工具支持配置多个仓库源，按列表顺序依次尝试，
-// 便于在主源不可达时回退到镜像。
+// 三个内置源互为备份，任一收录目标 AppID 即可完成入库，
+// 因此「多源」在本工具中是可用性冗余而非内容互补。
 //
 // 字段说明：
-//   - Name:    仓库的显示名称，用于前端下拉选择
-//   - Type:    仓库类型标识，当前仅支持 "github"
-//   - URL:     仓库主地址
-//   - Mirror:  镜像地址，主地址不可达时使用；留空表示无镜像
-//   - Enabled: 是否启用该源，禁用的源在拉取时会被跳过
+//   - Name:    源的显示名称，同时作为 GameRecord.Source 的取值
+//   - Kind:    访问形态，决定采用哪套下载逻辑，取值见 RepoKind
+//   - Repo:    仓库标识。Kind 为 KindGitHubBranch 时形如 "owner/name"；
+//     为 KindZipTemplate 时是含 {app_id} 占位符的完整 URL
+//   - Enabled: 是否启用，禁用的源在查找与下载时都会被跳过
+//
+// NOTE: 此结构曾用 Type/URL/Mirror 三字段，镜像作为单个地址内联其中。
+// 改为 Kind/Repo 是因为实际的镜像回退是一条四级链（见 repo_client.go 的
+// downloadMirrors），塞不进一个字段，且回退链对所有 GitHub 源都相同，
+// 逐源重复配置没有意义。
 type RepoSource struct {
-	Name    string `json:"name"`
-	Type    string `json:"type"`
-	URL     string `json:"url"`
-	Mirror  string `json:"mirror"`
-	Enabled bool   `json:"enabled"`
+	Name    string   `json:"name"`
+	Kind    RepoKind `json:"kind"`
+	Repo    string   `json:"repo"`
+	Enabled bool     `json:"enabled"`
 }
 
 // AppConfig 表示本工具的全部用户配置。
@@ -175,8 +179,11 @@ func (cm *ConfigManager) normalize(cfg *AppConfig) {
 	if cfg.Theme != "dark" && cfg.Theme != "light" {
 		cfg.Theme = "dark"
 	}
-	if cfg.RepoSources == nil {
-		cfg.RepoSources = []RepoSource{}
+	// 空列表一律回填内置源。v2.0 不提供自定义源的界面入口，故「一个源都
+	// 没有」只可能来自旧版配置或人工误删，此时保持空会让在线功能彻底失效，
+	// 而用户从界面上无从修复。
+	if len(cfg.RepoSources) == 0 {
+		cfg.RepoSources = defaultRepoSources()
 	}
 }
 

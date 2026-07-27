@@ -50,6 +50,7 @@ type App struct {
 	deployer Deployer
 	detector Detector
 	store    *StoreClient
+	repo     *RepoClient
 }
 
 // NewApp 创建并初始化 App 实例。
@@ -79,6 +80,7 @@ func NewApp() *App {
 		history:  history,
 		detector: NewOSTDetector(logger),
 		store:    NewStoreClient(logger),
+		repo:     NewRepoClient(config, logger),
 	}
 	app.rebuildDeployer()
 
@@ -656,6 +658,60 @@ func (a *App) GetGameDetail(appID string) (*GameDetail, error) {
 		a.logger.Warn("获取 AppID %s 详情失败: %v", appID, err)
 	}
 	return detail, err
+}
+
+// ============================================================
+// 在线清单仓库
+// ============================================================
+
+// LookupRepos 查询哪些清单源收录了指定 AppID，供前端游戏页调用。
+//
+// 参数：
+//   - appID: 游戏的 Steam AppID
+//
+// 返回值：
+//   - []string: 收录该 AppID 的源名称，未收录时为空切片
+//   - error:    AppID 格式非法时返回
+//
+// 返回空切片意味着三源均未收录，此时界面应就近引导用户改用本地导入，
+// 而非只显示一句「未找到」把人堵在死路上。
+func (a *App) LookupRepos(appID string) ([]string, error) {
+	names, err := a.repo.Lookup(appID)
+	if err != nil {
+		a.logger.Warn("查询 AppID %s 的收录情况失败: %v", appID, err)
+		return []string{}, err
+	}
+	return names, nil
+}
+
+// DownloadFromRepo 从在线仓库下载并解析清单包。
+//
+// 参数：
+//   - appID:      游戏的 Steam AppID
+//   - sourceName: 指定源名称，留空表示自动尝试所有启用的源
+//
+// 返回值：
+//   - *GamePackage: 已解析的清单包，与本地导入的产出完全一致
+//   - error:        下载或解析失败的原因
+//
+// 下载得到的压缩包在解析完成后立即删除——GamePackage 已包含全部所需信息，
+// 而仓库会随游戏更新刷新 manifest，留着旧包只会诱使将来误用过期清单。
+func (a *App) DownloadFromRepo(appID string, sourceName string) (*GamePackage, error) {
+	zipPath, err := a.repo.Fetch(appID, sourceName)
+	if err != nil {
+		a.logger.Error("下载 AppID %s 的清单包失败: %v", appID, err)
+		return nil, err
+	}
+
+	// 无论解析成败都清理下载目录：解析产物中的 manifest 路径指向的是
+	// processZipFromPath 自建的另一个临时目录，与此处无关。
+	defer func() { _ = os.RemoveAll(filepath.Dir(zipPath)) }()
+
+	gp, err := a.processZipFromPath(zipPath)
+	if err != nil {
+		return nil, err
+	}
+	return gp, nil
 }
 
 // ============================================================
