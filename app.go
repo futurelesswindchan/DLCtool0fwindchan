@@ -49,6 +49,7 @@ type App struct {
 	history  *HistoryManager
 	deployer Deployer
 	detector Detector
+	store    *StoreClient
 }
 
 // NewApp 创建并初始化 App 实例。
@@ -77,6 +78,7 @@ func NewApp() *App {
 		config:   config,
 		history:  history,
 		detector: NewOSTDetector(logger),
+		store:    NewStoreClient(logger),
 	}
 	app.rebuildDeployer()
 
@@ -613,6 +615,47 @@ func (a *App) OpenDataDir() *OperationResult {
 	// 同样有效，且省去手动拼 explorer 命令的平台差异处理。
 	runtime.BrowserOpenURL(a.ctx, dir)
 	return success("已打开数据目录")
+}
+
+// ============================================================
+// 在线商店元数据
+// ============================================================
+
+// SearchGames 按关键词搜索 Steam 游戏，供前端搜索页调用。
+//
+// 参数：
+//   - term: 搜索关键词，或一个纯数字 AppID
+//
+// 返回值：
+//   - []GameSearchResult: 搜索结果，无匹配或查询失败时为空切片
+//   - error:              网络或解析失败的原因
+//
+// NOTE: 结果中的 Available 字段恒为 false。收录检测在用户进入详情页时
+// 单独执行（见 ⑤ 的 RepoClient），不对整列结果预先探测。
+func (a *App) SearchGames(term string) ([]GameSearchResult, error) {
+	results, err := a.store.Search(term)
+	if err != nil {
+		a.logger.Warn("搜索 %q 失败: %v", term, err)
+		return []GameSearchResult{}, err
+	}
+	return results, nil
+}
+
+// GetGameDetail 获取指定 AppID 的游戏详情，供前端游戏页调用。
+//
+// 参数：
+//   - appID: 游戏的 Steam AppID
+//
+// 返回值：
+//   - *GameDetail: 详情数据，任何情况下均非 nil。查询失败时为仅含 AppID
+//     与封面 URL 的降级结果
+//   - error: 查询失败的原因。前端可选择忽略，直接渲染降级结果
+func (a *App) GetGameDetail(appID string) (*GameDetail, error) {
+	detail, err := a.store.Detail(appID)
+	if err != nil {
+		a.logger.Warn("获取 AppID %s 详情失败: %v", appID, err)
+	}
+	return detail, err
 }
 
 // ============================================================
