@@ -100,7 +100,13 @@ var downloadMirrors = []string{
 //   - []RepoSource: 全部启用的内置源，每次调用返回独立的新切片
 func defaultRepoSources() []RepoSource {
 	return []RepoSource{
-		{Name: "ManifestHub", Kind: KindGitHubBranch, Repo: "SteamAutoCracks/ManifestHub", Enabled: true},
+		// XXX: ManifestHub 目前已被清空，`git ls-remote --heads` 只返回 main
+		// 一个分支，所有 AppID 分支均返回 404。故默认停用，不让它参与工作——
+		// 启用只会让每次查找都多等一个必然失败的探测。
+		//
+		// 保留条目而非删除：该仓库本体仍存在，将来若恢复分支只需把 Enabled
+		// 改回 true。删掉了反而要重新考证一遍仓库地址与形态。
+		{Name: "ManifestHub", Kind: KindGitHubBranch, Repo: "SteamAutoCracks/ManifestHub", Enabled: false},
 		{Name: "MAU", Kind: KindGitHubBranch, Repo: "Auiowu/ManifestAutoUpdate", Enabled: true},
 		{Name: "MAU 镜像", Kind: KindGitHubBranch, Repo: "Satisl/MAU", Enabled: true},
 	}

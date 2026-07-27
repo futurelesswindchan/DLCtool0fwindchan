@@ -27,11 +27,13 @@
 package main
 
 import (
+	"archive/zip"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -704,14 +706,214 @@ func (a *App) DownloadFromRepo(appID string, sourceName string) (*GamePackage, e
 	}
 
 	// 无论解析成败都清理下载目录：解析产物中的 manifest 路径指向的是
-	// processZipFromPath 自建的另一个临时目录，与此处无关。
+	// 解析流程自建的另一个临时目录，与此处无关。
 	defer func() { _ = os.RemoveAll(filepath.Dir(zipPath)) }()
 
-	gp, err := a.processZipFromPath(zipPath)
+	// 按包内实际内容分派，不按来源假定形态。
+	//
+	// 三个源的包结构互不相同，且上游随时可能调整。若按源名称硬编码
+	// 解析方式，任一源改了打包脚本就会静默失效——而按内容判别的话，
+	// 只要包里有 .lua 就走 Lua VM，没有就试 MAU 形态。
+	hasLua, err := zipContainsLua(zipPath)
 	if err != nil {
+		a.logger.Error("检查清单包格式失败: %v", err)
 		return nil, err
 	}
+
+	if hasLua {
+		return a.processZipFromPath(zipPath)
+	}
+	return a.processMAUZip(zipPath)
+}
+
+// processMAUZip 处理 MAU 形态的清单包：解压 → 结构化解析 → 回填名称。
+//
+// 临时目录的生命周期与 Lua 路径一致：解析成功后不清理（GamePackage 的
+// ManifestFiles 指向其中的文件），由下次启动的 cleanStaleTempDirs 回收；
+// 失败则立即清理。
+func (a *App) processMAUZip(zipPath string) (*GamePackage, error) {
+	a.logger.Info("清单包内无 .lua，按 MAU 形态解析: %s", filepath.Base(zipPath))
+
+	tempDir, err := os.MkdirTemp("", TempDirPrefix)
+	if err != nil {
+		return nil, fmt.Errorf("创建临时目录失败: %w", err)
+	}
+
+	count, err := unzipMAUPackage(zipPath, tempDir)
+	if err != nil {
+		_ = os.RemoveAll(tempDir)
+		a.logger.Error("解压失败: %v", err)
+		return nil, err
+	}
+
+	gp, pending, err := parseMAUPackage(tempDir)
+	if err != nil {
+		_ = os.RemoveAll(tempDir)
+		a.logger.Error("MAU 清单解析失败: %v", err)
+		return nil, err
+	}
+
+	// 独立 Depot 的 DLC 密钥不在主游戏分支内，需各拉一次自己的分支。
+	if len(pending) > 0 {
+		a.enrichPackageDLCs(gp, pending)
+	}
+
+	// MAU 包不含游戏名与 DLC 名，向商店补齐。
+	//
+	// 失败不影响可用性：名称只用于界面展示，AppID 才是部署的依据。
+	// 故此处忽略错误，仅在拿到结果时覆盖占位名称。
+	a.fillNamesFromStore(gp)
+	a.detectInstalledDLCs(gp)
+
+	a.logger.Info("MAU 解析完成：%s (AppID %s)，Depot %d 项，DLC %d 项，解压 %d 个文件",
+		gp.GameName, gp.MainAppID, len(gp.Depots), len(gp.DLCs), count)
+
 	return gp, nil
+}
+
+// enrichPackageDLCs 为带独立 Depot 的 DLC 补齐密钥与 manifest ID。
+//
+// 为何需要额外下载：
+//
+//	MAU 为每个独立 Depot 的 DLC 单独开了一个以其 AppID 命名的分支，
+//	主游戏分支内只有主 Depot 的密钥。实测 SF6（1364780）的分支里没有
+//	1792750 的密钥，而 1792750 自己的分支里有。
+//
+//	缺这两项的后果不是「少显示一个体积」——生成脚本会退化为单行注册，
+//	Steam 拿不到密钥便无法解密该 DLC 的内容，用户勾选了却装不上。
+//
+// 并发拉取但限制并发数：DLC 数量可能达到二十以上（ARK 系列），
+// 全部同时发起会让公益代理直接限流，反而更慢。
+//
+// 参数：
+//   - gp:      待补齐的清单包，其 DLCs 字段会被就地更新
+//   - appIDs:  需补齐的 DLC AppID 列表
+//
+// 单个 DLC 补齐失败不中断整体：该 DLC 退化为单行注册，其余仍然可用。
+// 这比让整个游戏因为一个 DLC 装不上而完全失败要好。
+func (a *App) enrichPackageDLCs(gp *GamePackage, appIDs []string) {
+	const maxConcurrent = 4
+
+	type result struct {
+		appID      string
+		key        string
+		manifestID string
+		size       int64
+	}
+
+	results := make([]result, len(appIDs))
+	sem := make(chan struct{}, maxConcurrent)
+	var wg sync.WaitGroup
+
+	for i, appID := range appIDs {
+		wg.Add(1)
+		go func(idx int, id string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			key, manifestID, size, err := a.fetchDLCDepot(id)
+			if err != nil {
+				a.logger.Warn("补齐 DLC %s 的密钥失败，将退化为单行注册: %v", id, err)
+				return
+			}
+			results[idx] = result{appID: id, key: key, manifestID: manifestID, size: size}
+		}(i, appID)
+	}
+	wg.Wait()
+
+	filled := 0
+	for _, res := range results {
+		if res.appID == "" || res.key == "" {
+			continue
+		}
+		for i := range gp.DLCs {
+			if gp.DLCs[i].AppID != res.appID {
+				continue
+			}
+			gp.DLCs[i].HasKey = true
+			gp.DLCs[i].DecryptionKey = res.key
+			if res.manifestID != "" {
+				gp.DLCs[i].ManifestID = res.manifestID
+				gp.DLCs[i].FileSize = res.size
+			}
+			filled++
+			break
+		}
+	}
+
+	a.logger.Info("独立 Depot 的 DLC 补齐完成：%d/%d 项", filled, len(appIDs))
+}
+
+// fetchDLCDepot 拉取单个 DLC 自己的分支，取出其密钥与 manifest ID。
+//
+// 返回值：
+//   - string: 解密密钥
+//   - string: manifest ID
+//   - int64:  manifest 文件体积
+//   - error:  未收录或解析失败时返回
+func (a *App) fetchDLCDepot(appID string) (string, string, int64, error) {
+	zipPath, err := a.repo.Fetch(appID, "")
+	if err != nil {
+		return "", "", 0, err
+	}
+	defer func() { _ = os.RemoveAll(filepath.Dir(zipPath)) }()
+
+	tempDir, err := os.MkdirTemp("", TempDirPrefix)
+	if err != nil {
+		return "", "", 0, err
+	}
+	// DLC 分支的产物只为取两个值，用完即删——不像主包那样需要保留
+	// manifest 文件路径供前端展示。
+	defer func() { _ = os.RemoveAll(tempDir) }()
+
+	if _, err := unzipMAUPackage(zipPath, tempDir); err != nil {
+		return "", "", 0, err
+	}
+	return readDepotCredentials(tempDir, appID)
+}
+
+// fillNamesFromStore 用商店元数据回填 GamePackage 中缺失的名称。
+//
+// MAU 形态的包只有数字 ID，界面若直接展示「DLC 2224460」用户无从判断
+// 该不该勾选。主游戏名同时决定部署文件名，缺失时会退化为「游戏 123456」。
+//
+// 只回填主游戏名与 DLC 名，不改动任何 ID——名称是展示层信息，
+// 错了不影响功能；ID 错了则会部署出无效清单。
+func (a *App) fillNamesFromStore(gp *GamePackage) {
+	detail, err := a.store.Detail(gp.MainAppID)
+	if err == nil && detail.Name != "" {
+		gp.GameName = detail.Name
+	}
+	if gp.GameName == "" {
+		gp.GameName = "游戏 " + gp.MainAppID
+	}
+
+	// DLC 名称逐个查询会产生数十次请求，故不在此处做。
+	// 界面进入详情页后可按需补齐单个 DLC 的名称。
+	//
+	// TODO(⑧ 阶段): 前端按需查询 DLC 名称，或调研 appdetails 的批量形式。
+}
+
+// zipContainsLua 检查压缩包内是否存在 .lua 文件。
+//
+// 只读中央目录，不解压任何内容，故开销与包体积无关。
+func zipContainsLua(zipPath string) (bool, error) {
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return false, fmt.Errorf("无法打开压缩包: %w", err)
+	}
+	defer func() { _ = r.Close() }()
+
+	for _, f := range r.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		if strings.EqualFold(filepath.Ext(f.Name), LuaFileExt) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // ============================================================
