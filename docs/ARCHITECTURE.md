@@ -2,7 +2,7 @@
 
 > 本文档是 v2.0 开发的"宪法"，开发时应当遵循此守则
 >
-> 最后更新：2026-07-27
+> 最后更新：2026-07-28
 
 ---
 
@@ -131,21 +131,37 @@
 
 ### 存储位置
 
+Release 的数据目录位于 **exe 同级**，使删除文件夹即等同彻底卸载：
+
 ```plain
-%USERPROFILE%/.kazeusa/
-├── config.json ← 用户配置
-├── history.json ← 安装历史记录
-├── logs/
-│   ├── kazeusa.log ← 当前日志
-│   ├── kazeusa.log.1 ← 轮转备份
-│   └── kazeusa.log.2
-├── cache/ ← 在线元数据缓存（⑤ 阶段建立）
-│   ├── detail/{appID}.json ← 商店详情，7 天有效
-│   └── image/{appID}_header.jpg ← 封面图，永久
-├── packages/ ← 清单解析结果，{mainAppID}.json
-└── webview2/ ← WebView2 运行时数据
+<exe 所在目录>/
+├── kazeusa.exe
+└── .kazeusa/
+    ├── config.json ← 用户配置
+    ├── history.json ← 安装历史记录
+    ├── logs/
+    │   ├── kazeusa.log ← 当前日志
+    │   ├── kazeusa.log.1 ← 轮转备份
+    │   └── kazeusa.log.2
+    ├── cache/ ← 在线元数据缓存（⑤ 阶段建立）
+    │   ├── detail/{appID}.json ← 商店详情，7 天有效
+    │   └── image/{appID}_header.jpg ← 封面图，永久
+    ├── packages/ ← 清单解析结果，{mainAppID}.json
+    └── webview2/ ← WebView2 运行时数据
 
 ```
+
+#### 目录选址顺序
+
+| 优先级 | 条件                | 目录                |
+| :----- | :------------------ | :------------------ |
+| 1      | `KAZEUSA_DATA` 已设 | 该环境变量的值      |
+| 2      | `KAZEUSA_DEV=1`     | `~/.kazeusa`        |
+| 3      | 默认                | exe 同级 `.kazeusa` |
+| 4      | exe 目录不可写      | 回退 `~/.kazeusa`   |
+
+开发期走 home 目录，避免 `wails dev` 在工作区内生成缓存干扰 git 状态；
+`KAZEUSA_DEV=1` 固化于 `wails.json` 的 dev 配置。不以路径特征推断环境，只认环境变量。
 
 `packages/` 是卸载与增装 DLC 的数据来源。压缩包全程在 `%TEMP%` 内处理、用后即删，
 不予保留——`GamePackage` 序列化后体积小两三个数量级，且已是可直接使用的状态。
@@ -159,19 +175,25 @@
 {
   "steamPath": "C:\\Program Files (x86)\\Steam",
   "theme": "dark",
+  "wallpaperPath": "",
   "lastZipDir": "D:\\Downloads",
   "autoDetect": true,
+  "checkUpdate": true,
+  "skippedVersion": "",
+  "lastUpdateCheck": "2026-07-28T10:00:00+08:00",
   "repoSources": [
     {
-      "name": "默认仓库",
-      "type": "github",
-      "url": "https://github.com/xxx/xxx",
-      "mirror": "https://mirror.example.com/xxx",
+      "name": "ManifestHub",
+      "kind": "github-branch",
+      "repo": "SteamAutoCracks/ManifestHub",
       "enabled": true
     }
   ]
 }
 ```
+
+`repoSources` 在 v2.0 由 `defaultRepoSources` 初始化，设置页只读展示，不提供编辑入口。
+`skippedVersion` 与 `lastUpdateCheck` 服务于检查更新的跳过与节流。
 
 ### history.json 结构
 
@@ -384,7 +406,32 @@ v2.0 不提供自定义源的界面入口，但 `RepoSource` 与 `RepoKind` 已�
 
 清单不缓存是有意为之：仓库会更新 manifest 版本，缓存旧包等同于向用户提供过期清单。
 
-### 5.5 前端 API（暴露给 wailsjs）
+### 5.5 检查更新
+
+版本源以 GitHub Release 为准，蓝奏云为便利渠道但无可查询接口，不作判定依据。
+
+分两级执行，API 配额仅在确有更新时消耗：
+
+| 阶段         | 手段                                                    |
+| :----------- | :------------------------------------------------------ |
+| 判断有无新版 | `GET github.com/{repo}/releases/latest`，不跟随重定向，读 302 的 `Location` |
+| 取更新说明   | `api.github.com/repos/{repo}/releases/latest`，仅当有新版 |
+
+302 走的是网页路由而非 API，不受 60 次/小时的配额限制。国内失败时复用清单下载
+已定的 `gh-proxy` 回退链。
+
+**不实现自更新**，仅提示并打开浏览器。替换运行中的自身需下载并执行可执行文件，
+分发链路一旦被劫持即等同任意代码执行；与「不负责安装/修复注入器」的铁律一致。
+
+版本号于编译期注入，不硬编码：
+
+```plain
+go build -ldflags "-X main.appVersion=2.0.1"
+```
+
+带后缀的预发布版本不计为更新，除非用户当前亦为预发布版。
+
+### 5.6 前端 API（暴露给 wailsjs）
 
 > 以下为 2026-07-27 实际实现的签名。返回 `OperationResult` 的方法不返回 error——
 > 失败信息经 `Message` 字段传达，前端只需判断 `Success` 一处，无需同时处理
@@ -414,6 +461,11 @@ v2.0 不提供自定义源的界面入口，但 `RepoSource` 与 `RepoKind` 已�
 | `LookupRepos`        | `(appID) → []string`                         | **未实现**（⑤ 阶段）             |
 | `DownloadFromRepo`   | `(appID, sourceName) → (GamePackage, error)` | **未实现**（⑤ 阶段）             |
 | `GetPackage`         | `(mainAppID) → (GamePackage, error)`         | **未实现**，读 `packages/`       |
+| `ScanDeployed`       | `() → []GameRecord`                          | **未实现**，扫 `config/lua/` 对账 |
+| `CheckUpdate`        | `() → UpdateInfo`                            | **未实现**，302 探测             |
+| `SkipVersion`        | `(version) → OperationResult`                | **未实现**，写 `skippedVersion`  |
+| `OpenURL`            | `(url) → OperationResult`                    | **未实现**，交外部浏览器打开     |
+| `GetAppVersion`      | `() → string`                                | **未实现**，返回编译期注入值     |
 
 原设计的 `FetchRepoList`（列出仓库全部收录）已移除，理由见 DECISIONS.md：
 `ManifestHub` 有数万个分支，完整列表对用户无使用价值，搜索是唯一合理入口。
@@ -487,7 +539,18 @@ v2.0 不提供自定义源的界面入口，但 `RepoSource` 与 `RepoKind` 已�
 │ 卡片：封面 + 名称 + DLC 数 + 获取时间   │
 │ [检查更新] ← 按需触发，非自动轮询        │
 └─────────────────────────────────────────┘
+
+┌ 设置 ──────────────────────────────────┐
+│ 必备：Steam 路径 / 重新检测环境         │
+│       打开数据目录 / 检查更新            │
+│ 体验：主题 / 壁纸                       │
+│ 只读：三个内置清单源与其可用状态         │
+└─────────────────────────────────────────┘
 ```
+
+设置页的必备项以「用户卡住后能否自救」为纳入标准：Steam 路径应对自动识别失败，
+重新检测应对装完注入器后的状态刷新，打开数据目录应对排障取日志。清单源只读展示，
+使用户知晓有多源在工作，出错时可自行判断是否为源侧问题。
 
 「游戏页」是同一组件的两种状态，未入库与已入库共用，用户心智模型统一为
 「一个游戏一个页面」。
