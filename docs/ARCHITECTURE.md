@@ -289,6 +289,44 @@ addappid(2224460)
 
 `addappid` 第二参数无语义（详见 DECISIONS.md 2026-07-27 条），固定填 `1` 仅为与社区脚本视觉一致。
 
+#### 多文件共存的加载语义
+
+以下五条经 2026-07-28 实机验证（样本 ARK 2399830，OST Debug 版 trace 日志）。
+它们共同决定了部署与卸载**不能只考虑盒子自己的文件**。
+
+| 事实                       | 依据                                          |
+| :------------------------- | :-------------------------------------------- |
+| 全部 `.lua` 按**并集去重**加载 | `adding 8 apps` 精确等于两文件 AppID 去重后数量 |
+| 不存在文件级优先权          | 全局 map 同 key 后写覆盖，Parse 顺序不可控      |
+| 共享 AppID 的许可证不随单文件删除而移除 | refCount 由 2 减 1 未归零                |
+| 删除文件不触发存活文件重新解析 | `processing 0 additions`                     |
+| 密钥冲突无任何日志痕迹      | 无警告输出，且 OST 从不记录密钥值               |
+
+**为何 `LuaConfig` 是全局的**：`DepotKeySet` / `ManifestOverrides` 等容器为整个
+进程共有，`ParseDirectory` 遍历目录并将各文件的解析结果合并写入同一批 map。
+文件不构成独立作用域，仅通过 `g_depotRefCount` 记录「有几个文件声明了此 AppID」。
+
+**引用计数造成的卸载缺口**，实测日志：
+
+```plain
+UnloadFile:Ref count for AppId 2399830 is 2   ← 另一文件仍持有
+UnloadFile: removed 7 depots from ...lua      ← 文件账本注销 7 个
+NotifyLicenseChanged: 0 added, 5 removed      ← 许可证层仅移除 5 个
+```
+
+差额的 2 个即被两份文件共同声明者。其 refCount 未归零，故许可证保留，
+游戏仍在 Steam 库中且重启不消失。
+
+**对部署器与卸载逻辑的要求**：
+
+- 卸载前扫描监控目录中其他 `.lua` 是否声明同一 mainAppID。若有，**不得报告
+  「已卸载」**，须告知游戏可能仍留在库中并指出具体文件名
+- 定位某 AppID 的部署文件时**按内容匹配 `addappid(<appID>`，不得依赖文件名**。
+  外部文件可为任意命名，靠 `_<AppID>.lua` 后缀扫描会漏判
+- 不要试图通过命名前缀争取加载优先级——无此机制
+- 密钥冲突落盘后即不可观测，症状为「一切正常，直到下载时解密失败」。
+  **部署前的主动检测是唯一的发现时机**
+
 ### 5.2 Detector 接口（环境检测）
 
 ```go
@@ -515,7 +553,7 @@ go build -ldflags "-X main.appVersion=2.0.1"
 
 带后缀的预发布版本不计为更新，除非用户当前亦为预发布版。
 
-### 5.6 前端 API（暴露给 wailsjs）
+### 5.8 前端 API（暴露给 wailsjs）
 
 > 以下为 2026-07-27 实际实现的签名。返回 `OperationResult` 的方法不返回 error——
 > 失败信息经 `Message` 字段传达，前端只需判断 `Success` 一处，无需同时处理
