@@ -89,6 +89,36 @@ type GamePackage struct {
 	DLCs          []DLCInfo   `json:"dlcs"`
 	LuaContent    string      `json:"luaContent"`
 	ManifestFiles []string    `json:"manifestFiles"`
+	Source        string      `json:"source"`
+}
+
+// DeployedEntry 表示注入器目录中的一个清单文件及其归属判定。
+//
+// 由 App.ScanDeployed 产出，用于让界面反映磁盘的真实状态而非本工具的
+// 记忆。注入器会加载目录内全部 .lua 的并集，故未被记录的文件同样在生效。
+//
+// 字段说明：
+//   - FileName:   文件名（不含目录）
+//   - MainAppID:  主游戏 AppID。取自文件名，取不到时退用内容中首个声明
+//   - AppIDs:     该文件声明的全部 AppID，含主游戏与各 DLC
+//   - IsExternal: 是否为外部文件，即不符合本工具命名格式者
+//   - InHistory:  该主游戏是否存在于安装历史中
+//
+// IsExternal 与 InHistory 并非互补，四种组合各有含义：
+//
+//	!IsExternal && InHistory   常态，本工具部署且有记录
+//	!IsExternal && !InHistory  历史丢失或被清空，文件仍在
+//	IsExternal && !InHistory   典型的外部清单，用户手动放置或他工具产生
+//	IsExternal && InHistory    同一游戏被两处声明，卸载将不彻底
+//
+// NOTE: 界面对 IsExternal 为真的条目不应提供 DLC 勾选功能——本工具没有
+// 对应的 packages 数据，只能还原 AppID 集合而无法得知可选项全貌。
+type DeployedEntry struct {
+	FileName   string   `json:"fileName"`
+	MainAppID  string   `json:"mainAppID"`
+	AppIDs     []string `json:"appIDs"`
+	IsExternal bool     `json:"isExternal"`
+	InHistory  bool     `json:"inHistory"`
 }
 
 // OperationResult 表示一次安装或卸载操作的执行结果。

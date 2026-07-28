@@ -282,9 +282,13 @@ func (d *OSTDeployer) Deploy(gp *GamePackage, selectedIDs []string) (string, err
 //   - error: Steam 路径未设置、AppID 为空或删除失败时返回。
 //     目标文件本就不存在时返回 nil（幂等）
 //
-// 由于文件名包含游戏名而调用方可能只知道 AppID，此处采用扫描目录
-// 匹配 `_<AppID>.lua` 后缀的方式定位，而非要求调用方提供完整文件名。
-// 这也顺带处理了用户手动改过游戏名的情况。
+// 定位方式为匹配 `_<AppID>.lua` 后缀，**刻意只认本工具自己的命名格式**。
+// 用户手动放置的清单（如 `2399830.lua`）不在删除范围内——那是来源不明的
+// 第三方文件，代为删除属越权，且其中可能含用户特意配置的内容。
+//
+// XXX: 该取舍的代价是卸载可能不彻底。外部文件若声明了同一游戏，注入器的
+// 引用计数不会归零，游戏仍留在 Steam 库中。调用方须先经
+// App.findLuaFilesDeclaring 检测冲突并如实告知用户，不可径直报告已卸载。
 //
 // 删除后 OST 会在 500ms 内感知并将游戏从 Steam 库中移除。
 func (d *OSTDeployer) Remove(mainAppID string) error {

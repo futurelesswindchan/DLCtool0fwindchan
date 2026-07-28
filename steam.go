@@ -153,14 +153,17 @@ func extractZipEntry(f *zip.File, destPath string) error {
 
 // detectInstalledDLCs 扫描注入器的部署目录，标记哪些 DLC 已经安装。
 //
-// v2.0 的检测方式远比 v1.4 简单：既然每个游戏对应一个独立的 .lua 文件，
-// 只需读取该文件的内容，看其中出现了哪些 AppID 即可。
-// 不再需要解析 config.vdf，也不必处理多个游戏共用一份 Lua 的情况。
+// 判定方式为读取声明了该主游戏的清单文件，看其中出现了哪些 AppID。
+// 不再需要解析 config.vdf。
 //
 // 参数：
 //   - gp: 待标记的清单包，其 DLCs 字段的 IsInstalled 会被就地更新
 //
-// 若部署目录或对应文件不存在（首次使用该游戏），所有 DLC 保持未安装状态。
+// 若无任何文件声明该游戏（首次使用），所有 DLC 保持未安装状态。
+//
+// XXX: 多个文件同时声明该游戏时只取其中一份判定，故标记结果可能不完整
+// ——另一份文件中勾选的 DLC 实际生效却显示未安装。冲突场景下界面应以
+// findLuaFilesDeclaring 的结果给出提示，而非依赖此处的逐项标记。
 func (a *App) detectInstalledDLCs(gp *GamePackage) {
 	if gp == nil || gp.MainAppID == "" {
 		return
@@ -179,34 +182,73 @@ func (a *App) detectInstalledDLCs(gp *GamePackage) {
 	}
 }
 
-// readDeployedLua 读取指定游戏已部署的清单脚本内容。
+// readDeployedLua 读取声明了指定主游戏的清单脚本内容。
 //
-// 由于文件名含游戏名而调用方只握有 AppID，此处扫描部署目录
-// 匹配 `_<AppID>.lua` 后缀来定位，与 OSTDeployer.Remove 的策略一致。
+// 定位方式为**扫描目录并匹配文件内容**，不依赖文件名。早期实现按
+// `_<AppID>.lua` 后缀匹配，只能识别本工具自己生成的命名，用户手动放置的
+// `2399830.lua` 会匹配失败——继而 detectInstalledDLCs 静默走入「未部署过」
+// 分支，界面显示全部 DLC 未安装而 Steam 中实际已装。
 //
 // 返回值：
-//   - string: 文件内容
+//   - string: 文件内容。多个文件声明同一游戏时返回其中任一份，
+//     调用方若关心冲突应改用 findLuaFilesDeclaring
 //   - error:  目录不存在、无匹配文件或读取失败时返回
 func (a *App) readDeployedLua(mainAppID string) (string, error) {
+	matches, err := a.findLuaFilesDeclaring(mainAppID)
+	if err != nil {
+		return "", err
+	}
+	if len(matches) == 0 {
+		return "", fmt.Errorf("未找到声明 AppID %s 的部署文件", mainAppID)
+	}
+
+	data, err := os.ReadFile(filepath.Join(a.deployer.DeployDir(), matches[0]))
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// findLuaFilesDeclaring 返回注入器目录中所有声明了指定 AppID 的文件名。
+//
+// 存在多个匹配即意味着冲突。注入器将目录内全部 .lua 按并集去重加载，
+// 且以引用计数管理生命周期：删除其中一份文件时，被多份共同声明的 AppID
+// 计数不归零，许可证不会移除——表现为「卸载成功但游戏仍在 Steam 库中」。
+// 故部署与卸载前均须调用本函数检查，详见 DECISIONS.md 的 2026-07-28 条。
+//
+// 参数：
+//   - mainAppID: 待查的主游戏 AppID
+//
+// 返回值：
+//   - []string: 文件名列表（不含目录），按目录遍历序。无匹配时为空切片
+//   - error:    目录不存在或无法读取时返回
+//
+// 单个文件读取失败只跳过并记录警告，不中断整轮扫描：一个文件被占用
+// 不应导致其余文件的冲突检测全部失效。
+func (a *App) findLuaFilesDeclaring(mainAppID string) ([]string, error) {
 	dir := a.deployer.DeployDir()
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	suffix := "_" + mainAppID + LuaFileExt
+	out := make([]string, 0, 2)
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), suffix) {
+		if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), LuaFileExt) {
 			continue
 		}
 
 		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
 		if err != nil {
-			return "", err
+			a.logger.Warn("读取清单文件 %s 失败，冲突检测已跳过该文件: %v", entry.Name(), err)
+			continue
 		}
-		return string(data), nil
+
+		if luaContainsAppID(string(data), mainAppID) {
+			out = append(out, entry.Name())
+		}
 	}
 
-	return "", fmt.Errorf("未找到 AppID %s 的部署文件", mainAppID)
+	return out, nil
 }

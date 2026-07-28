@@ -506,13 +506,26 @@ func (a *App) InstallDLCs(gp *GamePackage, selectedAppIDs []string) *OperationRe
 	}
 
 	if a.history != nil {
-		if err := a.history.Record(gp, selectedAppIDs, filepath.Base(deployedPath)); err != nil {
+		if err := a.history.Record(gp, selectedAppIDs, filepath.Base(deployedPath), gp.Source); err != nil {
 			// 历史是辅助功能，写失败不该让用户以为部署没成功。
 			a.logger.Warn("安装历史写入失败: %v", err)
 		}
 	}
 
 	a.logger.Info("部署完成: %s", deployedPath)
+
+	// 部署成功仍需检查冲突：外部清单可能携带过期或错误的密钥，而注入器
+	// 对同一 AppID 的重复声明取其一且不输出任何警告。一旦落盘便不可观测，
+	// 症状表现为「一切正常，直到下载时解密失败」，故此处是唯一的告知时机。
+	if external := a.externalDeclarations(gp.MainAppID); len(external) > 0 {
+		a.logger.Warn("AppID %s 另被 %d 个外部清单声明: %s",
+			gp.MainAppID, len(external), strings.Join(external, ", "))
+		return success(fmt.Sprintf(
+			"已入库 %d 个 DLC。注意：另有 %d 个清单文件也声明了这个游戏（%s），"+
+				"注入器只会采用其中一份密钥。若下载时提示解密失败，请删除多余的文件",
+			len(selectedAppIDs), len(external), strings.Join(external, "、")))
+	}
+
 	return success(fmt.Sprintf(
 		"已入库 %d 个 DLC，Steam 库将在几秒内自动刷新", len(selectedAppIDs)))
 }
@@ -555,7 +568,45 @@ func (a *App) RemoveDLCs(mainAppID string) *OperationResult {
 	}
 
 	a.logger.Info("移除完成: AppID %s", mainAppID)
+
+	// 存在外部声明时不得报告「已移除」。注入器按引用计数管理许可证，
+	// 另有文件声明该游戏时计数不归零，游戏仍留在 Steam 库中且重启不消失。
+	// 谎报成功会让用户以为工具失灵，而真正的原因无从察觉。
+	if len(external) > 0 {
+		a.logger.Warn("AppID %s 仍被 %d 个外部清单声明: %s",
+			mainAppID, len(external), strings.Join(external, ", "))
+		return failure(fmt.Sprintf(
+			"本工具的清单已删除，但检测到另外 %d 个清单文件也声明了这个游戏，"+
+				"游戏可能仍留在 Steam 库中。如需彻底移除，请手动删除：%s",
+			len(external), strings.Join(external, "、")))
+	}
+
 	return success("已从库中移除，Steam 将在几秒内自动更新")
+}
+
+// externalDeclarations 返回声明了指定游戏、但不属于本工具产物的清单文件名。
+//
+// 判定依据是文件名后缀：本工具生成的文件一律形如 `<游戏名>_<AppID>.lua`，
+// 不匹配该形态者即视为外部文件。之所以用命名而非其他标记来区分，是因为
+// 外部文件的内容形态完全不可控，无从植入可靠的归属标识。
+//
+// 检测失败（目录不可读等）时返回空切片而非报错：冲突提示是增强信息，
+// 拿不到不应阻断卸载流程本身。
+func (a *App) externalDeclarations(mainAppID string) []string {
+	all, err := a.findLuaFilesDeclaring(mainAppID)
+	if err != nil {
+		a.logger.Warn("外部清单检测失败，已跳过: %v", err)
+		return []string{}
+	}
+
+	ownSuffix := "_" + mainAppID + LuaFileExt
+	out := make([]string, 0, len(all))
+	for _, name := range all {
+		if !strings.HasSuffix(name, ownSuffix) {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // ============================================================
@@ -598,6 +649,109 @@ func (a *App) ClearHistory() *OperationResult {
 		return failure(fmt.Sprintf("清空失败：%v", err))
 	}
 	return success("安装历史已清空")
+}
+
+// ============================================================
+// 部署目录对账
+// ============================================================
+
+// ScanDeployed 扫描注入器目录，列出所有清单文件及其归属。
+//
+// 存在意义是让界面反映磁盘的真实状态，而非本工具的记忆。注入器会加载
+// 目录内全部 .lua 的并集，因此仅凭安装历史渲染列表会漏掉外部文件——
+// 用户看到「未安装」而 Steam 中确有，或卸载后游戏仍在库中而界面已清空。
+//
+// 返回值：
+//   - []DeployedEntry: 每个文件一条，按目录遍历序。目录不存在或为空时
+//     返回空切片
+//
+// 无法读取的文件会被跳过并记录警告，不影响其余条目。
+//
+// NOTE: 本方法只读，不修改也不删除任何文件。外部清单的处置须由用户明确
+// 发起——它们可能含用户特意配置的内容，代为清理属越权。
+func (a *App) ScanDeployed() []DeployedEntry {
+	out := []DeployedEntry{}
+	if a.steamPath() == "" {
+		return out
+	}
+
+	dir := a.deployer.DeployDir()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			a.logger.Warn("扫描部署目录失败 %s: %v", dir, err)
+		}
+		return out
+	}
+
+	// 预取历史中的 AppID 集合，用于判定「本工具是否记得这个游戏」。
+	known := make(map[string]struct{})
+	if a.history != nil {
+		for _, rec := range a.history.List() {
+			known[rec.MainAppID] = struct{}{}
+		}
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), LuaFileExt) {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			a.logger.Warn("读取清单文件 %s 失败，已跳过: %v", entry.Name(), err)
+			continue
+		}
+
+		out = append(out, buildDeployedEntry(entry.Name(), string(data), known))
+	}
+
+	return out
+}
+
+// buildDeployedEntry 依据文件名与内容构造一条对账结果。
+//
+// 主 AppID 取自文件名后缀，取不到时退而使用内容中第一个被声明的 AppID：
+// 外部文件常以 `<AppID>.lua` 命名，此时文件名本身即主 AppID；而完全不合
+// 命名惯例的文件只能靠内容推断，其首个 addappid 按清单脚本的书写惯例
+// 即为主游戏。
+func buildDeployedEntry(fileName, content string, known map[string]struct{}) DeployedEntry {
+	declared := luaDeclaredAppIDs(content)
+
+	mainAppID := mainAppIDFromFileName(fileName)
+	if mainAppID == "" && len(declared) > 0 {
+		mainAppID = declared[0]
+	}
+
+	_, isKnown := known[mainAppID]
+	return DeployedEntry{
+		FileName:   fileName,
+		MainAppID:  mainAppID,
+		AppIDs:     declared,
+		IsExternal: !strings.HasSuffix(fileName, "_"+mainAppID+LuaFileExt),
+		InHistory:  isKnown,
+	}
+}
+
+// mainAppIDFromFileName 从本工具的命名格式中提取主 AppID。
+//
+// 仅识别 `<任意>_<数字>.lua` 形态，不匹配时返回空字符串。
+// 纯数字命名（如 `2399830.lua`）也会被识别——外部文件多为此形态，
+// 而它同样是可靠的 AppID 来源。
+func mainAppIDFromFileName(fileName string) string {
+	base := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+
+	if idx := strings.LastIndex(base, "_"); idx >= 0 {
+		if tail := base[idx+1:]; isNumeric(tail) {
+			return tail
+		}
+		return ""
+	}
+
+	if isNumeric(base) {
+		return base
+	}
+	return ""
 }
 
 // ============================================================
