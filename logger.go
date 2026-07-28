@@ -1,4 +1,5 @@
 // logger.go
+// logger.go
 //
 // 本文件提供统一的日志记录能力，所有关键操作（配置读写、清单解析、
 // 环境检测、部署、卸载、仓库拉取）都应通过此模块记录，便于用户
@@ -12,6 +13,8 @@
 //     避免长期使用后日志无限膨胀。
 //   - 级别：Info / Warn / Error 三级，同时输出到文件与标准错误流。
 //   - 降级：日志目录不可用时退化为仅输出标准错误，绝不阻断应用启动。
+//   - 敏感数据：depot 解密密钥与 API 凭据一律不得完整写入日志。
+//     需要标识某个密钥时用 maskSecret 截断（见文件末尾）。
 
 package main
 
@@ -208,4 +211,29 @@ func (l *Logger) Warn(format string, args ...any) {
 // 用于记录导致操作失败的异常，如「清单文件写入失败」。
 func (l *Logger) Error(format string, args ...any) {
 	l.write("ERROR", format, args...)
+}
+
+// maskSecret 将密钥类字符串截断为前 8 位，供日志安全引用。
+//
+// depot 解密密钥为 64 位十六进制、API 凭据长度不定，二者完整写入日志后
+// 会随用户报障的日志文件一同外流。前 8 位足以区分「是哪一个密钥」与
+// 「密钥是否为空」这两类排障需求，而不足以还原原值。
+//
+// 用法：
+//
+//	logger.Info("depot %s 采用密钥 %s", depotID, maskSecret(key))
+//	// 输出：depot 2399831 采用密钥 320e0bcc…（共 64 位）
+//
+// 空字符串返回「(空)」而非空白，否则日志中「密钥为空」与「未记录密钥」
+// 两种情形无法区分——前者是数据缺陷，后者只是没写这条日志。
+func maskSecret(s string) string {
+	if s == "" {
+		return "(空)"
+	}
+	if len(s) <= 8 {
+		// 短于 8 位的不是合法密钥，整体暴露也无泄露风险，
+		// 且此时更需要看到原值以判断数据从哪一步开始出错。
+		return fmt.Sprintf("%s（仅 %d 位，疑似异常）", s, len(s))
+	}
+	return fmt.Sprintf("%s…（共 %d 位）", s[:8], len(s))
 }

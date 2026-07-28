@@ -35,6 +35,7 @@ import (
 //   - InstalledIDs: 实际部署的 DLC AppID 列表
 //   - InstalledAt:  最近一次部署的时间，RFC 3339 格式字符串
 //   - LuaFileName:  部署产生的清单文件名（不含目录），供卸载时定位
+//   - Source:       清单包的来源，取值为 RepoSource.Name 或 SourceLocalImport
 //
 // InstalledAt 用字符串而非 time.Time 的原因：
 //
@@ -42,6 +43,13 @@ import (
 //	「Not found: time.Time」并让前端拿到无类型的字段。改用 RFC 3339
 //	字符串后，前端可直接 new Date(record.installedAt) 解析，
 //	JSON 中的表现形式也与 time.Time 序列化后完全一致。
+//
+// Source 的价值在于三个来源的数据完整度差异悬殊（见 DECISIONS.md 的
+// 「三源并非同构」条）：同一游戏经 MAU 入库只有 4 个 DLC，经 M 站则有 19 个。
+// 用户回看历史时若不知当初的来源，便无从判断是否值得换源重装。
+//
+// NOTE: 旧版 history.json 中无此字段，反序列化后为空字符串。
+// 读取方须容忍空值，不得据此判定记录损坏。
 type GameRecord struct {
 	MainAppID    string   `json:"mainAppID"`
 	GameName     string   `json:"gameName"`
@@ -49,7 +57,14 @@ type GameRecord struct {
 	InstalledIDs []string `json:"installedIDs"`
 	InstalledAt  string   `json:"installedAt"`
 	LuaFileName  string   `json:"luaFileName"`
+	Source       string   `json:"source"`
 }
+
+// SourceLocalImport 是本地导入的来源标识，用于 GameRecord.Source。
+//
+// 在线源一律使用 RepoSource.Name 作为取值，故此处只需为「非在线」这唯一
+// 情形定义常量。取中文字面量是因为该值会直接呈现于界面，无需再做映射。
+const SourceLocalImport = "本地导入"
 
 // HistoryManager 管理安装历史的读取、更新与持久化。
 //
@@ -177,15 +192,21 @@ func (hm *HistoryManager) Find(mainAppID string) *GameRecord {
 //   - gp:          已部署的清单包
 //   - selectedIDs: 实际部署的 DLC AppID 列表
 //   - luaFileName: 部署产生的文件名（不含目录）
+//   - source:      清单来源，取 RepoSource.Name 或 SourceLocalImport；
+//     留空时回填 SourceLocalImport，因唯一的无源路径即本地导入
 //
 // 返回值：
 //   - error: 清单包无效或落盘失败时返回
 //
 // 同一 mainAppID 已存在时执行覆盖而非追加，InstalledAt 刷新为当前时间。
 // 落盘失败时内存中的记录仍会保留，保证本次运行期间界面显示正确。
-func (hm *HistoryManager) Record(gp *GamePackage, selectedIDs []string, luaFileName string) error {
+func (hm *HistoryManager) Record(gp *GamePackage, selectedIDs []string, luaFileName, source string) error {
 	if gp == nil || gp.MainAppID == "" {
 		return ErrEmptyPackage
+	}
+
+	if source == "" {
+		source = SourceLocalImport
 	}
 
 	hm.mu.Lock()
@@ -203,6 +224,7 @@ func (hm *HistoryManager) Record(gp *GamePackage, selectedIDs []string, luaFileN
 		InstalledIDs: ids,
 		InstalledAt:  time.Now().Format(time.RFC3339),
 		LuaFileName:  luaFileName,
+		Source:       source,
 	}
 
 	if idx := hm.indexOf(gp.MainAppID); idx >= 0 {

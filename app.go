@@ -460,6 +460,7 @@ func (a *App) processZipFromPath(zipPath string) (*GamePackage, error) {
 	}
 
 	gp.ManifestFiles = manifestFiles
+	gp.Source = SourceLocalImport
 	a.detectInstalledDLCs(gp)
 
 	a.logger.Info("解析完成：%s (AppID %s)，DLC %d 项，Depot %d 项",
@@ -536,6 +537,11 @@ func (a *App) RemoveDLCs(mainAppID string) *OperationResult {
 	}
 
 	a.logger.Info("开始移除 AppID %s 的清单", mainAppID)
+
+	// 删除前先记录本工具产物之外还有谁声明了这个游戏。
+	// 必须在删除前查，删除后自己的文件已不在，无从区分「本就只有外部文件」
+	// 与「删掉了自己的那份」。
+	external := a.externalDeclarations(mainAppID)
 
 	if err := a.deployer.Remove(mainAppID); err != nil {
 		a.logger.Error("移除清单失败: %v", err)
@@ -699,7 +705,7 @@ func (a *App) LookupRepos(appID string) ([]string, error) {
 // 下载得到的压缩包在解析完成后立即删除——GamePackage 已包含全部所需信息，
 // 而仓库会随游戏更新刷新 manifest，留着旧包只会诱使将来误用过期清单。
 func (a *App) DownloadFromRepo(appID string, sourceName string) (*GamePackage, error) {
-	zipPath, err := a.repo.Fetch(appID, sourceName)
+	zipPath, hitSource, err := a.repo.Fetch(appID, sourceName)
 	if err != nil {
 		a.logger.Error("下载 AppID %s 的清单包失败: %v", appID, err)
 		return nil, err
@@ -720,10 +726,20 @@ func (a *App) DownloadFromRepo(appID string, sourceName string) (*GamePackage, e
 		return nil, err
 	}
 
+	var gp *GamePackage
 	if hasLua {
-		return a.processZipFromPath(zipPath)
+		gp, err = a.processZipFromPath(zipPath)
+	} else {
+		gp, err = a.processMAUZip(zipPath)
 	}
-	return a.processMAUZip(zipPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// 在解析之后覆写：Lua 路径复用的 processZipFromPath 会将 Source
+	// 填为本地导入（它本是离线入口），此处必须纠正为实际命中的源名。
+	gp.Source = hitSource
+	return gp, nil
 }
 
 // processMAUZip 处理 MAU 形态的清单包：解压 → 结构化解析 → 回填名称。
@@ -853,7 +869,8 @@ func (a *App) enrichPackageDLCs(gp *GamePackage, appIDs []string) {
 //   - int64:  manifest 文件体积
 //   - error:  未收录或解析失败时返回
 func (a *App) fetchDLCDepot(appID string) (string, string, int64, error) {
-	zipPath, err := a.repo.Fetch(appID, "")
+	// 忽略返回的源名：此处只为补齐单个 DLC 的密钥，来源已由主包记录。
+	zipPath, _, err := a.repo.Fetch(appID, "")
 	if err != nil {
 		return "", "", 0, err
 	}

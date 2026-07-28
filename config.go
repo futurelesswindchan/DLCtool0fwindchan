@@ -3,8 +3,9 @@
 // 本文件负责用户配置的持久化：读取、修改与原子落盘。
 //
 // 设计要点：
-//   - 配置存放于 <用户主目录>/.kazeusa/config.json，与 Steam 目录完全隔离，
-//     避免 Steam 更新或注入器重装时被连带清除。
+//   - 配置存放于数据目录下的 config.json，与 Steam 目录完全隔离，
+//     避免 Steam 更新或注入器重装时被连带清除。数据目录默认为 exe 同级
+//     的 .kazeusa/，选址规则见 appDataDir。
 //   - 采用 JSON 而非 SQLite：数据量极小（一份配置 + 数十条历史），
 //     且 SQLite 会引入 CGO 依赖，令 Wails 的交叉编译复杂化。
 //   - 写入一律走「临时文件 + rename」，防止进程在写入中途崩溃时
@@ -104,10 +105,66 @@ type ConfigManager struct {
 
 // appDataDir 返回本工具的数据目录完整路径，并确保该目录已存在。
 //
+// 选址顺序：
+//  1. 开发构建（wails dev，带 dev 构建标签）→ 用户主目录下的 .kazeusa/
+//  2. 正式构建 → exe 所在目录下的 .kazeusa/
+//  3. exe 目录不可写（装在 Program Files、只读介质等）→ 回退用户主目录
+//
+// 之所以默认跟随 exe：本工具定位为绿色软件，用户期望「拷走一个文件夹
+// 即带走全部数据」。放在主目录则换机器时配置与历史全部丢失，而用户
+// 通常不知道 ~/.kazeusa 的存在。
+//
+// 之所以用构建标签而非环境变量或路径特征判别开发模式：
+//   - 路径特征（如目录名含 build）会误伤把程序放在同名目录下的正常用户
+//   - 环境变量需人工配置，忘记设置便会把数据写进构建输出目录，
+//     随下次清理一并消失
+//   - 构建标签由构建方式决定，wails dev 必然携带，无从遗漏或误设
+//
 // 返回值：
-//   - string: 数据目录路径，示例 C:\Users\windchan\.kazeusa
-//   - error:  无法获取用户主目录或创建目录失败时返回错误
+//   - string: 数据目录路径，示例 D:\kazeusa\.kazeusa
+//   - error:  两个候选位置均不可用时返回
+//
+// NOTE: 不实现从旧位置迁移数据。v1.4（时称 dlctool）不产生任何本地数据
+// 文件，其操作直接作用于 Steam，故「迁移旧数据」并无对象。
 func appDataDir() (string, error) {
+	if isDevBuild {
+		return homeDataDir()
+	}
+
+	if dir, err := exeDataDir(); err == nil {
+		return dir, nil
+	}
+
+	// exe 目录不可写时必须回退，否则程序在只读位置将完全不可用。
+	return homeDataDir()
+}
+
+// exeDataDir 返回 exe 同级的数据目录，并以实际写入验证其可用性。
+//
+// 仅靠 MkdirAll 成功不足以判定可写：目录可能已存在但拒绝写入文件
+// （典型情形是 Program Files 下的 UAC 虚拟化）。故额外做一次探针写入。
+func exeDataDir() (string, error) {
+	exePath, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("无法定位程序自身路径: %w", err)
+	}
+
+	dir := filepath.Join(filepath.Dir(exePath), AppDataDirName)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("无法在程序目录创建数据目录 %s: %w", dir, err)
+	}
+
+	probe := filepath.Join(dir, ".writable")
+	if err := os.WriteFile(probe, []byte("ok"), 0o644); err != nil {
+		return "", fmt.Errorf("程序目录不可写 %s: %w", dir, err)
+	}
+	_ = os.Remove(probe)
+
+	return dir, nil
+}
+
+// homeDataDir 返回用户主目录下的数据目录，作为 exe 目录不可写时的回退。
+func homeDataDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("无法获取用户主目录: %w", err)

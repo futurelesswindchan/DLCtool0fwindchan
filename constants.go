@@ -35,11 +35,13 @@ const (
 // 落盘位置约定：本工具产生的一切文件都必须位于 AppDataDirName 之下。
 // 唯一的外部写入是部署到 <Steam>/config/lua/ 的清单脚本，
 // 以及 %TEMP% 下用完即删的解压临时目录。
-// 验收标准：卸载 = 删 exe + 删 ~/.kazeusa 一个文件夹。
+// 验收标准：卸载 = 删 exe + 删同级的 .kazeusa 一个文件夹。
 
 const (
-	// AppDataDirName 是本工具在用户主目录下创建的数据目录名。
-	// 完整路径示例：C:\Users\<用户名>\.kazeusa\
+	// AppDataDirName 是本工具的数据目录名，默认创建于 exe 同级。
+	//
+	// 选址规则见 config.go 的 appDataDir：正式构建跟随 exe（绿色软件语义），
+	// 开发构建改用用户主目录，exe 目录不可写时回退主目录。
 	AppDataDirName = ".kazeusa"
 
 	// ConfigFileName 是用户配置文件名，位于 AppDataDirName 下。

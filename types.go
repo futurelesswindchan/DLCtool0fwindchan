@@ -14,14 +14,18 @@ package main
 // DepotInfo 表示一个 Steam Depot 的完整信息。
 //
 // Depot 是 Steam 内容分发系统的基本单元，每个 Depot 对应一组游戏文件。
-// 安装 DLC 时需要将 Depot 的解密密钥写入 config.vdf，
-// 并将对应的 manifest 文件放入 depotcache 目录。
+// 本工具只将密钥与 manifest ID 写入生成的 Lua 脚本，由注入器接管后续流程——
+// 既不写 config.vdf，也不向 depotcache 复制 manifest 文件。
 //
 // 字段说明：
 //   - DepotID:       Depot 的唯一数字标识符（如 "1234567"）
 //   - DecryptionKey: 用于解密 Depot 内容的十六进制密钥字符串
-//   - ManifestID:    当前版本的 manifest 标识符，用于定位缓存文件
-//   - FileSize:      manifest 文件的大小（字节），用于前端展示
+//   - ManifestID:    当前版本的 manifest 标识符，须与密钥成对写出
+//   - FileSize:      内容大小（字节）
+//
+// XXX: FileSize 的语义随解析路径而异。Lua 路径下取自 setManifestid 的第三参数，
+// 即 depot 内容总大小；MAU 路径下无此信息，只能退而取 manifest 文件自身大小，
+// 二者相差几个数量级。故界面不得将此字段当作「下载体积」展示。
 type DepotInfo struct {
 	DepotID       string `json:"depotID"`
 	DecryptionKey string `json:"decryptionKey"`
@@ -31,9 +35,10 @@ type DepotInfo struct {
 
 // DLCInfo 表示一个 DLC（可下载内容）的信息。
 //
-// DLC 通过 addappid() 调用注册到 Steamtools.lua 中。
-// 部分 DLC 自带解密密钥（HasKey=true），需要额外写入 config.vdf；
-// 部分 DLC 仅需注册 AppID 即可生效。
+// DLC 通过 addappid 注册到生成的清单脚本中。自带独立 Depot 的 DLC
+// （HasKey=true，如 ARK 的各地图）需写出三行：注册 App 身份、注册 Depot
+// 密钥、绑定 manifest；无独立 Depot 者内容随本体下载，单行注册即可。
+// 详见 deployer_ost.go 的 formatDLCLine。
 //
 // 字段说明：
 //   - AppID:         DLC 的唯一数字标识符
@@ -74,6 +79,8 @@ type DLCInfo struct {
 //   - DLCs:          所有可安装 DLC 的列表
 //   - LuaContent:    原始 Lua 文件的完整文本内容
 //   - ManifestFiles: 解压后 manifest 文件的本地临时路径列表
+//   - Source:        清单的来源，取 RepoSource.Name 或 SourceLocalImport。
+//     由产出该清单包的路径负责填充，部署时透传至 GameRecord
 type GamePackage struct {
 	MainAppID     string      `json:"mainAppID"`
 	MainKey       string      `json:"mainKey"`

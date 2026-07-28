@@ -321,30 +321,32 @@ func sourceDownloadURL(src RepoSource, appID string) string {
 //
 // 返回值：
 //   - string: 下载得到的 zip 文件完整路径
-//   - error:  所有源与镜像均失败时返回，Message 已含尝试次数
+//   - string: 实际命中的源名称。自动模式下调用方无从预知，故一并返回，
+//     供 GamePackage.Source 记录真实来源而非「自动」这类无信息量的值
+//   - error:  所有源与镜像均失败时返回，消息已含尝试次数
 //
 // NOTE: 调用方必须负责清理返回路径所在的临时目录，无论后续解析是否成功。
 // 推荐写法：
 //
-//	zipPath, err := rc.Fetch(appID, "")
+//	zipPath, srcName, err := rc.Fetch(appID, "")
 //	if err == nil {
 //	    defer func() { _ = os.RemoveAll(filepath.Dir(zipPath)) }()
 //	}
-func (r *RepoClient) Fetch(appID string, sourceName string) (string, error) {
+func (r *RepoClient) Fetch(appID string, sourceName string) (string, string, error) {
 	appID = strings.TrimSpace(appID)
 	if !isNumeric(appID) {
-		return "", fmt.Errorf("AppID 必须为纯数字: %q", appID)
+		return "", "", fmt.Errorf("AppID 必须为纯数字: %q", appID)
 	}
 
 	candidates := r.enabledSources()
 	if len(candidates) == 0 {
-		return "", fmt.Errorf("没有可用的清单源")
+		return "", "", fmt.Errorf("没有可用的清单源")
 	}
 
 	if sourceName != "" {
 		candidates = filterByName(candidates, sourceName)
 		if len(candidates) == 0 {
-			return "", fmt.Errorf("源 %q 不存在或未启用", sourceName)
+			return "", "", fmt.Errorf("源 %q 不存在或未启用", sourceName)
 		}
 	} else {
 		// 自动模式下先做一次收录检测，把未收录的源排除在外。
@@ -358,7 +360,7 @@ func (r *RepoClient) Fetch(appID string, sourceName string) (string, error) {
 
 	tempDir, err := os.MkdirTemp("", TempDirPrefix)
 	if err != nil {
-		return "", fmt.Errorf("创建临时目录失败: %w", err)
+		return "", "", fmt.Errorf("创建临时目录失败: %w", err)
 	}
 
 	zipPath := filepath.Join(tempDir, appID+".zip")
@@ -387,13 +389,13 @@ func (r *RepoClient) Fetch(appID string, sourceName string) (string, error) {
 			}
 
 			r.log("清单包下载成功：AppID %s 来自源 %s，共尝试 %d 次", appID, src.Name, attempts)
-			return zipPath, nil
+			return zipPath, src.Name, nil
 		}
 	}
 
 	// 全败时立即清理，不留空目录等 24 小时后才被回收。
 	_ = os.RemoveAll(tempDir)
-	return "", fmt.Errorf("清单包下载失败，已尝试 %d 个地址。可改用本地导入", attempts)
+	return "", "", fmt.Errorf("清单包下载失败，已尝试 %d 个地址。可改用本地导入", attempts)
 }
 
 // narrowToHits 依据收录检测结果缩小候选源范围。
