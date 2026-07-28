@@ -257,6 +257,17 @@ func (d *OSTDeployer) Deploy(gp *GamePackage, selectedIDs []string) (string, err
 	}
 
 	target := filepath.Join(d.DeployDir(), d.luaFileName(gp.GameName, gp.MainAppID))
+
+	// 清理本工具此前为同一游戏生成的、文件名不同的旧清单。
+	//
+	// XXX: 同一游戏的文件名会随解析路径而变——MAU 路径拿到的是中文名
+	// （《猎人：荒野的召唤™》，非 ASCII 全部丢弃后落为 unknown_518790.lua），
+	// Lua 路径拿到的是英文名（theHunter_Call_of_the_Wild_518790.lua）。
+	// 换源重新获取时若不清理，两份文件会同时声明同一 AppID：注入器取并集
+	// 加载，其中一份的密钥被静默覆盖且不输出任何警告，症状要到 Steam
+	// 下载时解密失败才显现。
+	d.removeStaleOwnFiles(gp.MainAppID, filepath.Base(target))
+
 	script := d.buildLuaScript(gp, selectedIDs)
 
 	// atomicWriteFile 内部完成目录创建与 tmp+rename 提交，
@@ -271,6 +282,46 @@ func (d *OSTDeployer) Deploy(gp *GamePackage, selectedIDs []string) (string, err
 	d.logf("清单已部署: %s（主游戏 %s，DLC %d 项）",
 		target, gp.MainAppID, len(selectedIDs))
 	return target, nil
+}
+
+// removeStaleOwnFiles 删除本工具为指定游戏生成的、文件名与本次目标不同的旧清单。
+//
+// 判定范围与 Remove 一致（`_<AppID>.lua` 后缀），因此只会动本工具自己的
+// 产物，绝不触碰用户手动放置或他工具产生的文件。
+//
+// 参数：
+//   - mainAppID:  主游戏 AppID
+//   - keepName:   本次要写入的文件名，与之同名者跳过——它即将被覆写，
+//     此处删掉反而会让 OST 多收到一次「文件消失」事件
+//
+// 失败只记警告不返回错误：清理是为避免重复声明，即使失败也不该让本次
+// 部署中止——用户拿到清单比清掉一个残留文件重要。残留的冲突会由
+// App.externalDeclarations 在部署后检出并告知。
+func (d *OSTDeployer) removeStaleOwnFiles(mainAppID, keepName string) {
+	dir := d.DeployDir()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		// 目录不存在是首次部署的正常处境，不必记录
+		if !os.IsNotExist(err) {
+			d.warnf("清理旧清单时读取目录失败 %s: %v", dir, err)
+		}
+		return
+	}
+
+	suffix := "_" + mainAppID + LuaFileExt
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || name == keepName || !strings.HasSuffix(name, suffix) {
+			continue
+		}
+
+		path := filepath.Join(dir, name)
+		if err := os.Remove(path); err != nil {
+			d.warnf("删除同游戏的旧清单失败 %s: %v", path, err)
+			continue
+		}
+		d.logf("已清理同游戏的旧清单: %s（文件名随解析来源变化而不同）", path)
+	}
 }
 
 // Remove 删除指定游戏的清单脚本。
