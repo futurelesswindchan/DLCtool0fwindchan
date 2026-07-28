@@ -155,15 +155,25 @@ Release 的数据目录位于 **exe 同级**，使删除文件夹即等同彻底
 
 #### 目录选址顺序
 
-| 优先级 | 条件                | 目录                |
-| :----- | :------------------ | :------------------ |
-| 1      | `KAZEUSA_DATA` 已设 | 该环境变量的值      |
-| 2      | `KAZEUSA_DEV=1`     | `~/.kazeusa`        |
-| 3      | 默认                | exe 同级 `.kazeusa` |
-| 4      | exe 目录不可写      | 回退 `~/.kazeusa`   |
+| 优先级 | 条件           | 目录                |
+| :----- | :------------- | :------------------ |
+| 1      | 开发构建       | `~/.kazeusa`        |
+| 2      | 默认           | exe 同级 `.kazeusa` |
+| 3      | exe 目录不可写 | 回退 `~/.kazeusa`   |
 
-开发期走 home 目录，避免 `wails dev` 在工作区内生成缓存干扰 git 状态；
-`KAZEUSA_DEV=1` 固化于 `wails.json` 的 dev 配置。不以路径特征推断环境，只认环境变量。
+开发期走 home 目录，避免 `wails dev` 在工作区内生成缓存干扰 git 状态，
+更避免数据随构建输出目录清理而消失。
+
+**判据是 Go 构建标签 `dev`，而非环境变量**——Wails v2.11 的 `wails.json`
+并无注入环境变量的字段，且构建标签由构建方式决定，`wails dev` 必然携带，
+无从遗漏或误设。实现为 `buildmode_dev.go` / `buildmode_prod.go` 两个互斥文件
+各定义 `isDevBuild` 常量。不以路径特征推断环境。
+
+可写性判定不止于 `MkdirAll` 成功：目录可能已存在却拒绝写入文件（Program Files
+下的 UAC 虚拟化即如此），故额外写入一个探针文件并立即删除。
+
+不实现旧数据迁移。v1.4（时称 dlctool）不产生任何本地数据文件，其操作直接
+作用于 Steam，故「迁移旧数据」并无对象；新位置为空即视为全新安装。
 
 `packages/` 是卸载与增装 DLC 的数据来源。压缩包全程在 `%TEMP%` 内处理、用后即删，
 不予保留——`GamePackage` 序列化后体积小两三个数量级，且已是可直接使用的状态。
@@ -585,7 +595,7 @@ go build -ldflags "-X main.appVersion=2.0.1"
 | `SetRepoToken`       | `(sourceName, token) → OperationResult`      | 设置认证型源的凭据，传空即清除   |
 | `GetMSiteStats`      | `() → (MSiteStats, error)`                   | 额度与到期日，未配置凭据时返回 nil |
 | `GetPackage`         | `(mainAppID) → (GamePackage, error)`         | **未实现**，读 `packages/`       |
-| `ScanDeployed`       | `() → []GameRecord`                          | **未实现**，扫 `config/lua/` 对账 |
+| `ScanDeployed`       | `() → []DeployedEntry`                       | 扫 `config/lua/` 对账，按内容匹配 |
 | `CheckUpdate`        | `() → UpdateInfo`                            | **未实现**，302 探测             |
 | `SkipVersion`        | `(version) → OperationResult`                | **未实现**，写 `skippedVersion`  |
 | `OpenURL`            | `(url) → OperationResult`                    | **未实现**，交外部浏览器打开     |
@@ -606,6 +616,31 @@ go build -ldflags "-X main.appVersion=2.0.1"
 
 `GamePackage.MainKey` 与 `DLCInfo.ManifestID` / `FileSize` 是生成合法脚本的必要
 字段，解析器必须完整填充——缺失时不会报错，只会静默产出无效脚本。
+
+`DepotInfo.FileSize` / `DLCInfo.FileSize` 的语义随解析路径而异：Lua 路径取自
+`setManifestid` 第三参数即 depot 内容总大小，MAU 路径无此信息只能退取 manifest
+文件自身大小，二者相差几个数量级。**界面不得将其作为「下载体积」展示。**
+
+#### DeployedEntry 与冲突提示
+
+`ScanDeployed` 返回的每条 `DeployedEntry` 含 `IsExternal`（是否非本工具命名格式）
+与 `InHistory`（该主游戏是否在安装历史中）两个判定位。二者并非互补：
+
+| 组合                        | 含义                                     |
+| :-------------------------- | :--------------------------------------- |
+| `!IsExternal && InHistory`  | 常态                                     |
+| `!IsExternal && !InHistory` | 历史丢失或被清空，文件仍在               |
+| `IsExternal && !InHistory`  | 典型外部清单，用户手动放置或他工具产生   |
+| `IsExternal && InHistory`   | 同一游戏被两处声明，**卸载将不彻底**     |
+
+界面约定：
+
+- `IsExternal` 为真的条目**不提供 DLC 勾选**。本工具无对应的 `packages/` 数据，
+  只能还原 AppID 集合而无法得知可选项全貌
+- 外部清单可查看与删除，但删除须经用户明确发起——其中可能含用户特意配置的内容
+- `InstallDLCs` 与 `RemoveDLCs` 在检出外部声明时会改写返回文案。卸载场景返回的是
+  **失败**而非成功，前端不应将其视为异常，而应如实呈现「已删除自己的文件，
+  但游戏可能仍在库中」并列出需手动处理的文件名
 
 ---
 
