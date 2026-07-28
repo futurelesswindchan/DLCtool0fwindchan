@@ -43,9 +43,34 @@
 - [x] **依赖清理** — 补跑 `go mod tidy`，移除 `andygrunwald/vdf`
 - [x] 实机验证 4 条决策落档
 
+### ✅ ⑤ 完成（2026-07-28）
+
+三条获取路径均已打通，且产出一致的 `GamePackage`：
+
+- [x] **store_client.go** — Steam 商店元数据。`Search` / `Detail`，详情缓存 7 天。
+      纯数字输入直接按 AppID 查详情，跳过搜索接口
+- [x] **repo_client.go** — 多源查找与下载。`Lookup` 并发 HEAD 检测、`Fetch` 四级镜像回退。
+      自动模式先检测再下载，实测 24.4 秒降至 5.5 秒
+- [x] **repo_package.go** — MAU 形态解析器。从 `Key.vdf` + `config.json` + manifest
+      文件名构建 `GamePackage`，含独立 Depot DLC 的按需补齐（并发限 4 路）
+- [x] **msite_client.go** — Hubcap Manifest 接入。`status` / `manifest` / `user-stats`
+      三端点，未配置凭据时整条链路静默跳过
+
+`app.go` 新增 8 个前端方法：`SearchGames` / `GetGameDetail` / `LookupRepos` /
+`DownloadFromRepo` / `SetRepoToken` / `GetMSiteStats`，及内部的格式分派与名称回填。
+
+**实机验证结果**（样本 ARK 2399830）：
+
+| 路径  | DLC 数 | setManifestid | 耗时   |
+| :---- | :----- | :------------ | :----- |
+| M 站  | 19     | 13            | 4.5 秒 |
+| MAU   | 4      | 1             | 3.9 秒 |
+
+三源实测状态：ManifestHub 已被清空（仅剩 `main` 分支）故默认停用；MAU 可用但
+收录不全；M 站数据完整但需用户自备凭据。详见 DECISIONS.md 的 07-28 条目。
+
 ### 📋 待开始
 
-- [ ] ⑤ repo_client.go + store_client.go — 在线仓库与商店元数据**← 阻塞已解除**
 - [ ] ⑧ 前端 v2.0 UI 实现（设计已定稿，L1.5 测试台过渡可用）
 
 ### ✅ 设计定稿（2026-07-27 第二轮）
@@ -167,13 +192,14 @@
 
 ### ⚠️ 遗留待办
 
-- [x] ~~在线仓库源的具体地址仍未确定~~ 已于 2026-07-27 决定
-- [ ] `GameRecord` 需新增 `Source` 字段（来源标记）
+- [x] ~~在线仓库源的具体地址仍未确定~~ 已于 2026-07-27 决定，07-28 实测校正
 - [ ] 数据目录迁至 exe 同级，`wails.json` dev 配置补 `KAZEUSA_DEV=1`
 - [ ] `constants.go` 清理 8 个 v1.4 遗留常量
 - [ ] 日志输出中的 depot 密钥截断为前 8 位
 - [ ] `types.go` 中 `DepotInfo` / `DLCInfo` 的注释仍称「需写入 config.vdf」，
-      与 v2.0「不碰 config.vdf」的铁律冲突，⑤ 阶段一并修正
+      与 v2.0「不碰 config.vdf」的铁律冲突（⑤ 阶段未及处理，顺延至 ⑧ 前）
+- [ ] `GameRecord.Source` 字段尚未落地。现已有三个来源（M 站 / MAU / 本地导入），
+      该字段的价值已实际显现——检查更新时需据此定位回源
 - [ ] `RemoveDLCs` 的返回文案需调整，告知本体已安装时可能需重启 Steam
 - [ ] 本机的 v1.4 残留需手动删除：`%APPDATA%\DLC入库工具.exe`、`%APPDATA%\DLC入库工具v1.4.exe`
 - [ ] `.gitignore` 忽略了 `frontend/dist/`，但 `main.go` 有 `//go:embed all:frontend/dist`——他人 clone 后无法直接 `go build`，待前端阶段处理

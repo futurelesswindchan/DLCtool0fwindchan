@@ -91,7 +91,9 @@
 ├── deployer_ost.go ← OST 部署器实现（放到 config/lua/）
 ├── detector.go ← 注入器环境检测接口
 ├── detector_ost.go ← OST 环境检测实现
-├── repo_client.go ← 清单仓库客户端（codeload 下载 + 镜像回退）
+├── repo_client.go ← 清单仓库客户端（多源查找 + 镜像回退）
+├── repo_package.go ← MAU 形态清单包解析器（无 lua 的包）
+├── msite_client.go ← 认证型源客户端（Hubcap Manifest）
 ├── store_client.go ← Steam 商店元数据（搜索 / 详情 / 封面）
 ├── history.go ← 安装历史管理
 ├── package_store.go ← 清单解析结果的落盘与读取（packages/*.json）
@@ -183,9 +185,15 @@ Release 的数据目录位于 **exe 同级**，使删除文件夹即等同彻底
   "lastUpdateCheck": "2026-07-28T10:00:00+08:00",
   "repoSources": [
     {
-      "name": "ManifestHub",
+      "name": "Hubcap Manifest",
+      "kind": "api-zip",
+      "repo": "https://hubcapmanifest.com",
+      "enabled": true
+    },
+    {
+      "name": "MAU",
       "kind": "github-branch",
-      "repo": "SteamAutoCracks/ManifestHub",
+      "repo": "Auiowu/ManifestAutoUpdate",
       "enabled": true
     }
   ]
@@ -193,6 +201,11 @@ Release 的数据目录位于 **exe 同级**，使删除文件夹即等同彻底
 ```
 
 `repoSources` 在 v2.0 由 `defaultRepoSources` 初始化，设置页只读展示，不提供编辑入口。
+列表为空时（旧版配置或人工误删）自动回填内置源——否则在线功能彻底失效而用户
+从界面上无从修复。
+
+`RepoSource.token` 仅 `api-zip` 形态使用，为空时该源整体跳过。该字段带 `omitempty`，
+未配置时不出现于 JSON 中。**凭据以明文存储**，故日志中绝不输出其内容。
 `skippedVersion` 与 `lastUpdateCheck` 服务于检查更新的跳过与节流。
 
 ### history.json 结构
@@ -357,6 +370,11 @@ const (
     // KindZipTemplate 用 {app_id} 占位符拼出直链 zip。
     // v2.0 无内置源使用此形态，仅为自定义源预留。
     KindZipTemplate RepoKind = "zip-template"
+
+    // KindAPIZip 需 Bearer 凭据的 API，返回含 .lua 与 .manifest 的 zip。
+    // 不走镜像链（认证请求经第三方代理转发等于交出凭据），
+    // 且收录检测有专用的免额度端点。
+    KindAPIZip RepoKind = "api-zip"
 )
 
 // RepoClient 提供清单包的查找与获取。
@@ -384,13 +402,21 @@ https://codeload.github.com/{repo}/zip/refs/heads/{appID}
 
 #### 内置源
 
-三个源同为 `github-branch` 形态，互为备份，任一收录即可完成入库：
+四个内置源，形态与状态均不相同（2026-07-28 实测）：
 
-| 名称        | 仓库                          |
-| :---------- | :---------------------------- |
-| ManifestHub | `SteamAutoCracks/ManifestHub` |
-| MAU         | `Auiowu/ManifestAutoUpdate`   |
-| MAU 镜像    | `Satisl/MAU`                  |
+| 名称            | Kind            | 标识                          | 状态                                 |
+| :-------------- | :-------------- | :---------------------------- | :----------------------------------- |
+| Hubcap Manifest | `api-zip`       | `https://hubcapmanifest.com`  | 数据最完整，需用户自备凭据           |
+| ManifestHub     | `github-branch` | `SteamAutoCracks/ManifestHub` | **默认停用**——仓库已清空，仅剩 `main` |
+| MAU             | `github-branch` | `Auiowu/ManifestAutoUpdate`   | 可用，但收录不全且包内无 `.lua`      |
+| MAU 镜像        | `github-branch` | `Satisl/MAU`                  | 同 MAU，另嵌 Python 项目源码         |
+
+顺序即优先级。M 站置首位是因其数据完整度显著更高（实测 ARK：19 个 DLC 对 4 个），
+但它在未配置凭据时自动跳过，**MAU 仍是默认路径**——免凭据可用是底线。
+
+**三源并非同构**。07-27 曾假定它们结构等价、一套代码全覆盖，该假定已被实测推翻：
+MAU 系的包内没有 `.lua`，需专用解析器（见 5.5）。故解析路径按包内实际内容分派，
+不按来源假定。
 
 v2.0 不提供自定义源的界面入口，但 `RepoSource` 与 `RepoKind` 已按多源设计，
 后续开放仅需增加设置页，不动查找与下载逻辑。
@@ -406,7 +432,65 @@ v2.0 不提供自定义源的界面入口，但 `RepoSource` 与 `RepoKind` 已�
 
 清单不缓存是有意为之：仓库会更新 manifest 版本，缓存旧包等同于向用户提供过期清单。
 
-### 5.5 检查更新
+### 5.5 两条解析路径
+
+清单包存在两种形态，`DownloadFromRepo` 依据**包内是否存在 `.lua`** 分派，
+不按来源假定——上游随时可能调整打包脚本，按源名硬编码会静默失效。
+
+| 形态       | 来源                | 包内容                                            | 解析器             |
+| :--------- | :------------------ | :------------------------------------------------ | :----------------- |
+| Lua 形态   | M 站、本地导入      | `.lua` + `.manifest`                              | `lua_parser.go`    |
+| MAU 形态   | MAU 及其镜像        | `Key.vdf` + `config.json` + `.manifest`，**无 lua** | `repo_package.go`  |
+
+MAU 形态的 `config.json` 实测样本：
+
+```json
+{"appId": 1364780, "depots": [1364781],
+ "dlcs": [2224460, 2224461, 2224462, 2825190, 2825200],
+ "packagedlcs": [1792750, 1792751]}
+```
+
+`packagedlcs` 显式标出带独立 Depot 的 DLC，比从 Lua 注释启发式推断可靠——
+正是格式契约中必须写三行、且取消勾选需模态框警告的那一类。
+
+**MAU 的密钥分散于各自分支**：主游戏分支的 `Key.vdf` 只含主 Depot 一个密钥，
+`packagedlcs` 中各 DLC 的密钥在以其 AppID 命名的独立分支内。故解析主包后需对
+缺密钥者各拉一次分支补齐，并发限 4 路。补齐失败则该 DLC 退化为单行注册。
+
+MAU 形态的 `FileSize` 语义与 Lua 路径不同：Lua 中该值为 depot 内容总大小，
+MAU 路径下只能取 manifest 文件自身大小，两者差几个数量级。OST 不依赖它校验，
+但**界面不得将其作为「下载体积」展示**。
+
+### 5.6 认证型源（Hubcap Manifest）
+
+定位与本地导入等同：可选增强，非底层主逻辑。未配置凭据时整条链路静默跳过。
+
+| 端点                        | 额度 | 用途                                 |
+| :-------------------------- | :--- | :----------------------------------- |
+| `/api/v1/status/{app_id}`   | 免   | 收录检测，附 `game_name`、`file_age_days` |
+| `/api/v1/manifest/{app_id}` | 计   | 下载含 lua 的 zip                    |
+| `/api/v1/user/stats`        | 免   | 额度与凭据到期日                     |
+
+**用 `/manifest` 而非 `/lua`**（此选择反直觉，故记录于此）：两者同耗 1 次额度，
+但 `/lua` 返回的脚本内 `setManifestid` 数量为 **0**，而 `/manifest` 包内的 lua
+有 13 个（实测 ARK）。多传 11MB 换取数据完整性是值得的——包内 manifest 解析完
+即丢，OST 会自行下载。分段端点 `/lua/basegame` 与 `/lua/dlc` 亦不使用，
+各计一次额度反而更贵。
+
+**绝不遍历 `/api/v1/library`**。该端点免额度且支持分页，但遍历十余万条正是该站
+明令禁止的爬库行为（处罚为永久封禁）。搜索是唯一在线入口，本就无需遍历。
+
+凭据处理的四条约束：
+
+- 不内置任何共享凭据。exe 内的密钥必然被提取，且共享流量特征与爬库无法区分
+- 认证请求不走镜像链，宁可直连失败
+- 凭据只经 `Authorization` 头传递，不作查询参数（后者会进入各级代理日志）
+- 日志中不输出凭据内容，仅记「已设置 / 已清除」
+
+凭据默认有效期仅 7 天（捐助者 90 天），是该源的主要摩擦点。剩余不足 3 天时以
+顶部横幅提示；额度耗尽须明确告知「今日额度已用尽，UTC 零点重置」而非笼统报失败。
+
+### 5.7 检查更新
 
 版本源以 GitHub Release 为准，蓝奏云为便利渠道但无可查询接口，不作判定依据。
 
@@ -456,10 +540,12 @@ go build -ldflags "-X main.appVersion=2.0.1"
 | `ClearHistory`       | `() → OperationResult`                       | 仅清空记录，不动已部署文件       |
 | `GetLogPath`         | `() → string`                                | 当前日志文件路径                 |
 | `OpenDataDir`        | `() → OperationResult`                       | 在文件管理器中打开数据目录       |
-| `SearchGames`        | `(term) → []GameSearchResult`                | **未实现**（⑤ 阶段）             |
-| `GetGameDetail`      | `(appID) → GameDetail`                       | **未实现**（⑤ 阶段）             |
-| `LookupRepos`        | `(appID) → []string`                         | **未实现**（⑤ 阶段）             |
-| `DownloadFromRepo`   | `(appID, sourceName) → (GamePackage, error)` | **未实现**（⑤ 阶段）             |
+| `SearchGames`        | `(term) → ([]GameSearchResult, error)`       | 搜索，纯数字输入按 AppID 直查    |
+| `GetGameDetail`      | `(appID) → (GameDetail, error)`              | 详情，失败时返回降级结果         |
+| `LookupRepos`        | `(appID) → ([]string, error)`                | 并发查各源收录情况               |
+| `DownloadFromRepo`   | `(appID, sourceName) → (GamePackage, error)` | 下载并解析，形态自动分派         |
+| `SetRepoToken`       | `(sourceName, token) → OperationResult`      | 设置认证型源的凭据，传空即清除   |
+| `GetMSiteStats`      | `() → (MSiteStats, error)`                   | 额度与到期日，未配置凭据时返回 nil |
 | `GetPackage`         | `(mainAppID) → (GamePackage, error)`         | **未实现**，读 `packages/`       |
 | `ScanDeployed`       | `() → []GameRecord`                          | **未实现**，扫 `config/lua/` 对账 |
 | `CheckUpdate`        | `() → UpdateInfo`                            | **未实现**，302 探测             |
@@ -917,4 +1003,6 @@ v2.0 不提供自动迁移。用户需要：
 2. 删除 `<Steam>/config/stplug-in/` 目录
 3. 删除 `<Steam>/config/config.vdf`（Steam 会自动重新生成）
 4. 清空 `<Steam>/depotcache/` 中的旧 manifest
+5. 按照新教程安装 OpenSteamTool + kazeusa v2.0
+<Steam>/depotcache/` 中的旧 manifest
 5. 按照新教程安装 OpenSteamTool + kazeusa v2.0
