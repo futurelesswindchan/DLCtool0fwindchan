@@ -107,13 +107,19 @@ async function importPackage(load: () => Promise<GamePackage>) {
         v-model="term"
         class="search__input"
         type="search"
-        placeholder="输入游戏名或 AppID"
+        placeholder="请搜索游戏本体的简体中文名或 AppID"
         autofocus
         @input="runSearch()"
         @keydown.enter="runSearch()"
       />
       <span v-if="searching" class="search__spin" aria-label="搜索中">⋯</span>
     </div>
+
+    <p class="tips">
+      结果只列出游戏本体，DLC 与试玩版已自动排除——清单以整个游戏为单位提供，
+      单独搜 DLC 名找不到东西。搜索走 Steam 官方接口，
+      <strong>大陆网络通常需要开启加速工具</strong>（UU、Steam++ 之类均可）。
+    </p>
 
     <ul v-if="results.length" class="results">
       <li v-for="r in results" :key="r.appID">
@@ -134,6 +140,10 @@ async function importPackage(load: () => Promise<GamePackage>) {
 
     <section class="local">
       <h2 class="local__title">已有清单包？</h2>
+      <p class="tips">
+        导入后会自动部署包内全部 DLC，随后可在游戏页按需取消。
+        文件名请避免中文与特殊字符——注入器遇到非 ASCII 文件名会直接放弃解析。
+      </p>
       <DropZone :busy="importing" @drop-file="onDropFile" @pick-file="onPickFile" />
     </section>
   </div>
@@ -195,6 +205,18 @@ async function importPackage(load: () => Promise<GamePackage>) {
   margin: 0;
   color: var(--color-text-muted);
   font-size: 0.85rem;
+}
+
+.tips {
+  margin: 0;
+  color: var(--color-text-dim);
+  font-size: 0.76rem;
+  line-height: 1.7;
+}
+
+.tips strong {
+  color: var(--color-warning);
+  font-weight: 500;
 }
 
 .local__title {

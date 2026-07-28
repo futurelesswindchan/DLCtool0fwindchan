@@ -50,6 +50,24 @@ const syncText: Record<SyncState, string> = {
       </Transition>
     </header>
 
+    <!-- 图例：⚑ 的含义不能只靠一个符号传达，多数用户不会去悬停看 title -->
+    <div class="legend">
+      <p class="legend__row">
+        <span class="legend__mark">⚑</span>
+        <span>
+          含独立内容分支，勾选后需由 <strong>Steam 另行下载</strong>
+          才能玩到内容。取消勾选时 Steam 可能删除已下载的本地文件。
+        </span>
+      </p>
+      <p class="legend__row">
+        <span class="legend__mark legend__mark--none">—</span>
+        <span>
+          内容已包含在游戏本体里，勾选后
+          <strong>无需额外下载</strong>，也不占用额外磁盘空间。
+        </span>
+      </p>
+    </div>
+
     <ul class="dlc__list">
       <li v-for="d in dlcs" :key="d.appID" class="row">
         <label class="row__label">
@@ -77,6 +95,38 @@ const syncText: Record<SyncState, string> = {
     <p v-if="readonly" class="dlc__readonly">
       该清单不是本工具部署的，无法得知可选项全貌，因此不提供勾选。
     </p>
+
+    <!-- 生效链路说明。用户最常见的困惑是「点了但 Steam 里没变化」，
+         而每一环的实际状态都在别处（清单文件 / 注入器 / Steam），
+         界面无从代为确认，只能把链路讲明白让用户自行判断到哪一步。 -->
+    <details v-if="!readonly" class="howto">
+      <summary class="howto__summary">怎样算 DLC 已经生效？</summary>
+      <ol class="howto__steps">
+        <li>
+          <strong>勾选写入清单文件。</strong>
+          勾选后约 1 秒，本工具会把选中的 DLC 写进 Steam 目录下的清单脚本。
+          右上角出现「✓ 已同步」即代表这一步完成。
+        </li>
+        <li>
+          <strong>注入器读取清单。</strong>
+          OpenSteamTool 监视该目录，文件变动后会自动重新加载，无需手动操作。
+          前提是它已随 Steam 启动。
+        </li>
+        <li>
+          <strong>Steam 库中出现条目。</strong>
+          通常几秒内刷新。若 Steam 当前未运行，改动会在下次启动 Steam 时生效。
+        </li>
+        <li>
+          <strong>带 ⚑ 的还需下载。</strong>
+          在 Steam 的游戏属性 → DLC 中确认已勾选，Steam 会开始下载对应内容。
+          不带 ⚑ 的到上一步就已经可以玩了。
+        </li>
+      </ol>
+      <p class="howto__note">
+        取消勾选后 Steam 库中的条目可能仍显示一段时间——注入器会跳过你正版
+        拥有的内容以免误删，重启 Steam 即可恢复正常显示。
+      </p>
+    </details>
   </section>
 </template>
 
@@ -168,6 +218,76 @@ const syncText: Record<SyncState, string> = {
   margin: var(--space-2) 0 0;
   color: var(--color-text-muted);
   font-size: 0.78rem;
+}
+
+.legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-elevated);
+  font-size: 0.76rem;
+  color: var(--color-text-muted);
+}
+
+.legend__row {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.legend__mark {
+  flex: 0 0 auto;
+  width: 14px;
+  text-align: center;
+  color: var(--color-warning);
+}
+
+.legend__mark--none {
+  color: var(--color-text-dim);
+}
+
+.howto {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+  font-size: 0.8rem;
+}
+
+.howto__summary {
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.howto__summary:hover {
+  color: var(--color-text);
+}
+
+.howto__steps {
+  margin: var(--space-3) 0 0;
+  padding-left: var(--space-5);
+  color: var(--color-text-muted);
+  line-height: 1.7;
+}
+
+.howto__steps li + li {
+  margin-top: var(--space-2);
+}
+
+.howto__steps strong {
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.howto__note {
+  margin: var(--space-3) 0 0;
+  color: var(--color-text-dim);
+  font-size: 0.76rem;
 }
 
 .sync-enter-active,

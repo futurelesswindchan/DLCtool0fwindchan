@@ -28,6 +28,7 @@ export type DeployedEntry = main.DeployedEntry
 export type GameSearchResult = main.GameSearchResult
 export type GameDetail = main.GameDetail
 export type MSiteStats = main.MSiteStats
+export type StoredPackage = main.StoredPackage
 
 /**
  * 后端业务失败所抛出的异常。
@@ -143,6 +144,20 @@ export const clearHistory = (): Promise<string> => unwrap(App.ClearHistory())
  * 历史丢失、外部清单与双处声明四种情形。
  */
 export const scanDeployed = (): Promise<DeployedEntry[]> => App.ScanDeployed()
+
+/**
+ * 读取已入库游戏的留存清单。
+ *
+ * 使用户重启应用后仍能调整 DLC 勾选，无需重新联网下载。
+ *
+ * NOTE: 「没有留存」不是错误——返回 null 时应引导用户获取清单，而抛错
+ * 时才提示重试。二者混为一谈会让用户看到莫名的错误提示。
+ *
+ * 后端不做过期判定。界面应按 savedAt 表述为「获取于 X 天前」，
+ * 而非「已过期」——清单旧不等于无效。
+ */
+export const getPackage = (mainAppID: string): Promise<StoredPackage | null> =>
+  App.GetPackage(mainAppID)
 
 /* ─── 在线获取 ─── */
 

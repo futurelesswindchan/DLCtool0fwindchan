@@ -24,6 +24,14 @@ export type SyncState = 'idle' | 'pending' | 'syncing' | 'done'
 const DEBOUNCE_MS = 800
 
 /**
+ * 批量确认弹窗中最多列举的 DLC 名称数。
+ *
+ * 部分游戏的 DLC 多达数十个（实测猎人：荒野的召唤有 70 个），全部列出会
+ * 让弹窗高度超出窗口，确认按钮被挤到视口外反而更危险。
+ */
+const MAX_LISTED_DLCS = 8
+
+/**
  * 参数取响应式引用而非裸对象。
  *
  * 原因：本函数内部注册了 onUnmounted，必须在组件 setup 的同步作用域内
@@ -115,6 +123,19 @@ export function useDlcSelection(pkgRef: Ref<GamePackage | null>) {
     markDirty()
   }
 
+  /**
+   * 还原已有的勾选状态，不触发落盘。
+   *
+   * 用于打开已入库的游戏页时恢复上次的选择。**必须**与 selectAll 等
+   * 操作区分开来：若走 markDirty，仅仅打开一次页面就会白部署一次，
+   * 既无意义地惊动注入器，也会把 installedAt 刷成当前时间，让「获取于
+   * X 天前」永远显示今天。
+   */
+  function restore(appIDs: string[]) {
+    selected.value = new Set(appIDs)
+    syncState.value = 'idle'
+  }
+
   function selectAll() {
     for (const d of pkgRef.value?.dlcs ?? []) selected.value.add(d.appID)
     markDirty()
@@ -125,8 +146,36 @@ export function useDlcSelection(pkgRef: Ref<GamePackage | null>) {
    *
    * 与「彻底卸载」是两件事：此处仍保留主游戏声明，清单文件不删除，
    * 游戏本体依旧在库中。
+   *
+   * XXX: 必须在此处也做独立 Depot 的确认。逐个 toggle 会拦，批量清空却
+   * 直接放行的话，一次点击就能悄悄取消掉全部带 ⚑ 的 DLC——Steam 随即
+   * 删除已下载的内容，对几十 GB 的 DLC 而言代价远超逐个取消。此处不逐个
+   * 弹窗（数量可能是几十个），改为一次性列出受影响的条目。
    */
-  function selectNone() {
+  async function selectNone() {
+    const affected = (pkgRef.value?.dlcs ?? []).filter(
+      (d) => d.manifestID && isSelected(d.appID),
+    )
+
+    if (affected.length > 0 && !skipDepotWarn.value) {
+      const names = affected
+        .slice(0, MAX_LISTED_DLCS)
+        .map((d) => d.name || d.appID)
+      const more = affected.length - names.length
+
+      const ok = await confirm({
+        title: `取消全部 ${selectedCount.value} 个 DLC？`,
+        body: [
+          `其中 ${affected.length} 个含独立的内容分支，Steam 可能删除已下载到本地的文件：`,
+          names.join('、') + (more > 0 ? ` 等 ${affected.length} 个` : ''),
+          '重新勾选可恢复许可证，但内容需要重新下载。',
+        ],
+        confirmText: '全部取消',
+        danger: true,
+      })
+      if (!ok) return
+    }
+
     selected.value.clear()
     markDirty()
   }
@@ -145,6 +194,7 @@ export function useDlcSelection(pkgRef: Ref<GamePackage | null>) {
     selectedCount,
     allSelected,
     isSelected,
+    restore,
     toggle,
     selectAll,
     selectNone,

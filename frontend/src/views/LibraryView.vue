@@ -70,6 +70,11 @@ async function onUninstall(mainAppID: string, name: string) {
       还没有入库任何游戏。到搜索页找一个吧。
     </p>
 
+    <p v-if="managed.length" class="hint">
+      点进任意游戏可调整 DLC 勾选。「重新扫描」会核对 Steam 目录里的实际文件与
+      本工具的记录是否一致——若你手动动过清单目录，扫描后这里会如实反映。
+    </p>
+
     <div v-if="managed.length" class="grid">
       <div v-for="item in managed" :key="item.mainAppID" class="grid__cell">
         <GameCard
@@ -92,6 +97,11 @@ async function onUninstall(mainAppID: string, name: string) {
       <p class="hint">
         这些文件位于清单目录中，但不在本工具的安装记录里——可能是手动放入的，
         或由其他工具产生。其中可能含特意配置的内容，本工具不会自动清理。
+      </p>
+      <p class="hint">
+        注入器会加载目录内全部清单文件的并集，因此这些条目同样在生效中。
+        若某个游戏同时被这里的文件和本工具声明，卸载时只能删掉本工具那一份，
+        游戏会继续留在 Steam 库里，需要手动删除对应文件。
       </p>
 
       <ul class="anomaly">

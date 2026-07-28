@@ -289,6 +289,14 @@ function kindLabel(kind: string): string {
               清空安装记录
             </button>
           </span>
+          <p class="hint">
+            数据目录内含配置、安装记录、清单留存与日志。删除整个目录即等同彻底
+            卸载本工具，不会影响已部署到 Steam 的清单文件。
+          </p>
+          <p class="hint">
+            「清空安装记录」只清账本，不删已部署的清单文件——那些游戏仍会留在
+            Steam 库中，只是本工具不再管理它们。
+          </p>
         </dd>
       </dl>
     </section>

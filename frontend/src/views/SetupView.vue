@@ -113,6 +113,11 @@ async function onRecheck() {
             注入器需要随 Steam 启动才会生效。之后每次入库都会自动同步，
             无需再重启。
           </p>
+          <p class="step__desc">
+            准备就绪后的流程是：搜索游戏 → 入库 → 勾选想要的 DLC。勾选约 1 秒后
+            自动写入，Steam 库会在几秒内出现对应条目；部分 DLC 还需在 Steam 里
+            另行下载内容。
+          </p>
         </div>
       </li>
     </ol>

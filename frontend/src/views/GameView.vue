@@ -2,15 +2,17 @@
 /**
  * 游戏页
  *
- * 同一路由承担三种状态，由本地是否已有该游戏的清单包决定：
- *   A. 未入库          → 展示详情 + 三源查找进展 + 入库按钮
- *   B. 已入库且本会话有清单包 → DLC 勾选列表，勾选即生效
- *   C. 已入库但无清单包 → 只能重新获取或彻底卸载（见下方说明）
+ * 同一路由承担三种状态，由是否已有该游戏的清单包决定：
+ *   A. 未入库            → 详情 + 三源查找进展 + 入库按钮
+ *   B. 已入库且有留存清单 → DLC 勾选列表，勾选即生效
+ *   C. 已入库但无留存清单 → 只能重新获取或彻底卸载
  *
- * 状态 C 的由来：后端 GetPackage 尚未实现，packages/ 目录不落盘，因此
- * 重启应用后无法还原已入库游戏的 DLC 可选项全貌。此处如实告知用户
- * 「重新获取以编辑」，而不是伪造一份不完整的列表让用户以为可以随意勾选。
- * TODO(后端 GetPackage): 该方法实现后，状态 C 可并入 B。
+ * 状态 C 现在只在少数情形出现：留存文件被手动删除、留存内容损坏，或该
+ * 游戏是在留存功能上线前入库的。正常路径下入库即落盘，重启应用后直接
+ * 进入状态 B。
+ *
+ * 清单时效的处理原则：只展示获取时间，不判定「过期」。清单旧不等于无效，
+ * 多数情况下几个月前的清单依然可用；是否重新获取交由用户自行决定。
  */
 
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
@@ -20,6 +22,8 @@ import {
   getGameDetail,
   lookupRepos,
   downloadFromRepo,
+  getPackage,
+  findHistory,
   type GameDetail,
   type GamePackage,
 } from '../api'
@@ -46,11 +50,35 @@ const downloading = ref(false)
 /** 下载进度事件推送的当前尝试源，用于让用户看到「正在做什么」 */
 const progressText = ref('')
 
-/** 本会话内已加载的清单包。仅当用户刚下载或刚导入时才有值。 */
+/** 当前加载的清单包。来自留存文件或本次会话的下载。 */
 const pkg = ref<GamePackage | null>(null)
+
+/** 清单的获取时刻，RFC 3339 字符串。空表示本次会话刚下载的。 */
+const savedAt = ref('')
+
+/** 清单的来源源名。空表示本地导入。 */
+const pkgSource = ref('')
 
 const libItem = computed(() => library.find(appID.value))
 const installed = computed(() => !!libItem.value)
+
+/**
+ * 清单获取时间的人性化表述。
+ *
+ * 有意不说「已过期」——清单旧不等于无效，多数情况下几个月前的清单依然
+ * 可用。只陈述事实，让用户自行判断是否值得重新获取。
+ */
+const savedAtText = computed(() => {
+  if (!savedAt.value) return ''
+
+  const then = new Date(savedAt.value)
+  if (Number.isNaN(then.getTime())) return ''
+
+  const days = Math.floor((Date.now() - then.getTime()) / 86_400_000)
+  const when =
+    days <= 0 ? '今天' : days === 1 ? '昨天' : `${days} 天前`
+  return `清单获取于${when}（${savedAt.value.slice(0, 10)}）`
+})
 
 /**
  * 勾选控制器。
@@ -80,10 +108,32 @@ watch(appID, () => {
   void load()
 })
 
+/**
+ * 落盘完成后读回权威的获取时间。
+ *
+ * 不在前端自行填 Date.now()：清单留存由后端在部署时写入，前端猜的时间
+ * 与实际落盘时刻可能不符。等 syncState 转 done 再读，可确保文件已存在。
+ */
+watch(
+  () => selection.syncState.value,
+  async (state) => {
+    if (state !== 'done') return
+    try {
+      const stored = await getPackage(appID.value)
+      if (stored?.savedAt) savedAt.value = stored.savedAt
+      if (stored?.source !== undefined) pkgSource.value = stored.source
+    } catch {
+      // 读不回来只影响「获取于 X 天前」的显示，不值得打扰用户
+    }
+  },
+)
+
 async function load() {
   detail.value = null
   sources.value = []
   progressText.value = ''
+  savedAt.value = ''
+  pkgSource.value = ''
 
   try {
     detail.value = await getGameDetail(appID.value)
@@ -91,7 +141,34 @@ async function load() {
     toast.fromError(e, '获取游戏详情失败')
   }
 
-  if (!installed.value) await lookup()
+  if (installed.value) await loadStored()
+  else await lookup()
+}
+
+/**
+ * 读取留存清单，还原上次的勾选状态。
+ *
+ * 勾选来自安装历史的 installedIDs 而非清单包本身——清单包记录的是「有哪些
+ * DLC 可选」，历史记录的才是「用户选了哪些」。二者混淆会导致用户取消过的
+ * DLC 在重启后又变回选中。
+ *
+ * 留存不存在时静默停留在状态 C，不弹错——那是正常处境（留存功能上线前
+ * 入库的游戏），提示用户重新获取即可。
+ */
+async function loadStored() {
+  try {
+    const stored = await getPackage(appID.value)
+    if (!stored?.package) return
+
+    pkg.value = stored.package
+    savedAt.value = stored.savedAt ?? ''
+    pkgSource.value = stored.source ?? ''
+
+    const record = libItem.value?.record ?? (await findHistory(appID.value))
+    selection.restore(record?.installedIDs ?? [])
+  } catch (e) {
+    toast.fromError(e, '读取本地清单失败')
+  }
 }
 
 /** 查询三源收录情况。失败不阻断页面，仅提示。 */
@@ -127,6 +204,12 @@ async function install(sourceName: string) {
     // selectAll 会触发防抖落盘，完成首次部署。
     selection.selectAll()
     await library.refresh()
+
+    // 先乐观填上来源，让界面立即有信息可显示。权威的 savedAt 要等防抖
+    // 落盘真正完成后才存在，故交由 watch 在同步状态转 done 时读回。
+    pkgSource.value = sourceName
+    savedAt.value = ''
+
     toast.success(`已获取 ${pkg.value.gameName || appID.value} 的清单`)
   } catch (e) {
     toast.fromError(e, '获取清单失败')
@@ -238,16 +321,27 @@ async function uninstall() {
       <p v-if="progressText" class="hint">{{ progressText }}</p>
     </section>
 
-    <!-- 状态 B：已入库且本会话有清单包 -->
+    <!-- 状态 B：已入库且有留存清单 -->
     <template v-if="pkg">
+      <div class="meta-bar">
+        <span v-if="savedAtText">{{ savedAtText }}</span>
+        <span v-if="pkgSource">来源 {{ pkgSource }}</span>
+        <span v-else-if="pkg">来源 本地导入</span>
+      </div>
+
       <div class="actions">
         <button class="btn" @click="selection.selectAll()">全选</button>
         <button class="btn" @click="selection.selectNone()">全不选</button>
         <button class="btn" :disabled="downloading" @click="reacquire()">
-          替换清单
+          重新获取清单
         </button>
         <button class="btn btn--danger" @click="uninstall()">彻底卸载</button>
       </div>
+
+      <p class="hint hint--dim">
+        勾选后约 1 秒自动写入，无需点保存。「重新获取清单」会从源下载最新版本
+        并覆盖本地这一份——若当前一切正常，通常不必操作。
+      </p>
 
       <DlcList
         :dlcs="pkg.dlcs"
@@ -271,7 +365,8 @@ async function uninstall() {
         该游戏同时被本工具之外的清单文件声明，卸载后可能仍留在库中。
       </p>
       <p class="hint">
-        本次会话未加载清单内容，如需调整 DLC 勾选，请重新获取一次清单。
+        本地没有这个游戏的清单内容（可能是早期版本入库的，或留存文件已被删除），
+        因此暂时无法调整 DLC 勾选。重新获取一次即可恢复编辑，之后就会一直保留。
       </p>
       <div class="actions">
         <button class="btn btn--primary" :disabled="downloading" @click="reacquire()">
@@ -326,6 +421,16 @@ async function uninstall() {
   min-width: 0;
 }
 
+.meta-bar {
+  display: flex;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
 .hero__name {
   margin: 0 0 var(--space-1);
   font-size: 1.25rem;
@@ -369,6 +474,12 @@ async function uninstall() {
 
 .hint--warn {
   color: var(--color-warning);
+}
+
+.hint--dim {
+  color: var(--color-text-dim);
+  font-size: 0.76rem;
+  line-height: 1.7;
 }
 
 .actions {
