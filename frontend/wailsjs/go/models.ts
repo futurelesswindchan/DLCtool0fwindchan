@@ -145,6 +145,8 @@ export namespace main {
 	export class GameDetail {
 	    appID: string;
 	    name: string;
+	    type: string;
+	    isFree: boolean;
 	    headerImage: string;
 	    description: string;
 	    developers: string[];
@@ -161,6 +163,8 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.appID = source["appID"];
 	        this.name = source["name"];
+	        this.type = source["type"];
+	        this.isFree = source["isFree"];
 	        this.headerImage = source["headerImage"];
 	        this.description = source["description"];
 	        this.developers = source["developers"];
@@ -291,6 +295,41 @@ export namespace main {
 	        this.success = source["success"];
 	        this.message = source["message"];
 	    }
+	}
+	
+	export class StoredPackage {
+	    savedAt: string;
+	    source: string;
+	    package?: GamePackage;
+	
+	    static createFrom(source: any = {}) {
+	        return new StoredPackage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.savedAt = source["savedAt"];
+	        this.source = source["source"];
+	        this.package = this.convertValues(source["package"], GamePackage);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

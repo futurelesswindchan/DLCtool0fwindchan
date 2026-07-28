@@ -42,6 +42,10 @@ export function GetMSiteStats() {
   return window['go']['main']['App']['GetMSiteStats']();
 }
 
+export function GetPackage(arg1) {
+  return window['go']['main']['App']['GetPackage'](arg1);
+}
+
 export function GetSteamPath() {
   return window['go']['main']['App']['GetSteamPath']();
 }

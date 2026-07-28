@@ -22,6 +22,8 @@ export function GetLogPath():Promise<string>;
 
 export function GetMSiteStats():Promise<main.MSiteStats>;
 
+export function GetPackage(arg1:string):Promise<main.StoredPackage>;
+
 export function GetSteamPath():Promise<string>;
 
 export function InstallDLCs(arg1:main.GamePackage,arg2:Array<string>):Promise<main.OperationResult>;

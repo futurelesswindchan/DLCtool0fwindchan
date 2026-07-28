@@ -53,6 +53,7 @@ type App struct {
 	detector Detector
 	store    *StoreClient
 	repo     *RepoClient
+	packages *PackageStore
 }
 
 // NewApp 创建并初始化 App 实例。
@@ -83,6 +84,7 @@ func NewApp() *App {
 		detector: NewOSTDetector(logger),
 		store:    NewStoreClient(logger),
 		repo:     NewRepoClient(config, logger),
+		packages: NewPackageStore(logger),
 	}
 	app.rebuildDeployer()
 
@@ -512,6 +514,14 @@ func (a *App) InstallDLCs(gp *GamePackage, selectedAppIDs []string) *OperationRe
 		}
 	}
 
+	// 留存清单解析结果，使用户重启应用后仍能调整 DLC 勾选。
+	// 与历史同理，写失败不影响部署已然成功这一事实。
+	if a.packages != nil {
+		if err := a.packages.Save(gp, gp.Source); err != nil {
+			a.logger.Warn("清单留存写入失败，重启后将需重新获取才能调整勾选: %v", err)
+		}
+	}
+
 	a.logger.Info("部署完成: %s", deployedPath)
 
 	// 部署成功仍需检查冲突：外部清单可能携带过期或错误的密钥，而注入器
@@ -564,6 +574,14 @@ func (a *App) RemoveDLCs(mainAppID string) *OperationResult {
 	if a.history != nil {
 		if err := a.history.Delete(mainAppID); err != nil {
 			a.logger.Warn("移除安装记录失败: %v", err)
+		}
+	}
+
+	// 清单留存随记录一并清理。留着它会让「已安装」页出现一个既无部署
+	// 文件也无历史记录、却仍能读出清单的幽灵条目。
+	if a.packages != nil {
+		if err := a.packages.Delete(mainAppID); err != nil {
+			a.logger.Warn("移除清单留存失败: %v", err)
 		}
 	}
 
@@ -649,6 +667,35 @@ func (a *App) ClearHistory() *OperationResult {
 		return failure(fmt.Sprintf("清空失败：%v", err))
 	}
 	return success("安装历史已清空")
+}
+
+// GetPackage 读取指定游戏的留存清单。
+//
+// 存在意义是让用户重启应用后仍能调整已入库游戏的 DLC 勾选。压缩包在
+// 处理后即删，若无留存，唯一的办法是重新联网下载一次——既耗流量也
+// 消耗认证型源的每日额度。
+//
+// 参数：
+//   - mainAppID: 主游戏 AppID
+//
+// 返回值：
+//   - *StoredPackage: 留存内容，含写入时刻与来源。无留存时为 nil
+//   - error:          文件存在但无法使用时返回。前端应把「返回 nil 且
+//     无错误」与「出错」区别对待：前者引导用户获取清单，后者提示重试
+//
+// NOTE: 不做过期判定。清单旧不等于无效，是否重新获取由用户按 SavedAt
+// 自行决定——界面应表述为「获取于 X 天前」而非「已过期」。
+func (a *App) GetPackage(mainAppID string) (*StoredPackage, error) {
+	if a.packages == nil {
+		return nil, fmt.Errorf("清单留存系统不可用")
+	}
+
+	stored, err := a.packages.Load(mainAppID)
+	if err != nil {
+		a.logger.Warn("读取 AppID %s 的清单留存失败: %v", mainAppID, err)
+		return nil, err
+	}
+	return stored, nil
 }
 
 // ============================================================
