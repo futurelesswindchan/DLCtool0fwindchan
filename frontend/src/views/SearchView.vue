@@ -1,0 +1,206 @@
+<script setup lang="ts">
+/**
+ * 搜索页（首页）
+ *
+ * 搜索结果不进 store：属会话级临时数据，无其他页面需要读取，放在全局
+ * 反而要额外考虑何时清理。
+ *
+ * 底部保留本地导入入口——三源均未收录时，这是用户唯一的出路，故不能藏。
+ */
+
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { useDebounceFn } from '@vueuse/core'
+import {
+  searchGames,
+  processZipFile,
+  processDroppedFile,
+  selectZipFile,
+  installDLCs,
+  type GameSearchResult,
+  type GamePackage,
+} from '../api'
+import { useLibraryStore } from '../stores/library'
+import { useToast } from '../composables/useToast'
+import GameCard from '../components/GameCard.vue'
+import DropZone from '../components/DropZone.vue'
+
+const router = useRouter()
+const library = useLibraryStore()
+const toast = useToast()
+
+const term = ref('')
+const results = ref<GameSearchResult[]>([])
+const searching = ref(false)
+const searched = ref(false)
+const importing = ref(false)
+
+/**
+ * 输入停止 400ms 后才发起搜索。
+ *
+ * 该值不必与部署侧的 800ms 一致——此处只是节省商店接口调用，无需迁就
+ * 注入器的防抖窗口。
+ */
+const runSearch = useDebounceFn(async () => {
+  const q = term.value.trim()
+  if (!q) {
+    results.value = []
+    searched.value = false
+    return
+  }
+
+  searching.value = true
+  try {
+    results.value = await searchGames(q)
+    searched.value = true
+  } catch (e) {
+    toast.fromError(e, '搜索失败')
+  } finally {
+    searching.value = false
+  }
+}, 400)
+
+function openGame(appID: string) {
+  router.push({ name: 'game', params: { appID } })
+}
+
+/* ─── 本地导入 ─── */
+
+async function onPickFile() {
+  const path = await selectZipFile()
+  if (!path) return
+  await importPackage(() => processZipFile(path))
+}
+
+async function onDropFile(file: File) {
+  await importPackage(() => processDroppedFile(file))
+}
+
+/**
+ * 导入本地清单包并直接部署全部 DLC。
+ *
+ * 本地导入的语义是「用户已经明确知道自己要装什么」，故默认全选后落盘，
+ * 随后跳转到游戏页让用户按需取消——若停在此页要求再点一次安装，
+ * 与在线路径的「勾选即生效」模型不一致。
+ */
+async function importPackage(load: () => Promise<GamePackage>) {
+  importing.value = true
+  try {
+    const pkg = await load()
+    const allIDs = pkg.dlcs.map((d) => d.appID)
+    const msg = await installDLCs(pkg, allIDs)
+    toast.success(msg)
+    await library.refresh()
+    router.push({ name: 'game', params: { appID: pkg.mainAppID } })
+  } catch (e) {
+    toast.fromError(e, '导入失败')
+  } finally {
+    importing.value = false
+  }
+}
+</script>
+
+<template>
+  <div class="page">
+    <div class="search">
+      <input
+        v-model="term"
+        class="search__input"
+        type="search"
+        placeholder="输入游戏名或 AppID"
+        autofocus
+        @input="runSearch()"
+        @keydown.enter="runSearch()"
+      />
+      <span v-if="searching" class="search__spin" aria-label="搜索中">⋯</span>
+    </div>
+
+    <ul v-if="results.length" class="results">
+      <li v-for="r in results" :key="r.appID">
+        <GameCard
+          layout="row"
+          :app-i-d="r.appID"
+          :name="r.name"
+          :cover="r.headerImage"
+          :installed="library.installedIDs.has(r.appID)"
+          @click="openGame(r.appID)"
+        />
+      </li>
+    </ul>
+
+    <p v-else-if="searched && !searching" class="empty">
+      没找到匹配的游戏。可以试试直接输入 AppID，或用下方的本地导入。
+    </p>
+
+    <section class="local">
+      <h2 class="local__title">已有清单包？</h2>
+      <DropZone :busy="importing" @drop-file="onDropFile" @pick-file="onPickFile" />
+    </section>
+  </div>
+</template>
+
+<style scoped>
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.search {
+  position: relative;
+}
+
+.search__input {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+
+.search__input:focus {
+  border-color: var(--color-accent);
+  outline: none;
+}
+
+.search__spin {
+  position: absolute;
+  right: var(--space-4);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-dim);
+}
+
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  /* 跳过视口外条目的渲染工作，足以替代虚拟滚动 */
+  content-visibility: auto;
+}
+
+.results :deep(.card) {
+  width: 100%;
+}
+
+.empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.local__title {
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+</style>

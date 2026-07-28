@@ -1,23 +1,59 @@
 /**
  * 后端 API 封装层
  *
- * 存在意义：wailsjs 的自动生成绑定参数名为 arg1/arg2，可读性差，
- * 且部分调用需要前置的数据转换（如二进制文件转字节数组）。
- * 此处收敛这些细节，让组件侧只面对语义清晰的函数。
+ * 存在意义有二：
+ *   1. wailsjs 自动生成的绑定参数名为 arg1/arg2，可读性差
+ *   2. 部分调用需前置数据转换（如二进制文件转字节数组）
  *
- * NOTE: 本文件是 L1.5 测试台的一部分，用于验证后端 API 是否可用。
- * v2.0 正式界面开发时可保留此层，但需按最终交互需求调整。
+ * 组件不得直接 import wailsjs，一律经本层。Wails 升级改变生成规则时
+ * 只需改动一处。
+ *
+ * NOTE: 返回 OperationResult 的后端方法在此统一归一化为异常语义
+ * （见 unwrap），使调用方只写一套 try/catch，不必同时判断 success
+ * 字段与捕获运行时异常两条分支。
  */
 
 import * as App from '../../wailsjs/go/main/App'
 import type { main } from '../../wailsjs/go/models'
 
 export type AppConfig = main.AppConfig
+export type RepoSource = main.RepoSource
 export type DetectorResult = main.DetectorResult
 export type GamePackage = main.GamePackage
 export type GameRecord = main.GameRecord
 export type OperationResult = main.OperationResult
 export type DLCInfo = main.DLCInfo
+export type DepotInfo = main.DepotInfo
+export type DeployedEntry = main.DeployedEntry
+export type GameSearchResult = main.GameSearchResult
+export type GameDetail = main.GameDetail
+export type MSiteStats = main.MSiteStats
+
+/**
+ * 后端业务失败所抛出的异常。
+ *
+ * 与运行时异常区分开来，便于调用方在需要时判定失败来源——业务失败的
+ * message 是后端给出的面向用户文案，可直接展示；运行时异常则不宜直出。
+ */
+export class ApiError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
+/**
+ * 将 OperationResult 归一化为异常语义。
+ *
+ * 返回后端携带的 message，成功路径上仍可用于展示提示文案。
+ */
+async function unwrap(p: Promise<OperationResult>): Promise<string> {
+  const r = await p
+  if (!r.success) throw new ApiError(r.message)
+  return r.message
+}
+
+/* ─── 环境与配置 ─── */
 
 /** 检测注入器环境。返回值永不为空，状态分 ready / missing / unknown 三态。 */
 export const detectEnvironment = (): Promise<DetectorResult> =>
@@ -26,6 +62,10 @@ export const detectEnvironment = (): Promise<DetectorResult> =>
 /** 获取当前配置。 */
 export const getConfig = (): Promise<AppConfig> => App.GetConfig()
 
+/** 保存配置。路径变更时后端会重建部署器。 */
+export const saveConfig = (cfg: AppConfig): Promise<string> =>
+  unwrap(App.SaveConfig(cfg))
+
 /** 从注册表自动识别 Steam 路径并写入配置。 */
 export const autoDetectSteamPath = (): Promise<string> => App.GetSteamPath()
 
@@ -33,11 +73,13 @@ export const autoDetectSteamPath = (): Promise<string> => App.GetSteamPath()
 export const selectDirectory = (): Promise<string> => App.SelectDirectory()
 
 /** 手动指定 Steam 路径，内部会校验目录下是否存在 config 子目录。 */
-export const setSteamPath = (path: string): Promise<OperationResult> =>
-  App.SetSteamPath(path)
+export const setSteamPath = (path: string): Promise<string> =>
+  unwrap(App.SetSteamPath(path))
 
 /** 返回清单文件将被写入的目录，用于向用户展示工具的实际行为。 */
 export const getDeployDir = (): Promise<string> => App.GetDeployDir()
+
+/* ─── 本地清单包 ─── */
 
 /** 打开清单包选择对话框，返回文件路径；取消时返回空字符串。 */
 export const selectZipFile = (): Promise<string> => App.SelectZipFile()
@@ -49,32 +91,93 @@ export const processZipFile = (path: string): Promise<GamePackage> =>
 /**
  * 解析拖拽进窗口的清单包。
  *
- * Wails 生成的绑定要求第二参数为 number[]，而浏览器给出的是 File 对象。
+ * Wails 生成的绑定要求第二参数为 number[]，而浏览器给出的是 File 对象，
  * 此处完成 File → ArrayBuffer → Array<number> 的转换。
  *
- * XXX: 转换会在内存中产生一份与文件等大的数组，清单包通常只有几十 KB
- * 到几 MB，尚可接受。若将来支持超大文件，应改为让后端直接读取路径。
+ * XXX: 转换会在内存中产生一份与文件等大的数组。清单包通常几十 KB 到
+ * 几 MB，尚可接受；若将来支持超大文件，应改为让后端直接读取路径。
  */
 export async function processDroppedFile(file: File): Promise<GamePackage> {
   const buffer = await file.arrayBuffer()
   return App.ProcessDroppedFile(file.name, Array.from(new Uint8Array(buffer)))
 }
 
-/** 部署清单并记录历史。selectedIDs 为用户勾选的 DLC AppID 列表。 */
+/* ─── 部署与卸载 ─── */
+
+/**
+ * 部署清单并记录历史。selectedIDs 为用户勾选的 DLC AppID 列表。
+ *
+ * 返回后端文案：检出外部声明时文案会附带提示，但操作仍算成功。
+ */
 export const installDLCs = (
   pkg: GamePackage,
   selectedIDs: string[],
-): Promise<OperationResult> => App.InstallDLCs(pkg, selectedIDs)
+): Promise<string> => unwrap(App.InstallDLCs(pkg, selectedIDs))
 
-/** 按主游戏 AppID 移除清单文件与历史记录。 */
-export const removeDLCs = (mainAppID: string): Promise<OperationResult> =>
-  App.RemoveDLCs(mainAppID)
+/**
+ * 按主游戏 AppID 移除清单文件与历史记录。
+ *
+ * NOTE: 检出外部 lua 也声明了同一 AppID 时，后端返回的是**失败**。
+ * 这不是异常，而是如实告知「已删除本工具的文件，但游戏可能仍在库中」。
+ * 调用方应把 ApiError.message 原样呈现，其中已列出需手动处理的文件名。
+ */
+export const removeDLCs = (mainAppID: string): Promise<string> =>
+  unwrap(App.RemoveDLCs(mainAppID))
+
+/* ─── 历史与对账 ─── */
 
 /** 获取全部安装历史，已按安装时间倒序。 */
 export const getHistory = (): Promise<GameRecord[]> => App.GetHistory()
 
+/** 按主游戏 AppID 查单条历史，用于带出上次的勾选状态。 */
+export const findHistory = (mainAppID: string): Promise<GameRecord> =>
+  App.FindHistory(mainAppID)
+
+/** 仅清空历史记录，不动已部署的文件。 */
+export const clearHistory = (): Promise<string> => unwrap(App.ClearHistory())
+
+/**
+ * 扫描部署目录，对账实际文件与历史记录。
+ *
+ * 返回条目含 isExternal / inHistory 两个判定位，界面据此区分常态、
+ * 历史丢失、外部清单与双处声明四种情形。
+ */
+export const scanDeployed = (): Promise<DeployedEntry[]> => App.ScanDeployed()
+
+/* ─── 在线获取 ─── */
+
+/** 搜索游戏。纯数字输入按 AppID 直查。 */
+export const searchGames = (term: string): Promise<GameSearchResult[]> =>
+  App.SearchGames(term)
+
+/** 获取游戏详情。后端在接口失败时返回降级结果而非报错。 */
+export const getGameDetail = (appID: string): Promise<GameDetail> =>
+  App.GetGameDetail(appID)
+
+/** 并发查询各源的收录情况，返回收录了该游戏的源名称列表。 */
+export const lookupRepos = (appID: string): Promise<string[]> =>
+  App.LookupRepos(appID)
+
+/** 从指定源下载并解析清单包，解析路径由后端按包内形态自动分派。 */
+export const downloadFromRepo = (
+  appID: string,
+  sourceName: string,
+): Promise<GamePackage> => App.DownloadFromRepo(appID, sourceName)
+
+/** 设置认证型源的凭据，传空字符串即清除。 */
+export const setRepoToken = (
+  sourceName: string,
+  token: string,
+): Promise<string> => unwrap(App.SetRepoToken(sourceName, token))
+
+/** 获取 M 站额度与凭据到期状态。未配置凭据时后端返回 null。 */
+export const getMSiteStats = (): Promise<MSiteStats | null> =>
+  App.GetMSiteStats()
+
+/* ─── 杂项 ─── */
+
 /** 在系统文件管理器中打开本工具的数据目录。 */
-export const openDataDir = (): Promise<OperationResult> => App.OpenDataDir()
+export const openDataDir = (): Promise<string> => unwrap(App.OpenDataDir())
 
 /** 返回当前日志文件路径。 */
 export const getLogPath = (): Promise<string> => App.GetLogPath()
