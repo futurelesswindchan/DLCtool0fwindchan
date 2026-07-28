@@ -10,6 +10,10 @@ export function DetectEnvironment() {
   return window['go']['main']['App']['DetectEnvironment']();
 }
 
+export function DownloadFromRepo(arg1, arg2) {
+  return window['go']['main']['App']['DownloadFromRepo'](arg1, arg2);
+}
+
 export function FindHistory(arg1) {
   return window['go']['main']['App']['FindHistory'](arg1);
 }
@@ -22,6 +26,10 @@ export function GetDeployDir() {
   return window['go']['main']['App']['GetDeployDir']();
 }
 
+export function GetGameDetail(arg1) {
+  return window['go']['main']['App']['GetGameDetail'](arg1);
+}
+
 export function GetHistory() {
   return window['go']['main']['App']['GetHistory']();
 }
@@ -30,12 +38,20 @@ export function GetLogPath() {
   return window['go']['main']['App']['GetLogPath']();
 }
 
+export function GetMSiteStats() {
+  return window['go']['main']['App']['GetMSiteStats']();
+}
+
 export function GetSteamPath() {
   return window['go']['main']['App']['GetSteamPath']();
 }
 
 export function InstallDLCs(arg1, arg2) {
   return window['go']['main']['App']['InstallDLCs'](arg1, arg2);
+}
+
+export function LookupRepos(arg1) {
+  return window['go']['main']['App']['LookupRepos'](arg1);
 }
 
 export function OpenDataDir() {
@@ -58,12 +74,24 @@ export function SaveConfig(arg1) {
   return window['go']['main']['App']['SaveConfig'](arg1);
 }
 
+export function ScanDeployed() {
+  return window['go']['main']['App']['ScanDeployed']();
+}
+
+export function SearchGames(arg1) {
+  return window['go']['main']['App']['SearchGames'](arg1);
+}
+
 export function SelectDirectory() {
   return window['go']['main']['App']['SelectDirectory']();
 }
 
 export function SelectZipFile() {
   return window['go']['main']['App']['SelectZipFile']();
+}
+
+export function SetRepoToken(arg1, arg2) {
+  return window['go']['main']['App']['SetRepoToken'](arg1, arg2);
 }
 
 export function SetSteamPath(arg1) {

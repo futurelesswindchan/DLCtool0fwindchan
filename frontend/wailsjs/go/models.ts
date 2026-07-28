@@ -2,9 +2,9 @@ export namespace main {
 	
 	export class RepoSource {
 	    name: string;
-	    type: string;
-	    url: string;
-	    mirror: string;
+	    kind: string;
+	    repo: string;
+	    token?: string;
 	    enabled: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -14,9 +14,9 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
-	        this.type = source["type"];
-	        this.url = source["url"];
-	        this.mirror = source["mirror"];
+	        this.kind = source["kind"];
+	        this.repo = source["repo"];
+	        this.token = source["token"];
 	        this.enabled = source["enabled"];
 	    }
 	}
@@ -82,6 +82,26 @@ export namespace main {
 	        this.fileSize = source["fileSize"];
 	    }
 	}
+	export class DeployedEntry {
+	    fileName: string;
+	    mainAppID: string;
+	    appIDs: string[];
+	    isExternal: boolean;
+	    inHistory: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new DeployedEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.fileName = source["fileName"];
+	        this.mainAppID = source["mainAppID"];
+	        this.appIDs = source["appIDs"];
+	        this.isExternal = source["isExternal"];
+	        this.inHistory = source["inHistory"];
+	    }
+	}
 	export class DepotInfo {
 	    depotID: string;
 	    decryptionKey: string;
@@ -122,6 +142,34 @@ export namespace main {
 	        this.checkedPath = source["checkedPath"];
 	    }
 	}
+	export class GameDetail {
+	    appID: string;
+	    name: string;
+	    headerImage: string;
+	    description: string;
+	    developers: string[];
+	    publishers: string[];
+	    releaseDate: string;
+	    screenshots: string[];
+	    dlcIDs: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new GameDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.appID = source["appID"];
+	        this.name = source["name"];
+	        this.headerImage = source["headerImage"];
+	        this.description = source["description"];
+	        this.developers = source["developers"];
+	        this.publishers = source["publishers"];
+	        this.releaseDate = source["releaseDate"];
+	        this.screenshots = source["screenshots"];
+	        this.dlcIDs = source["dlcIDs"];
+	    }
+	}
 	export class GamePackage {
 	    mainAppID: string;
 	    mainKey: string;
@@ -130,6 +178,7 @@ export namespace main {
 	    dlcs: DLCInfo[];
 	    luaContent: string;
 	    manifestFiles: string[];
+	    source: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new GamePackage(source);
@@ -144,6 +193,7 @@ export namespace main {
 	        this.dlcs = this.convertValues(source["dlcs"], DLCInfo);
 	        this.luaContent = source["luaContent"];
 	        this.manifestFiles = source["manifestFiles"];
+	        this.source = source["source"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -171,6 +221,7 @@ export namespace main {
 	    installedIDs: string[];
 	    installedAt: string;
 	    luaFileName: string;
+	    source: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new GameRecord(source);
@@ -184,6 +235,47 @@ export namespace main {
 	        this.installedIDs = source["installedIDs"];
 	        this.installedAt = source["installedAt"];
 	        this.luaFileName = source["luaFileName"];
+	        this.source = source["source"];
+	    }
+	}
+	export class GameSearchResult {
+	    appID: string;
+	    name: string;
+	    headerImage: string;
+	    available: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new GameSearchResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.appID = source["appID"];
+	        this.name = source["name"];
+	        this.headerImage = source["headerImage"];
+	        this.available = source["available"];
+	    }
+	}
+	export class MSiteStats {
+	    username: string;
+	    dailyUsage: number;
+	    dailyLimit: number;
+	    canMakeRequests: boolean;
+	    expiresAt: string;
+	    expiringSoon: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new MSiteStats(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.username = source["username"];
+	        this.dailyUsage = source["dailyUsage"];
+	        this.dailyLimit = source["dailyLimit"];
+	        this.canMakeRequests = source["canMakeRequests"];
+	        this.expiresAt = source["expiresAt"];
+	        this.expiringSoon = source["expiringSoon"];
 	    }
 	}
 	export class OperationResult {

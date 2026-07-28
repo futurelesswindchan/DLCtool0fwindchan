@@ -6,19 +6,27 @@ export function ClearHistory():Promise<main.OperationResult>;
 
 export function DetectEnvironment():Promise<main.DetectorResult>;
 
+export function DownloadFromRepo(arg1:string,arg2:string):Promise<main.GamePackage>;
+
 export function FindHistory(arg1:string):Promise<main.GameRecord>;
 
 export function GetConfig():Promise<main.AppConfig>;
 
 export function GetDeployDir():Promise<string>;
 
+export function GetGameDetail(arg1:string):Promise<main.GameDetail>;
+
 export function GetHistory():Promise<Array<main.GameRecord>>;
 
 export function GetLogPath():Promise<string>;
 
+export function GetMSiteStats():Promise<main.MSiteStats>;
+
 export function GetSteamPath():Promise<string>;
 
 export function InstallDLCs(arg1:main.GamePackage,arg2:Array<string>):Promise<main.OperationResult>;
+
+export function LookupRepos(arg1:string):Promise<Array<string>>;
 
 export function OpenDataDir():Promise<main.OperationResult>;
 
@@ -30,8 +38,14 @@ export function RemoveDLCs(arg1:string):Promise<main.OperationResult>;
 
 export function SaveConfig(arg1:main.AppConfig):Promise<main.OperationResult>;
 
+export function ScanDeployed():Promise<Array<main.DeployedEntry>>;
+
+export function SearchGames(arg1:string):Promise<Array<main.GameSearchResult>>;
+
 export function SelectDirectory():Promise<string>;
 
 export function SelectZipFile():Promise<string>;
+
+export function SetRepoToken(arg1:string,arg2:string):Promise<main.OperationResult>;
 
 export function SetSteamPath(arg1:string):Promise<main.OperationResult>;
