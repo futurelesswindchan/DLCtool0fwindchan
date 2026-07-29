@@ -299,6 +299,23 @@ addappid(2224460)
 
 `addappid` 第二参数无语义（详见 DECISIONS.md 2026-07-27 条），固定填 `1` 仅为与社区脚本视觉一致。
 
+#### 同游戏的旧文件清理
+
+部署文件名取自 `GamePackage.GameName`，而该字段随解析路径而异：MAU 路径拿到的
+是中文名（非 ASCII 清洗后可能落为 `unknown`），Lua 路径拿到的是英文名。同一
+游戏换源重新获取时，会产生两个文件名不同却都声明同一 AppID 的清单。
+
+故 `Deploy` 写入前调用 `removeStaleOwnFiles` 清理自身产物：
+
+| 规则                                | 理由                                       |
+| :---------------------------------- | :----------------------------------------- |
+| 判定范围与 `Remove` 一致（后缀匹配）| 只清自己的产物，绝不触碰外部文件           |
+| 与本次目标同名者跳过                | 它即将被覆写，先删会让注入器多收一次事件   |
+| 失败只记警告，不中止部署            | 用户拿到清单比清掉残留文件重要             |
+
+不清理的后果是 07-28 记录的那类不可观测冲突：注入器取并集加载，其中一份的密钥
+被静默覆盖，症状要到 Steam 下载时解密失败才显现。
+
 #### 多文件共存的加载语义
 
 以下五条经 2026-07-28 实机验证（样本 ARK 2399830，OST Debug 版 trace 日志）。
@@ -402,6 +419,33 @@ type StoreClient interface {
 header:  https://cdn.cloudflare.steamstatic.com/steam/apps/{appID}/header.jpg
 library: https://cdn.cloudflare.steamstatic.com/steam/apps/{appID}/library_600x900.jpg
 ```
+
+#### 搜索结果只保留游戏本体
+
+`storesearch` 会把 DLC、试玩版、原声音轨与本体一并返回，而清单包以游戏本体为
+单位组织，对这些条目查清单必然落空。故搜索后逐条查 `appdetails` 的 `type`
+字段过滤，判定函数为 `isMainGame`。
+
+两级判据：
+
+| 级别 | 判据                                        | 排除对象               |
+| :--- | :------------------------------------------ | :--------------------- |
+| 一   | `type != "game"`                            | dlc / demo / music 等  |
+| 二   | `is_free` 为真且名称含衍生品标记            | 独立上架的序章、试玩版 |
+
+第二级的存在是因为「序章」这类内容常被作为独立免费游戏上架，`type` 同样是
+`game`（实测 The Riftbreaker 序章 AppID 1293860 即如此）。该判据**刻意收窄到
+仅在免费前提下生效**，以免误杀名字带「序章」的付费正片。
+
+实现上的三条约束：
+
+- **`appdetails` 不支持批量查询**。实测 `appids=a,b,c` 返回空，10 条结果需发
+  10 个请求。并发上限 5，并复用已有的 7 天详情缓存
+- **失败或超时一律放行**。误杀远比漏放危险——搜不到会让用户以为工具不支持该
+  游戏，多一条干扰项只是稍显杂乱
+- **超时为部分生效而非整批放行**。已收到的判定仍然作数，否则慢网下过滤完全失效
+
+`GameDetail` 因此新增 `Type` 与 `IsFree` 两字段，随详情缓存一同落盘。
 
 ### 5.4 RepoClient 接口（清单仓库）
 
@@ -588,13 +632,13 @@ go build -ldflags "-X main.appVersion=2.0.1"
 | `ClearHistory`       | `() → OperationResult`                       | 仅清空记录，不动已部署文件       |
 | `GetLogPath`         | `() → string`                                | 当前日志文件路径                 |
 | `OpenDataDir`        | `() → OperationResult`                       | 在文件管理器中打开数据目录       |
-| `SearchGames`        | `(term) → ([]GameSearchResult, error)`       | 搜索，纯数字输入按 AppID 直查    |
+| `SearchGames`        | `(term) → ([]GameSearchResult, error)`       | 搜索，纯数字按 AppID 直查，仅留本体 |
 | `GetGameDetail`      | `(appID) → (GameDetail, error)`              | 详情，失败时返回降级结果         |
 | `LookupRepos`        | `(appID) → ([]string, error)`                | 并发查各源收录情况               |
 | `DownloadFromRepo`   | `(appID, sourceName) → (GamePackage, error)` | 下载并解析，形态自动分派         |
 | `SetRepoToken`       | `(sourceName, token) → OperationResult`      | 设置认证型源的凭据，传空即清除   |
 | `GetMSiteStats`      | `() → (MSiteStats, error)`                   | 额度与到期日，未配置凭据时返回 nil |
-| `GetPackage`         | `(mainAppID) → (GamePackage, error)`         | **未实现**，读 `packages/`       |
+| `GetPackage`         | `(mainAppID) → (StoredPackage, error)`       | 读 `packages/`，无留存时返回 nil |
 | `ScanDeployed`       | `() → []DeployedEntry`                       | 扫 `config/lua/` 对账，按内容匹配 |
 | `CheckUpdate`        | `() → UpdateInfo`                            | **未实现**，302 探测             |
 | `SkipVersion`        | `(version) → OperationResult`                | **未实现**，写 `skippedVersion`  |
@@ -620,6 +664,33 @@ go build -ldflags "-X main.appVersion=2.0.1"
 `DepotInfo.FileSize` / `DLCInfo.FileSize` 的语义随解析路径而异：Lua 路径取自
 `setManifestid` 第三参数即 depot 内容总大小，MAU 路径无此信息只能退取 manifest
 文件自身大小，二者相差几个数量级。**界面不得将其作为「下载体积」展示。**
+
+#### StoredPackage 与清单时效
+
+`packages/{mainAppID}.json` 的落盘格式在 `GamePackage` 外包一层元信息：
+
+```go
+type StoredPackage struct {
+    SavedAt string       // 写入时刻，RFC 3339 字符串
+    Source  string       // 获取来源的源名称，本地导入时为空
+    Package *GamePackage
+}
+```
+
+包这一层是因为「何时、从哪获取」都是界面需展示的信息，且无法从 `GamePackage`
+本身推得。`SavedAt` 用字符串而非 `time.Time`，理由同 `GameRecord.InstalledAt`。
+
+**存取层不做任何过期判定**。清单旧不等于无效，界面表述为「清单获取于 X 天前」
+而非「已过期」。是否重新获取由用户自行决定。
+
+返回值的两种「无内容」必须区别对待：
+
+| 返回                | 含义         | 界面应当             |
+| :------------------ | :----------- | :------------------- |
+| `nil` + 无 error    | 没有留存     | 引导用户获取清单     |
+| `nil` + error       | 留存已损坏   | 提示重试             |
+
+混为一谈的代价是部署出字段残缺的无效脚本——症状要到 Steam 下载失败时才显现。
 
 #### DeployedEntry 与冲突提示
 
@@ -779,6 +850,26 @@ frameless 的已知代价，实现时需留意：
 - 同步状态置于列表右上，三态轮转：`⋯ 待同步` → `🔄 同步中` → `✓ 已同步`（2 秒后淡出）
 - Steam 未运行时末态改为 `✓ 下次启动 Steam 后生效`
 
+**符号必须配常驻图例，不可只靠悬停提示**。多数用户不会去悬停一个符号，而
+`⚑` 的实际含义（需由 Steam 另行下载）直接影响用户预期。图例文案须说明后果而非
+仅描述属性：说「含独立内容分支」不如说「需由 Steam 另行下载才能玩到内容」。
+
+#### 界面须解释操作的实际后果
+
+实机试用的反馈集中在「不知道点了之后发生了什么」，而非功能缺失。故界面须解释
+**用户无从自行确认的环节**，而不是重复界面上已有的信息。四类说明：
+
+| 类别         | 内容                                                             |
+| :----------- | :--------------------------------------------------------------- |
+| 符号含义     | `⚑` 需 Steam 另行下载；`—` 已含在本体内                           |
+| 生效链路     | 写入清单 → 注入器读取 → Steam 库刷新 → 带 ⚑ 的按需下载             |
+| 异常处境成因 | 外部清单同样在生效；卸载为何不彻底；清空记录只清账本               |
+| 前置要求     | 需本体名或 AppID；大陆网络需加速工具；文件名须避免非 ASCII         |
+
+**生效链路必须逐步讲明，不可只说「已同步」**。该链路横跨本工具、注入器与 Steam
+三方，每一环的实际状态都在别处，界面无从代为确认。讲清链路让用户能自行判断卡在
+哪一步，比给一个笼统的成功提示有用。
+
 ### 关键交互约束
 
 详见 DECISIONS.md，此处汇总：
@@ -786,6 +877,9 @@ frameless 的已知代价，实现时需留意：
 - 勾选状态即部署状态，无「安装/卸载选中项」按钮
 - 勾选先改内存、界面立即响应，800ms 无新操作才落盘
 - 取消勾选带独立 Depot 的 DLC 需二次确认，Steam 可能删除本地内容
+- **「全不选」的确认强度不得低于逐个取消**。批量入口是「顺手点一下」的位置，
+  误触概率反而更高。不逐个弹窗（DLC 可能有数十个），改为一次性列出受影响条目，
+  列举上限 8 条以免弹窗高度超出窗口把确认按钮挤出视口
 - 全部取消勾选保留主游戏行，与「彻底卸载」是两件事
 - 界面不展示 manifest ID，展示「获取时间」与「来源」
 - 三源均未收录时给出路而非死路，就近引导至本地导入
@@ -958,6 +1052,28 @@ PCL2 的活力感来自快速、带过冲、以位移为主的动画。缓动与
 **组件不得直接 import wailsjs**，一律经 `api/` 层。该层吸收生成代码的形态差异
 （如 `arg1` / `arg2` 参数名、`File` 转换），Wails 升级改变生成规则时只需改动一处。
 
+实际落地的目录（2026-07-29）：
+
+```plain
+frontend/src/
+├── main.ts                挂 router + pinia
+├── App.vue                外壳：TopBar + RouterView + 反馈宿主
+├── style.css              设计令牌与全局样式
+├── router/index.ts        5 条路由 + /setup 守卫
+├── api/index.ts           24 个方法，含 unwrap 与 ApiError
+├── stores/                env / config / library / ui
+├── composables/           useToast / useConfirm / useDlcSelection
+├── components/            TopBar / GameCard / DlcList / ConfirmDialog
+│                          ToastHost / EnvBanner / DropZone
+└── views/                 Search / Game / Library / Settings / Setup
+```
+
+样式采用纯 CSS 变量，不引入原子类框架；组件全部手写，不引入 UI 组件库——
+全站只需按钮 / 复选框 / 卡片 / 弹窗 / Toast 五种，引库反而要与其主题系统打架。
+
+`Frameless` **尚未启用**。Aero Snap 保留情况未经实机验证，且 `no-drag` 遗漏是
+已知的高频翻车点，故留待正式上线前单独评估与实现，以便翻车时干净回退。
+
 ### 路由
 
 ```ts
@@ -975,6 +1091,18 @@ const routes = [
 - `/game/:appID` 单一路由承担未入库与已入库两种状态，据 `packages/{appID}.json`
   是否存在分支渲染
 - `/setup` 由路由守卫拦截：环境未就绪且用户非主动前往设置页时重定向至此
+
+游戏页实际有三种状态，第三种是留存缺失时的降级：
+
+| 状态 | 条件                       | 呈现                                 |
+| :--- | :------------------------- | :----------------------------------- |
+| A    | 未入库                     | 详情 + 三源查找进展 + 入库按钮       |
+| B    | 已入库且有留存清单         | DLC 勾选列表，勾选即生效             |
+| C    | 已入库但留存缺失或损坏     | 仅提供重新获取与彻底卸载             |
+
+状态 C 只在留存文件被手动删除、内容损坏，或游戏是在留存功能上线前入库时出现。
+此时**不伪造一份不完整的勾选列表**——本工具无从得知可选项全貌，让用户误以为
+可以随意勾选比如实告知更糟。
 
 ### Store 划分
 
@@ -1002,7 +1130,12 @@ const routes = [
 //
 // 勾选先只改内存以保证界面即时响应，800ms 内无新操作才真正部署——该值大于 OST
 // FileWatcher 的 500ms 防抖窗口，确保聚合完成后只触发注入器一次。
-export function useDlcSelection(pkg: GamePackage) {
+//
+// 参数取 Ref 而非裸对象：本函数内部注册了 onUnmounted，必须在组件 setup 的
+// 同步作用域内调用。清单包往往是异步到手的，若要求传裸对象，调用方只能把它塞进
+// await 之后或 watch 回调里，此时 onUnmounted 注册不到当前组件实例，待落盘的
+// 改动会静默丢失。
+export function useDlcSelection(pkgRef: Ref<GamePackage | null>) {
   const selected = ref(new Set<string>())
   const syncState = ref<'idle' | 'pending' | 'syncing' | 'done'>('idle')
   // ...
@@ -1010,6 +1143,17 @@ export function useDlcSelection(pkg: GamePackage) {
 ```
 
 防抖使用 VueUse 的 `useDebounceFn`，不自行实现。
+
+三条易被忽略的实现约束：
+
+| 约束                                     | 违反后果                                     |
+| :--------------------------------------- | :------------------------------------------- |
+| `restore` 还原勾选**不得**触发落盘        | 打开一次页面即白部署一次，获取时间被刷成今天 |
+| 重置勾选的 `watch` 须用 `flush: 'sync'`   | 赋值 pkg 后紧接 `selectAll()` 会落盘空列表   |
+| `selectNone` 须与 `toggle` 同等确认       | 一次点击取消全部带独立 Depot 的 DLC          |
+
+第二条的成因是 `watch` 默认的 `pre` 时机为异步：回调会晚于同步调用的
+`selectAll` 执行，把刚选好的集合清空，800ms 后落盘一个空列表——等于什么都没装。
 
 ### 确认弹窗以 Promise 呈现
 
