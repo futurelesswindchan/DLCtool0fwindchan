@@ -299,6 +299,18 @@ addappid(2224460)
 
 `addappid` 第二参数无语义（详见 DECISIONS.md 2026-07-27 条），固定填 `1` 仅为与社区脚本视觉一致。
 
+**输入侧比输出侧宽松**。上述契约约束的是本工具**生成**的脚本；**解析**时需容忍
+社区各源的形态差异，现已知两处：
+
+| 差异                              | 出现于           | 处理方式                     |
+| :-------------------------------- | :--------------- | :--------------------------- |
+| `setManifestid` 只有两个参数      | ManifestHub 快照 | `FileSize` 记 0              |
+| 主游戏的 `addappid` 不带密钥      | ManifestHub 快照 | `MainKey` 留空，部署时记警告 |
+
+第三参数即 depot 内容总大小，OST 不读取它（只用 GID 去上游换取 manifest request
+code），故记 0 不影响产物有效性。但**界面不得将 `FileSize` 当作下载体积展示**——
+该值现有三种来源：M 站的精确值、`appdetails` 的近似值、缺失时的 0，语义互不相同。
+
 #### 同游戏的旧文件清理
 
 部署文件名取自 `GamePackage.GameName`，而该字段随解析路径而异：MAU 路径拿到的
@@ -492,23 +504,66 @@ https://codeload.github.com/{repo}/zip/refs/heads/{appID}
 收录检测用 HEAD 请求同一地址，不消耗 GitHub API 配额，因此无需 token。
 检测只对用户进入详情页的单个 AppID 执行，搜索结果列表不预先标记。
 
+**检测结果为三态，而非「收录 / 未收录」**：
+
+| 结果           | 触发条件                        | 对下载阶段的影响       |
+| :------------- | :------------------------------ | :--------------------- |
+| `probeHit`     | HTTP 200                        | 确认可用               |
+| `probeMiss`    | HTTP 404                        | **唯一可排除的情形**   |
+| `probeUnknown` | 超时、连接重置、5xx、429、403   | 保留候选，交镜像链兜底 |
+
+这个区分是必要的：大陆直连 codeload 超时是常态，若把超时当作未收录，会出现
+「明明有清单却提示需要本地导入」，而下载阶段的四级镜像链本可救回。检测是优化
+手段，不该拥有否决下载的权力。
+
+认证型源的错误一律为 `probeUnknown`——凭据失效、额度耗尽都与「该游戏有无清单」
+无关。
+
+**并发上限 4**。源增至七个后，无限制并发会同时向 codeload 发六个请求，可能触发
+限流；而限流响应算作 `probeUnknown`，该源便要在下载阶段白走一遍镜像链，反而更慢。
+
 #### 内置源
 
-四个内置源，形态与状态均不相同（2026-07-28 实测）：
+八个内置源，形态与状态均不相同（分支数为 2026-07-29 `git ls-remote` 实测）：
 
-| 名称            | Kind            | 标识                          | 状态                                  |
-| :-------------- | :-------------- | :---------------------------- | :------------------------------------ |
-| Hubcap Manifest | `api-zip`       | `https://hubcapmanifest.com`  | 数据最完整，需用户自备凭据            |
-| ManifestHub     | `github-branch` | `SteamAutoCracks/ManifestHub` | **默认停用**——仓库已清空，仅剩 `main` |
-| MAU             | `github-branch` | `Auiowu/ManifestAutoUpdate`   | 可用，但收录不全且包内无 `.lua`       |
-| MAU 镜像        | `github-branch` | `Satisl/MAU`                  | 同 MAU，另嵌 Python 项目源码          |
+| 名称                  | Kind            | 标识                            | 状态                                  |
+| :-------------------- | :-------------- | :------------------------------ | :------------------------------------ |
+| Hubcap Manifest       | `api-zip`       | `https://hubcapmanifest.com`    | 数据最完整，需用户自备凭据            |
+| MAU                   | `github-branch` | `Auiowu/ManifestAutoUpdate`     | 2591 分支，本体自 2026-02 停更        |
+| MAU 镜像              | `github-branch` | `Satisl/MAU`                    | 4062 分支，活跃                       |
+| MAU fork · bingyu50   | `github-branch` | `bingyu50/ManifestAutoUpdate`   | 13131 分支                            |
+| MAU fork · hansaes    | `github-branch` | `hansaes/ManifestAutoUpdate`    | 6336 分支                             |
+| MAU fork · tymolu233  | `github-branch` | `tymolu233/ManifestAutoUpdate`  | 3140 分支                             |
+| ManifestHub 快照      | `github-branch` | `SSMGAlt/ManifestHub2`          | 62288 分支，lua 形态，数据停在 2025-07 |
+| ManifestHub           | `github-branch` | `SteamAutoCracks/ManifestHub`   | **默认停用**——仓库已清空，仅剩 `main` |
 
-顺序即优先级。M 站置首位是因其数据完整度显著更高（实测 ARK：19 个 DLC 对 4 个），
-但它在未配置凭据时自动跳过，**MAU 仍是默认路径**——免凭据可用是底线。
+顺序即优先级。M 站置首位是因其数据完整度显著更高，但它在未配置凭据时自动跳过，
+**MAU 系仍是默认路径**——免凭据可用是底线。
 
-**三源并非同构**。07-27 曾假定它们结构等价、一套代码全覆盖，该假定已被实测推翻：
-MAU 系的包内没有 `.lua`，需专用解析器（见 5.5）。故解析路径按包内实际内容分派，
-不按来源假定。
+**排序依据是单游戏完整度，而非分支总数**。ARK(2399830) 实测对照：
+
+| 源              | DLC | setManifestid |
+| :-------------- | --: | ------------: |
+| Hubcap          |  19 |            13 |
+| MAU             |   4 |             1 |
+| ManifestHub 快照 |   1 |             3 |
+
+快照源的收录广度是 MAU 的 15 倍，但单个游戏的 DLC 覆盖反而更少。广度决定
+「找不找得到」，完整度决定「找到了够不够用」——后者对已经找到清单的用户更重要，
+故快照源置于末位，仅用于兜住前面各源都没有的冷门游戏。
+
+**各源并非同构**。07-27 曾假定它们结构等价、一套代码全覆盖，该假定已被实测推翻。
+现存三种包内形态：
+
+| 形态          | 包内内容                     | 解析路径                    |
+| :------------ | :--------------------------- | :-------------------------- |
+| Hubcap        | `.lua` + 全部 `.manifest`    | lua 路径（三参数 setManifestid） |
+| MAU 系        | `Key.vdf`/`config.vdf` + `.manifest` | MAU 路径（见 5.5）    |
+| ManifestHub 快照 | 仅 `.lua`                 | lua 路径（两参数 setManifestid，主游戏行无密钥） |
+
+故解析路径按包内实际内容分派（`zipContainsLua` 按扩展名判断），**不按来源假定**。
+这一设计使 MAU 形态的三个 fork 零解析改动即可接入——解析器只认扩展名与内容结构，
+不认文件名。
 
 v2.0 不提供自定义源的界面入口，但 `RepoSource` 与 `RepoKind` 已按多源设计，
 后续开放仅需增加设置页，不动查找与下载逻辑。
