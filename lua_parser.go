@@ -248,7 +248,7 @@ func (c *DataCollector) SetManifest(depotID string, manifestID string, fileSize 
 // BuildGamePackage 将收集到的原始数据组装为最终的 GamePackage 结构。
 //
 // 组装规则：
-//   - 第一个带 key 的 addappid 调用 → MainAppID（主游戏）
+//   - 第一个 addappid 调用 → MainAppID（主游戏），带 key 则一并记入 MainKey
 //   - 后续带 key 且有对应 manifest 的 → 有效 Depot
 //   - 无 key 的 addappid 调用 → DLC 注册（排除主应用 ID）
 //   - DLC 名称从 nameMap 中查找，找不到则使用 "DLC <AppID>" 作为默认值
@@ -272,11 +272,19 @@ func (c *DataCollector) BuildGamePackage(meta *CommentMetadata, nameMap map[stri
 	mainAppFound := false
 
 	for _, call := range c.calls {
-		if call.HasKey && !mainAppFound {
-			// 第一个带 key 的调用 → 主应用。
-			// 密钥必须一并保留：OST 解密主 App 内容依赖它，早期版本
-			// 只取 AppID 而丢弃 Key，导致已安装本体的游戏在 Steam
-			// 校验清单时崩溃。
+		if !mainAppFound {
+			// 第一个 addappid 调用即主应用，无论是否带 key。
+			//
+			// 依据是「主游戏必须最先注册」这一 lua 脚本的语义要求
+			// （见 deployer_ost.go 的脚本生成逻辑），OST 侧同样依赖此顺序。
+			//
+			// 不采用「第一个带 key 的调用」作为判据：GitHub 快照源
+			// （SSMGAlt/ManifestHub2 等）的主游戏写作 addappid(2399830)
+			// 而不带密钥，该判据会把紧随其后的 Depot 误判为主游戏。
+			//
+			// 带 key 时密钥必须一并保留：OST 解密主 App 内容依赖它，
+			// 早期版本只取 AppID 而丢弃 Key，导致已安装本体的游戏在
+			// Steam 校验清单时崩溃。
 			gp.MainAppID = call.AppID
 			gp.MainKey = call.Key
 			mainAppFound = true

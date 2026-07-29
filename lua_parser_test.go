@@ -7,11 +7,8 @@ import (
 )
 
 // TestParseLuaFile_TwoArgSetManifestid 验证解析器能正确处理两参数形态的
-// setManifestid（GitHub 快照源的实际格式），不因缺少第三参数而报错。
-//
-// NOTE: 快照源里主游戏 addappid 无 key，导致 MainAppID 判定不同于 Hubcap 格式。
-// 那是主游戏识别逻辑的独立问题，不在本测试覆盖范围内。
-// 本测试仅验证：两参数 setManifestid 不崩溃、ManifestID 正确提取、FileSize 为 0。
+// setManifestid（GitHub 快照源的实际格式），不因缺少第三参数而报错，
+// 且主游戏识别不受「主游戏 addappid 无 key」影响。
 func TestParseLuaFile_TwoArgSetManifestid(t *testing.T) {
 	// 这段 lua 来自 SSMGAlt/ManifestHub2 的 ARK(2399830) 实测输出。
 	// 特征：setManifestid 只有两个参数，无 fileSize。
@@ -34,27 +31,33 @@ setManifestid(2399831,"4735635872933062882")
 		t.Fatalf("parseLuaFile 返回错误（两参数 setManifestid 应不报错）: %v", err)
 	}
 
-	// 快照源格式下，第一个带 key 的 addappid 是 2399831（而非实际主游戏 2399830）。
-	// 这是现有主游戏识别逻辑的已知局限，此处仅做事实断言而非期望值断言。
-	if gp.MainAppID != "2399831" {
-		t.Errorf("MainAppID = %q, 当前逻辑下预期为 %q（快照源识别差异）",
-			gp.MainAppID, "2399831")
+	// 主游戏取第一个 addappid，即便它不带密钥。
+	if gp.MainAppID != "2399830" {
+		t.Errorf("MainAppID = %q, want %q", gp.MainAppID, "2399830")
 	}
-	if gp.MainKey == "" {
-		t.Error("MainKey 不应为空")
+	// 快照源的主游戏行无密钥，MainKey 应为空。部署器会据此输出单行
+	// addappid 并记警告，与源文件原样一致。
+	if gp.MainKey != "" {
+		t.Errorf("MainKey = %q, want 空（快照源主游戏行不带密钥）", gp.MainKey)
 	}
 
-	// 核心验证：setManifestid 的 ManifestID 被正确提取到 DLC 条目。
-	// 在当前逻辑下 2399831 被当作主游戏，不会出现在 Depots 或 DLCs 里。
-	// 而 228989/228990 有 setManifestid 但无 addappid(id, key) 调用，
-	// 所以只会进 manifests map，不会进 Depots。
-	// 真正能验证两参数 setManifestid 写入 manifests 的是主游戏的 ManifestID。
-	// 但当前 BuildGamePackage 不把主游戏的 manifest 写回 gp——
-	// 用一段自带完整三参数对照的 lua 做更明确的验证。
-
-	// 确认没崩溃 + 解析产出了结构，本测试的核心目标已达成。
-	if gp == nil {
-		t.Fatal("gp 不应为 nil")
+	// 2399831 带 key 且有两参数 setManifestid，应成为有效 Depot，
+	// 其 FileSize 因源未提供而为 0。
+	var depot *DepotInfo
+	for i := range gp.Depots {
+		if gp.Depots[i].DepotID == "2399831" {
+			depot = &gp.Depots[i]
+			break
+		}
+	}
+	if depot == nil {
+		t.Fatalf("未找到 DepotID 2399831，实际 Depots: %+v", gp.Depots)
+	}
+	if depot.ManifestID != "4735635872933062882" {
+		t.Errorf("ManifestID = %q, want %q", depot.ManifestID, "4735635872933062882")
+	}
+	if depot.FileSize != 0 {
+		t.Errorf("FileSize = %d, want 0（两参数形态无此值）", depot.FileSize)
 	}
 }
 
