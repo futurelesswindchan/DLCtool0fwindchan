@@ -247,7 +247,46 @@ func (cm *ConfigManager) normalize(cfg *AppConfig) {
 	// 而用户从界面上无从修复。
 	if len(cfg.RepoSources) == 0 {
 		cfg.RepoSources = defaultRepoSources()
+		return
 	}
+	cfg.RepoSources = mergeNewBuiltinSources(cfg.RepoSources)
+}
+
+// mergeNewBuiltinSources 把已有配置中缺失的内置源补进列表末尾。
+//
+// 为何需要：源列表一经写入 config.json 便不再刷新，新版本增加的内置源
+// 对老用户不可见——而 v2.0 无自定义源的界面入口，用户也无从手动添加。
+// 表现为「升级后新源没生效」，且从界面上看不出原因。
+//
+// 合并按 Name 匹配，且**只增不改**：已存在的条目原样保留，不覆盖其
+// Enabled 与 Token。用户手动停用某个源、或已填入的 API 凭据，都不能因为
+// 一次版本升级而被重置。
+//
+// 新源追加在末尾而非按内置顺序插入，故老用户的既有源仍享有优先权。
+// 这一取舍偏向「升级不改变现有行为」：新源作为额外兜底加入，而非顶替
+// 用户已经在用的路径。
+//
+// 参数：
+//   - existing: 来自配置文件的源列表，不会被就地修改
+//
+// 返回值：
+//   - []RepoSource: 合并后的新切片。无新源可补时内容与 existing 等同
+func mergeNewBuiltinSources(existing []RepoSource) []RepoSource {
+	known := make(map[string]struct{}, len(existing))
+	for _, src := range existing {
+		known[src.Name] = struct{}{}
+	}
+
+	merged := make([]RepoSource, len(existing))
+	copy(merged, existing)
+
+	for _, builtin := range defaultRepoSources() {
+		if _, ok := known[builtin.Name]; ok {
+			continue
+		}
+		merged = append(merged, builtin)
+	}
+	return merged
 }
 
 // logf 在 logger 可用时记录一条信息级日志。
