@@ -109,23 +109,23 @@
 
 ### 各模块说明
 
-| 模块              | 职责                                                                            |
-| ----------------- | ------------------------------------------------------------------------------- |
-| `app.go`          | 前端能调用的所有方法都在这里，纯编排不做业务                                    |
-| `config.go`       | 管理 `~/.kazeusa/config.json`，启动读取、变更时原子写入                         |
-| `fileutil.go`     | `atomicWriteFile` 原子写入、WebView2 目录解析、临时目录兜底清理                 |
-| `deployer.go`     | 定义"部署"接口：把 Lua 文件放到注入器能读的目录                                 |
-| `deployer_ost.go` | OST 实现：写入 `<Steam>/config/lua/<GameName>_<AppID>.lua`，tmp+rename 原子写入 |
-| `detector.go`     | 定义"检测"接口：注入器是否安装就绪                                              |
-| `detector_ost.go` | OST 实现：检查 `dwmapi.dll` + `xinput1_4.dll` + `OpenSteamTool.dll` 是否存在    |
-| `repo_client.go`  | 多源查找与下载清单包，产出 `GamePackage`，与本地导入同出口                      |
-| `store_client.go` | Steam 商店元数据查询，仅认 AppID，不知仓库存在                                  |
-| `history.go`      | 管理 `~/.kazeusa/history.json`，记录安装/卸载操作                               |
-| `package_store.go` | 持久化 `GamePackage` 至 `packages/{appID}.json`，供卸载与增装 DLC 时复用       |
-| `lua_parser.go`   | 嵌入式 Lua VM 执行清单脚本，提取 AppID/密钥/manifest 信息                       |
-| `lua_match.go`    | 正则判断某 AppID 是否已在脚本中，用于不值得启动 VM 的轻量场景                   |
-| `steam.go`        | 清单包解压（含路径遍历防护）、读取部署产物以标记 DLC 安装状态                   |
-| `logger.go`       | 统一日志，支持轮转（5MB/3份）、级别标记、文件+控制台双输出                      |
+| 模块               | 职责                                                                            |
+| ------------------ | ------------------------------------------------------------------------------- |
+| `app.go`           | 前端能调用的所有方法都在这里，纯编排不做业务                                    |
+| `config.go`        | 管理 `~/.kazeusa/config.json`，启动读取、变更时原子写入                         |
+| `fileutil.go`      | `atomicWriteFile` 原子写入、WebView2 目录解析、临时目录兜底清理                 |
+| `deployer.go`      | 定义"部署"接口：把 Lua 文件放到注入器能读的目录                                 |
+| `deployer_ost.go`  | OST 实现：写入 `<Steam>/config/lua/<GameName>_<AppID>.lua`，tmp+rename 原子写入 |
+| `detector.go`      | 定义"检测"接口：注入器是否安装就绪                                              |
+| `detector_ost.go`  | OST 实现：检查 `dwmapi.dll` + `xinput1_4.dll` + `OpenSteamTool.dll` 是否存在    |
+| `repo_client.go`   | 多源查找与下载清单包，产出 `GamePackage`，与本地导入同出口                      |
+| `store_client.go`  | Steam 商店元数据查询，仅认 AppID，不知仓库存在                                  |
+| `history.go`       | 管理 `~/.kazeusa/history.json`，记录安装/卸载操作                               |
+| `package_store.go` | 持久化 `GamePackage` 至 `packages/{appID}.json`，供卸载与增装 DLC 时复用        |
+| `lua_parser.go`    | 嵌入式 Lua VM 执行清单脚本，提取 AppID/密钥/manifest 信息                       |
+| `lua_match.go`     | 正则判断某 AppID 是否已在脚本中，用于不值得启动 VM 的轻量场景                   |
+| `steam.go`         | 清单包解压（含路径遍历防护）、读取部署产物以标记 DLC 安装状态                   |
+| `logger.go`        | 统一日志，支持轮转（5MB/3份）、级别标记、文件+控制台双输出                      |
 
 ---
 
@@ -307,11 +307,11 @@ addappid(2224460)
 
 故 `Deploy` 写入前调用 `removeStaleOwnFiles` 清理自身产物：
 
-| 规则                                | 理由                                       |
-| :---------------------------------- | :----------------------------------------- |
-| 判定范围与 `Remove` 一致（后缀匹配）| 只清自己的产物，绝不触碰外部文件           |
-| 与本次目标同名者跳过                | 它即将被覆写，先删会让注入器多收一次事件   |
-| 失败只记警告，不中止部署            | 用户拿到清单比清掉残留文件重要             |
+| 规则                                 | 理由                                     |
+| :----------------------------------- | :--------------------------------------- |
+| 判定范围与 `Remove` 一致（后缀匹配） | 只清自己的产物，绝不触碰外部文件         |
+| 与本次目标同名者跳过                 | 它即将被覆写，先删会让注入器多收一次事件 |
+| 失败只记警告，不中止部署             | 用户拿到清单比清掉残留文件重要           |
 
 不清理的后果是 07-28 记录的那类不可观测冲突：注入器取并集加载，其中一份的密钥
 被静默覆盖，症状要到 Steam 下载时解密失败才显现。
@@ -321,13 +321,13 @@ addappid(2224460)
 以下五条经 2026-07-28 实机验证（样本 ARK 2399830，OST Debug 版 trace 日志）。
 它们共同决定了部署与卸载**不能只考虑盒子自己的文件**。
 
-| 事实                       | 依据                                          |
-| :------------------------- | :-------------------------------------------- |
-| 全部 `.lua` 按**并集去重**加载 | `adding 8 apps` 精确等于两文件 AppID 去重后数量 |
-| 不存在文件级优先权          | 全局 map 同 key 后写覆盖，Parse 顺序不可控      |
-| 共享 AppID 的许可证不随单文件删除而移除 | refCount 由 2 减 1 未归零                |
-| 删除文件不触发存活文件重新解析 | `processing 0 additions`                     |
-| 密钥冲突无任何日志痕迹      | 无警告输出，且 OST 从不记录密钥值               |
+| 事实                                    | 依据                                            |
+| :-------------------------------------- | :---------------------------------------------- |
+| 全部 `.lua` 按**并集去重**加载          | `adding 8 apps` 精确等于两文件 AppID 去重后数量 |
+| 不存在文件级优先权                      | 全局 map 同 key 后写覆盖，Parse 顺序不可控      |
+| 共享 AppID 的许可证不随单文件删除而移除 | refCount 由 2 减 1 未归零                       |
+| 删除文件不触发存活文件重新解析          | `processing 0 additions`                        |
+| 密钥冲突无任何日志痕迹                  | 无警告输出，且 OST 从不记录密钥值               |
 
 **为何 `LuaConfig` 是全局的**：`DepotKeySet` / `ManifestOverrides` 等容器为整个
 进程共有，`ParseDirectory` 遍历目录并将各文件的解析结果合并写入同一批 map。
@@ -428,10 +428,10 @@ library: https://cdn.cloudflare.steamstatic.com/steam/apps/{appID}/library_600x9
 
 两级判据：
 
-| 级别 | 判据                                        | 排除对象               |
-| :--- | :------------------------------------------ | :--------------------- |
-| 一   | `type != "game"`                            | dlc / demo / music 等  |
-| 二   | `is_free` 为真且名称含衍生品标记            | 独立上架的序章、试玩版 |
+| 级别 | 判据                             | 排除对象               |
+| :--- | :------------------------------- | :--------------------- |
+| 一   | `type != "game"`                 | dlc / demo / music 等  |
+| 二   | `is_free` 为真且名称含衍生品标记 | 独立上架的序章、试玩版 |
 
 第二级的存在是因为「序章」这类内容常被作为独立免费游戏上架，`type` 同样是
 `game`（实测 The Riftbreaker 序章 AppID 1293860 即如此）。该判据**刻意收窄到
@@ -496,12 +496,12 @@ https://codeload.github.com/{repo}/zip/refs/heads/{appID}
 
 四个内置源，形态与状态均不相同（2026-07-28 实测）：
 
-| 名称            | Kind            | 标识                          | 状态                                 |
-| :-------------- | :-------------- | :---------------------------- | :----------------------------------- |
-| Hubcap Manifest | `api-zip`       | `https://hubcapmanifest.com`  | 数据最完整，需用户自备凭据           |
+| 名称            | Kind            | 标识                          | 状态                                  |
+| :-------------- | :-------------- | :---------------------------- | :------------------------------------ |
+| Hubcap Manifest | `api-zip`       | `https://hubcapmanifest.com`  | 数据最完整，需用户自备凭据            |
 | ManifestHub     | `github-branch` | `SteamAutoCracks/ManifestHub` | **默认停用**——仓库已清空，仅剩 `main` |
-| MAU             | `github-branch` | `Auiowu/ManifestAutoUpdate`   | 可用，但收录不全且包内无 `.lua`      |
-| MAU 镜像        | `github-branch` | `Satisl/MAU`                  | 同 MAU，另嵌 Python 项目源码         |
+| MAU             | `github-branch` | `Auiowu/ManifestAutoUpdate`   | 可用，但收录不全且包内无 `.lua`       |
+| MAU 镜像        | `github-branch` | `Satisl/MAU`                  | 同 MAU，另嵌 Python 项目源码          |
 
 顺序即优先级。M 站置首位是因其数据完整度显著更高（实测 ARK：19 个 DLC 对 4 个），
 但它在未配置凭据时自动跳过，**MAU 仍是默认路径**——免凭据可用是底线。
@@ -529,17 +529,20 @@ v2.0 不提供自定义源的界面入口，但 `RepoSource` 与 `RepoKind` 已�
 清单包存在两种形态，`DownloadFromRepo` 依据**包内是否存在 `.lua`** 分派，
 不按来源假定——上游随时可能调整打包脚本，按源名硬编码会静默失效。
 
-| 形态       | 来源                | 包内容                                            | 解析器             |
-| :--------- | :------------------ | :------------------------------------------------ | :----------------- |
-| Lua 形态   | M 站、本地导入      | `.lua` + `.manifest`                              | `lua_parser.go`    |
-| MAU 形态   | MAU 及其镜像        | `Key.vdf` + `config.json` + `.manifest`，**无 lua** | `repo_package.go`  |
+| 形态     | 来源           | 包内容                                              | 解析器            |
+| :------- | :------------- | :-------------------------------------------------- | :---------------- |
+| Lua 形态 | M 站、本地导入 | `.lua` + `.manifest`                                | `lua_parser.go`   |
+| MAU 形态 | MAU 及其镜像   | `Key.vdf` + `config.json` + `.manifest`，**无 lua** | `repo_package.go` |
 
 MAU 形态的 `config.json` 实测样本：
 
 ```json
-{"appId": 1364780, "depots": [1364781],
- "dlcs": [2224460, 2224461, 2224462, 2825190, 2825200],
- "packagedlcs": [1792750, 1792751]}
+{
+  "appId": 1364780,
+  "depots": [1364781],
+  "dlcs": [2224460, 2224461, 2224462, 2825190, 2825200],
+  "packagedlcs": [1792750, 1792751]
+}
 ```
 
 `packagedlcs` 显式标出带独立 Depot 的 DLC，比从 Lua 注释启发式推断可靠——
@@ -557,11 +560,11 @@ MAU 路径下只能取 manifest 文件自身大小，两者差几个数量级。
 
 定位与本地导入等同：可选增强，非底层主逻辑。未配置凭据时整条链路静默跳过。
 
-| 端点                        | 额度 | 用途                                 |
-| :-------------------------- | :--- | :----------------------------------- |
+| 端点                        | 额度 | 用途                                      |
+| :-------------------------- | :--- | :---------------------------------------- |
 | `/api/v1/status/{app_id}`   | 免   | 收录检测，附 `game_name`、`file_age_days` |
-| `/api/v1/manifest/{app_id}` | 计   | 下载含 lua 的 zip                    |
-| `/api/v1/user/stats`        | 免   | 额度与凭据到期日                     |
+| `/api/v1/manifest/{app_id}` | 计   | 下载含 lua 的 zip                         |
+| `/api/v1/user/stats`        | 免   | 额度与凭据到期日                          |
 
 **用 `/manifest` 而非 `/lua`**（此选择反直觉，故记录于此）：两者同耗 1 次额度，
 但 `/lua` 返回的脚本内 `setManifestid` 数量为 **0**，而 `/manifest` 包内的 lua
@@ -588,10 +591,10 @@ MAU 路径下只能取 manifest 文件自身大小，两者差几个数量级。
 
 分两级执行，API 配额仅在确有更新时消耗：
 
-| 阶段         | 手段                                                    |
-| :----------- | :------------------------------------------------------ |
+| 阶段         | 手段                                                                        |
+| :----------- | :-------------------------------------------------------------------------- |
 | 判断有无新版 | `GET github.com/{repo}/releases/latest`，不跟随重定向，读 302 的 `Location` |
-| 取更新说明   | `api.github.com/repos/{repo}/releases/latest`，仅当有新版 |
+| 取更新说明   | `api.github.com/repos/{repo}/releases/latest`，仅当有新版                   |
 
 302 走的是网页路由而非 API，不受 60 次/小时的配额限制。国内失败时复用清单下载
 已定的 `gh-proxy` 回退链。
@@ -613,37 +616,37 @@ go build -ldflags "-X main.appVersion=2.0.1"
 > 失败信息经 `Message` 字段传达，前端只需判断 `Success` 一处，无需同时处理
 > 异常与失败结果两套分支。
 
-| 方法                 | 签名                                         | 说明                             |
-| :------------------- | :------------------------------------------- | :------------------------------- |
-| `GetConfig`          | `() → AppConfig`                             | 获取当前配置                     |
-| `SaveConfig`         | `(AppConfig) → OperationResult`              | 保存配置，路径变更时重建部署器   |
-| `GetSteamPath`       | `() → (string, error)`                       | 从注册表识别并写入配置           |
-| `SetSteamPath`       | `(string) → OperationResult`                 | 手动指定，校验 config 子目录     |
-| `SelectDirectory`    | `() → (string, error)`                       | 文件夹选择对话框                 |
-| `SelectZipFile`      | `() → (string, error)`                       | 清单包选择对话框，定位到上次目录 |
-| `DetectEnvironment`  | `() → DetectorResult`                        | 检测注入器环境（三态）           |
-| `GetDeployDir`       | `() → string`                                | 清单文件将写入的目录             |
-| `ProcessZipFile`     | `(string) → (GamePackage, error)`            | 解析本地清单包                   |
-| `ProcessDroppedFile` | `(name, data) → (GamePackage, error)`        | 解析拖拽文件                     |
-| `InstallDLCs`        | `(GamePackage, []string) → OperationResult`  | 部署清单并记录历史               |
-| `RemoveDLCs`         | `(mainAppID) → OperationResult`              | 先删文件再删记录                 |
-| `GetHistory`         | `() → []GameRecord`                          | 全部历史，按时间倒序             |
-| `FindHistory`        | `(mainAppID) → GameRecord`                   | 单条查询，用于带出上次勾选       |
-| `ClearHistory`       | `() → OperationResult`                       | 仅清空记录，不动已部署文件       |
-| `GetLogPath`         | `() → string`                                | 当前日志文件路径                 |
-| `OpenDataDir`        | `() → OperationResult`                       | 在文件管理器中打开数据目录       |
+| 方法                 | 签名                                         | 说明                                |
+| :------------------- | :------------------------------------------- | :---------------------------------- |
+| `GetConfig`          | `() → AppConfig`                             | 获取当前配置                        |
+| `SaveConfig`         | `(AppConfig) → OperationResult`              | 保存配置，路径变更时重建部署器      |
+| `GetSteamPath`       | `() → (string, error)`                       | 从注册表识别并写入配置              |
+| `SetSteamPath`       | `(string) → OperationResult`                 | 手动指定，校验 config 子目录        |
+| `SelectDirectory`    | `() → (string, error)`                       | 文件夹选择对话框                    |
+| `SelectZipFile`      | `() → (string, error)`                       | 清单包选择对话框，定位到上次目录    |
+| `DetectEnvironment`  | `() → DetectorResult`                        | 检测注入器环境（三态）              |
+| `GetDeployDir`       | `() → string`                                | 清单文件将写入的目录                |
+| `ProcessZipFile`     | `(string) → (GamePackage, error)`            | 解析本地清单包                      |
+| `ProcessDroppedFile` | `(name, data) → (GamePackage, error)`        | 解析拖拽文件                        |
+| `InstallDLCs`        | `(GamePackage, []string) → OperationResult`  | 部署清单并记录历史                  |
+| `RemoveDLCs`         | `(mainAppID) → OperationResult`              | 先删文件再删记录                    |
+| `GetHistory`         | `() → []GameRecord`                          | 全部历史，按时间倒序                |
+| `FindHistory`        | `(mainAppID) → GameRecord`                   | 单条查询，用于带出上次勾选          |
+| `ClearHistory`       | `() → OperationResult`                       | 仅清空记录，不动已部署文件          |
+| `GetLogPath`         | `() → string`                                | 当前日志文件路径                    |
+| `OpenDataDir`        | `() → OperationResult`                       | 在文件管理器中打开数据目录          |
 | `SearchGames`        | `(term) → ([]GameSearchResult, error)`       | 搜索，纯数字按 AppID 直查，仅留本体 |
-| `GetGameDetail`      | `(appID) → (GameDetail, error)`              | 详情，失败时返回降级结果         |
-| `LookupRepos`        | `(appID) → ([]string, error)`                | 并发查各源收录情况               |
-| `DownloadFromRepo`   | `(appID, sourceName) → (GamePackage, error)` | 下载并解析，形态自动分派         |
-| `SetRepoToken`       | `(sourceName, token) → OperationResult`      | 设置认证型源的凭据，传空即清除   |
-| `GetMSiteStats`      | `() → (MSiteStats, error)`                   | 额度与到期日，未配置凭据时返回 nil |
-| `GetPackage`         | `(mainAppID) → (StoredPackage, error)`       | 读 `packages/`，无留存时返回 nil |
-| `ScanDeployed`       | `() → []DeployedEntry`                       | 扫 `config/lua/` 对账，按内容匹配 |
-| `CheckUpdate`        | `() → UpdateInfo`                            | **未实现**，302 探测             |
-| `SkipVersion`        | `(version) → OperationResult`                | **未实现**，写 `skippedVersion`  |
-| `OpenURL`            | `(url) → OperationResult`                    | **未实现**，交外部浏览器打开     |
-| `GetAppVersion`      | `() → string`                                | **未实现**，返回编译期注入值     |
+| `GetGameDetail`      | `(appID) → (GameDetail, error)`              | 详情，失败时返回降级结果            |
+| `LookupRepos`        | `(appID) → ([]string, error)`                | 并发查各源收录情况                  |
+| `DownloadFromRepo`   | `(appID, sourceName) → (GamePackage, error)` | 下载并解析，形态自动分派            |
+| `SetRepoToken`       | `(sourceName, token) → OperationResult`      | 设置认证型源的凭据，传空即清除      |
+| `GetMSiteStats`      | `() → (MSiteStats, error)`                   | 额度与到期日，未配置凭据时返回 nil  |
+| `GetPackage`         | `(mainAppID) → (StoredPackage, error)`       | 读 `packages/`，无留存时返回 nil    |
+| `ScanDeployed`       | `() → []DeployedEntry`                       | 扫 `config/lua/` 对账，按内容匹配   |
+| `CheckUpdate`        | `() → UpdateInfo`                            | **未实现**，302 探测                |
+| `SkipVersion`        | `(version) → OperationResult`                | **未实现**，写 `skippedVersion`     |
+| `OpenURL`            | `(url) → OperationResult`                    | **未实现**，交外部浏览器打开        |
+| `GetAppVersion`      | `() → string`                                | **未实现**，返回编译期注入值        |
 
 原设计的 `FetchRepoList`（列出仓库全部收录）已移除，理由见 DECISIONS.md：
 `ManifestHub` 有数万个分支，完整列表对用户无使用价值，搜索是唯一合理入口。
@@ -685,10 +688,10 @@ type StoredPackage struct {
 
 返回值的两种「无内容」必须区别对待：
 
-| 返回                | 含义         | 界面应当             |
-| :------------------ | :----------- | :------------------- |
-| `nil` + 无 error    | 没有留存     | 引导用户获取清单     |
-| `nil` + error       | 留存已损坏   | 提示重试             |
+| 返回             | 含义       | 界面应当         |
+| :--------------- | :--------- | :--------------- |
+| `nil` + 无 error | 没有留存   | 引导用户获取清单 |
+| `nil` + error    | 留存已损坏 | 提示重试         |
 
 混为一谈的代价是部署出字段残缺的无效脚本——症状要到 Steam 下载失败时才显现。
 
@@ -697,12 +700,12 @@ type StoredPackage struct {
 `ScanDeployed` 返回的每条 `DeployedEntry` 含 `IsExternal`（是否非本工具命名格式）
 与 `InHistory`（该主游戏是否在安装历史中）两个判定位。二者并非互补：
 
-| 组合                        | 含义                                     |
-| :-------------------------- | :--------------------------------------- |
-| `!IsExternal && InHistory`  | 常态                                     |
-| `!IsExternal && !InHistory` | 历史丢失或被清空，文件仍在               |
-| `IsExternal && !InHistory`  | 典型外部清单，用户手动放置或他工具产生   |
-| `IsExternal && InHistory`   | 同一游戏被两处声明，**卸载将不彻底**     |
+| 组合                        | 含义                                   |
+| :-------------------------- | :------------------------------------- |
+| `!IsExternal && InHistory`  | 常态                                   |
+| `!IsExternal && !InHistory` | 历史丢失或被清空，文件仍在             |
+| `IsExternal && !InHistory`  | 典型外部清单，用户手动放置或他工具产生 |
+| `IsExternal && InHistory`   | 同一游戏被两处声明，**卸载将不彻底**   |
 
 界面约定：
 
@@ -776,30 +779,34 @@ type StoredPackage struct {
 
 环境状态常驻标题栏——需长期可见但不应占用内容区。三态：
 
-| 显示           | 含义             | 交互           |
-| :------------- | :--------------- | :------------- |
-| ✓ OST 就绪     | 三个 DLL 均在位  | 无             |
-| ⚠ 未检测到 OST | 缺少 DLL         | 点击跳引导页   |
-| ? 路径未设置   | Steam 路径未确定 | 点击跳设置页   |
+| 显示           | 含义             | 交互         |
+| :------------- | :--------------- | :----------- |
+| ✓ OST 就绪     | 三个 DLL 均在位  | 无           |
+| ⚠ 未检测到 OST | 缺少 DLL         | 点击跳引导页 |
+| ? 路径未设置   | Steam 路径未确定 | 点击跳设置页 |
 
 拖动经 CSS 声明，标题栏内所有可交互元素必须显式禁用：
 
 ```css
-.titlebar { --wails-draggable: drag; }
+.titlebar {
+  --wails-draggable: drag;
+}
 .titlebar button,
-.titlebar .nav-tab { --wails-draggable: no-drag; }
+.titlebar .nav-tab {
+  --wails-draggable: no-drag;
+}
 ```
 
 窗口控制调 `WindowMinimise` / `WindowToggleMaximise` / `Quit`。
 
 frameless 的已知代价，实现时需留意：
 
-| 事项                   | 说明                                            |
-| :--------------------- | :---------------------------------------------- |
-| `no-drag` 遗漏         | 按钮点击会被识别为拖拽起始而失灵，最常见的翻车点 |
-| 双击标题栏最大化       | 系统行为丧失，需自行绑定 `dblclick`              |
-| Win11 Snap Layouts     | 悬停最大化按钮的分屏浮层不可用，属原生标题栏特权 |
-| 边缘缩放热区           | 边框变窄，前端元素勿占据边缘，留 4~6px 空隙      |
+| 事项               | 说明                                             |
+| :----------------- | :----------------------------------------------- |
+| `no-drag` 遗漏     | 按钮点击会被识别为拖拽起始而失灵，最常见的翻车点 |
+| 双击标题栏最大化   | 系统行为丧失，需自行绑定 `dblclick`              |
+| Win11 Snap Layouts | 悬停最大化按钮的分屏浮层不可用，属原生标题栏特权 |
+| 边缘缩放热区       | 边框变窄，前端元素勿占据边缘，留 4~6px 空隙      |
 
 拖到屏幕边缘的 Aero Snap 在当前 Wails 版本下是否保留**尚未验证**。
 
@@ -859,12 +866,12 @@ frameless 的已知代价，实现时需留意：
 实机试用的反馈集中在「不知道点了之后发生了什么」，而非功能缺失。故界面须解释
 **用户无从自行确认的环节**，而不是重复界面上已有的信息。四类说明：
 
-| 类别         | 内容                                                             |
-| :----------- | :--------------------------------------------------------------- |
-| 符号含义     | `⚑` 需 Steam 另行下载；`—` 已含在本体内                           |
-| 生效链路     | 写入清单 → 注入器读取 → Steam 库刷新 → 带 ⚑ 的按需下载             |
-| 异常处境成因 | 外部清单同样在生效；卸载为何不彻底；清空记录只清账本               |
-| 前置要求     | 需本体名或 AppID；大陆网络需加速工具；文件名须避免非 ASCII         |
+| 类别         | 内容                                                       |
+| :----------- | :--------------------------------------------------------- |
+| 符号含义     | `⚑` 需 Steam 另行下载；`—` 已含在本体内                    |
+| 生效链路     | 写入清单 → 注入器读取 → Steam 库刷新 → 带 ⚑ 的按需下载     |
+| 异常处境成因 | 外部清单同样在生效；卸载为何不彻底；清空记录只清账本       |
+| 前置要求     | 需本体名或 AppID；大陆网络需加速工具；文件名须避免非 ASCII |
 
 **生效链路必须逐步讲明，不可只说「已同步」**。该链路横跨本工具、注入器与 Steam
 三方，每一环的实际状态都在别处，界面无从代为确认。讲清链路让用户能自行判断卡在
@@ -954,19 +961,19 @@ PCL2 的活力感来自快速、带过冲、以位移为主的动画。缓动与
 
 ### 场景归属
 
-| 场景                        | 形态         | 依据                       |
-| :-------------------------- | :----------- | :------------------------- |
+| 场景                        | 形态         | 依据                          |
+| :-------------------------- | :----------- | :---------------------------- |
 | 取消勾选带独立 Depot 的 DLC | 模态弹窗     | Steam 可能删除数十 GB，不可逆 |
-| 替换清单的差异对照          | 模态弹窗     | 需对比两组信息后决策       |
-| 彻底卸载游戏                | 模态弹窗     | 破坏性                     |
-| 清空历史记录                | 模态弹窗     | 破坏性                     |
-| 部署成功 / 检测完成         | Toast        | 无需决策                   |
-| 已跳过此版本                | Toast        | 无需决策                   |
-| 网络失败可重试              | Toast 带操作 | 不阻断，可忽略             |
-| 勾选同步状态                | 原地指示     | 持续过程，绑定于页面       |
-| 清单下载进度                | 原地指示     | 时长不确定，需与位置绑定   |
-| 三源查找进展                | 原地指示     | 同上                       |
-| 发现新版本                  | 顶部横幅     | 不紧急，不应拦路           |
+| 替换清单的差异对照          | 模态弹窗     | 需对比两组信息后决策          |
+| 彻底卸载游戏                | 模态弹窗     | 破坏性                        |
+| 清空历史记录                | 模态弹窗     | 破坏性                        |
+| 部署成功 / 检测完成         | Toast        | 无需决策                      |
+| 已跳过此版本                | Toast        | 无需决策                      |
+| 网络失败可重试              | Toast 带操作 | 不阻断，可忽略                |
+| 勾选同步状态                | 原地指示     | 持续过程，绑定于页面          |
+| 清单下载进度                | 原地指示     | 时长不确定，需与位置绑定      |
+| 三源查找进展                | 原地指示     | 同上                          |
+| 发现新版本                  | 顶部横幅     | 不紧急，不应拦路              |
 
 原地指示与顶部横幅是使用频次最高的两类。下载进度若用 Toast，用户切换页面后即
 失去进展感知；置于游戏页则返回时仍可见。
@@ -1078,12 +1085,12 @@ frontend/src/
 
 ```ts
 const routes = [
-  { path: '/',            component: SearchView   },
-  { path: '/game/:appID', component: GameView     },
-  { path: '/library',     component: LibraryView  },
-  { path: '/settings',    component: SettingsView },
-  { path: '/setup',       component: SetupView    },
-]
+  { path: "/", component: SearchView },
+  { path: "/game/:appID", component: GameView },
+  { path: "/library", component: LibraryView },
+  { path: "/settings", component: SettingsView },
+  { path: "/setup", component: SetupView },
+];
 ```
 
 - **使用 `createWebHashHistory`**。Wails 经自定义协议提供页面，history 模式在
@@ -1094,11 +1101,11 @@ const routes = [
 
 游戏页实际有三种状态，第三种是留存缺失时的降级：
 
-| 状态 | 条件                       | 呈现                                 |
-| :--- | :------------------------- | :----------------------------------- |
-| A    | 未入库                     | 详情 + 三源查找进展 + 入库按钮       |
-| B    | 已入库且有留存清单         | DLC 勾选列表，勾选即生效             |
-| C    | 已入库但留存缺失或损坏     | 仅提供重新获取与彻底卸载             |
+| 状态 | 条件                   | 呈现                           |
+| :--- | :--------------------- | :----------------------------- |
+| A    | 未入库                 | 详情 + 三源查找进展 + 入库按钮 |
+| B    | 已入库且有留存清单     | DLC 勾选列表，勾选即生效       |
+| C    | 已入库但留存缺失或损坏 | 仅提供重新获取与彻底卸载       |
 
 状态 C 只在留存文件被手动删除、内容损坏，或游戏是在留存功能上线前入库时出现。
 此时**不伪造一份不完整的勾选列表**——本工具无从得知可选项全貌，让用户误以为
@@ -1108,12 +1115,12 @@ const routes = [
 
 按「谁需要读它」划分，而非按数据类型：
 
-| Store            | 内容                                             | 为何全局                   |
-| :--------------- | :----------------------------------------------- | :------------------------- |
-| `useEnvStore`    | Steam 路径、检测结果、写入目录、Steam 是否运行   | 标题栏与部署链路均需读取   |
-| `useConfigStore` | `config.json` 镜像                               | 主题与壁纸影响全局样式     |
-| `useLibraryStore`| 已安装记录（history 与 `ScanDeployed` 合并结果） | 搜索卡片的「已入库」标记需读 |
-| `useUiStore`     | Toast 队列、弹窗队列、顶部横幅                   | 任意位置均可触发           |
+| Store             | 内容                                             | 为何全局                     |
+| :---------------- | :----------------------------------------------- | :--------------------------- |
+| `useEnvStore`     | Steam 路径、检测结果、写入目录、Steam 是否运行   | 标题栏与部署链路均需读取     |
+| `useConfigStore`  | `config.json` 镜像                               | 主题与壁纸影响全局样式       |
+| `useLibraryStore` | 已安装记录（history 与 `ScanDeployed` 合并结果） | 搜索卡片的「已入库」标记需读 |
+| `useUiStore`      | Toast 队列、弹窗队列、顶部横幅                   | 任意位置均可触发             |
 
 **不进 store 的两类状态**：
 
@@ -1136,8 +1143,8 @@ const routes = [
 // await 之后或 watch 回调里，此时 onUnmounted 注册不到当前组件实例，待落盘的
 // 改动会静默丢失。
 export function useDlcSelection(pkgRef: Ref<GamePackage | null>) {
-  const selected = ref(new Set<string>())
-  const syncState = ref<'idle' | 'pending' | 'syncing' | 'done'>('idle')
+  const selected = ref(new Set<string>());
+  const syncState = ref<"idle" | "pending" | "syncing" | "done">("idle");
   // ...
 }
 ```
@@ -1146,11 +1153,11 @@ export function useDlcSelection(pkgRef: Ref<GamePackage | null>) {
 
 三条易被忽略的实现约束：
 
-| 约束                                     | 违反后果                                     |
-| :--------------------------------------- | :------------------------------------------- |
-| `restore` 还原勾选**不得**触发落盘        | 打开一次页面即白部署一次，获取时间被刷成今天 |
-| 重置勾选的 `watch` 须用 `flush: 'sync'`   | 赋值 pkg 后紧接 `selectAll()` 会落盘空列表   |
-| `selectNone` 须与 `toggle` 同等确认       | 一次点击取消全部带独立 Depot 的 DLC          |
+| 约束                                    | 违反后果                                     |
+| :-------------------------------------- | :------------------------------------------- |
+| `restore` 还原勾选**不得**触发落盘      | 打开一次页面即白部署一次，获取时间被刷成今天 |
+| 重置勾选的 `watch` 须用 `flush: 'sync'` | 赋值 pkg 后紧接 `selectAll()` 会落盘空列表   |
+| `selectNone` 须与 `toggle` 同等确认     | 一次点击取消全部带独立 Depot 的 DLC          |
 
 第二条的成因是 `watch` 默认的 `pre` 时机为异步：回调会晚于同步调用的
 `selectAll` 执行，把刚选好的集合清空，800ms 后落盘一个空列表——等于什么都没装。
@@ -1162,7 +1169,7 @@ export function useDlcSelection(pkgRef: Ref<GamePackage | null>) {
 //
 // 以 Promise 形式呈现确认弹窗，使调用方能按线性顺序书写决策逻辑，避免回调嵌套。
 // 用户按 Esc 或点击遮罩均解析为 false。
-export function useConfirm(): (opts: ConfirmOptions) => Promise<boolean>
+export function useConfirm(): (opts: ConfirmOptions) => Promise<boolean>;
 ```
 
 调用方因此得以保持可读：
@@ -1171,10 +1178,10 @@ export function useConfirm(): (opts: ConfirmOptions) => Promise<boolean>
 async function onToggle(dlc: DLCInfo) {
   // 取消勾选带独立 Depot 的 DLC 时 Steam 可能删除本地内容，须先取得确认
   if (isSelected(dlc) && dlc.manifestID && !skipWarnThisSession.value) {
-    const ok = await confirm({ /* ... */ danger: true })
-    if (!ok) return
+    const ok = await confirm({ /* ... */ danger: true });
+    if (!ok) return;
   }
-  toggle(dlc.appID)
+  toggle(dlc.appID);
 }
 ```
 
@@ -1203,8 +1210,8 @@ runtime.EventsEmit(ctx, "download:progress", map[string]any{
 //
 // 将 OperationResult 归一化为异常语义：业务失败与运行时异常在调用方视角下一致。
 async function unwrap(p: Promise<OperationResult>): Promise<void> {
-  const r = await p
-  if (!r.success) throw new ApiError(r.message)
+  const r = await p;
+  if (!r.success) throw new ApiError(r.message);
 }
 ```
 
@@ -1220,6 +1227,4 @@ v2.0 不提供自动迁移。用户需要：
 2. 删除 `<Steam>/config/stplug-in/` 目录
 3. 删除 `<Steam>/config/config.vdf`（Steam 会自动重新生成）
 4. 清空 `<Steam>/depotcache/` 中的旧 manifest
-5. 按照新教程安装 OpenSteamTool + kazeusa v2.0
-<Steam>/depotcache/` 中的旧 manifest
 5. 按照新教程安装 OpenSteamTool + kazeusa v2.0
