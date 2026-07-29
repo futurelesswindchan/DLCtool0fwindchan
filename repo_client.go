@@ -62,12 +62,26 @@ const (
 	// appIDPlaceholder 是 KindZipTemplate 形态的 URL 中被替换的占位符。
 	appIDPlaceholder = "{app_id}"
 
+	// maxProbeConcurrency 是收录检测的并发上限。
+	//
+	// 源数量增至七个后，无限制并发会同时向 codeload 发六个请求。同一 IP 的
+	// 突发请求可能触发限流，而被限流的响应（429/403）在检测阶段会被判为
+	// probeUnknown，使该源白走一遍下载阶段的镜像链——比串行更慢。
+	//
+	// 取 4 是在「检测总耗时」与「限流风险」之间的折中：七个源分两批完成，
+	// 最坏情形为两倍单次超时，仍在用户可接受的等待范围内。
+	maxProbeConcurrency = 4
+
 	// lookupTimeout 是单次收录检测（HEAD 请求）的超时上限。
 	//
-	// 比下载超时短得多：HEAD 只取响应头，正常应在 1~3 秒内完成。
-	// 三个源并发检测，取短超时可让「全都没收录」这个结论尽快给出，
-	// 用户不必对着转圈等三十秒才知道要改用本地导入。
-	lookupTimeout = 8 * time.Second
+	// 比下载超时短：HEAD 只取响应头，网络通畅时 1~3 秒即可完成。
+	// 各源并发检测，故此值即整个检测阶段的耗时上限。
+	//
+	// 取 15 秒而非更短：大陆直连 codeload 的握慢手是常态（实测 git ls-remote
+	// 曾耗 21 秒才报连接失败）。过短的超时会把「网络慢」变成「探测不明」，
+	// 虽有 narrowToHits 保留候选资格兜底，但每个未探明的源都要在下载阶段
+	// 白走一遍四级镜像链，反而更慢。
+	lookupTimeout = 15 * time.Second
 
 	// fetchTimeout 是单次清单包下载的超时上限。
 	//
@@ -114,15 +128,52 @@ var downloadMirrors = []string{
 func defaultRepoSources() []RepoSource {
 	return []RepoSource{
 		{Name: msiteSourceName, Kind: KindAPIZip, Repo: msiteBaseURL, Enabled: true},
-		// XXX: ManifestHub 目前已被清空，`git ls-remote --heads` 只返回 main
+
+		// 以下为免凭据的 GitHub 分支型源，按「单游戏数据完整度」而非
+		// 「分支总数」排序。
+		//
+		// 这个取舍来自实测对照（样本 ARK 2399830）：
+		//
+		//	Hubcap          19 个 DLC / 13 个 setManifestid
+		//	MAU              4 个 DLC /  1 个 setManifestid
+		//	ManifestHub 快照  1 个 DLC /  3 个 setManifestid
+		//
+		// 快照源虽有 6.2 万分支（收录广度是 MAU 的 15 倍），但单个游戏的
+		// DLC 覆盖反而更少。广度决定「找不找得到」，完整度决定「找到了够不够
+		// 用」，后者对已经找到清单的用户更重要，故 MAU 系仍居前。
+		{Name: "MAU", Kind: KindGitHubBranch, Repo: "Auiowu/ManifestAutoUpdate", Enabled: true},
+		{Name: "MAU 镜像", Kind: KindGitHubBranch, Repo: "Satisl/MAU", Enabled: true},
+
+		// MAU 形态的活跃 fork，作可用性冗余。
+		//
+		// 三者与 MAU 同为 Key.vdf + .manifest 结构，解析器按扩展名与内容
+		// 结构匹配而不认文件名，故无需任何解析改动即可接入。
+		//
+		// 分支数经 git ls-remote 实测（2026-07-29）：bingyu50 13131、
+		// hansaes 6336、tymolu233 3140。均超过 MAU 本体的 2591——MAU 本体
+		// 自 2026-02 起停更，这些 fork 承接了更新。
+		{Name: "MAU fork · bingyu50", Kind: KindGitHubBranch, Repo: "bingyu50/ManifestAutoUpdate", Enabled: true},
+		{Name: "MAU fork · hansaes", Kind: KindGitHubBranch, Repo: "hansaes/ManifestAutoUpdate", Enabled: true},
+		{Name: "MAU fork · tymolu233", Kind: KindGitHubBranch, Repo: "tymolu233/ManifestAutoUpdate", Enabled: true},
+
+		// ManifestHub 被清空前的快照，lua 形态。
+		//
+		// 6.2 万分支，收录广度最大，用于兜住前面各源都没有的冷门游戏。
+		// 置于末位有两个原因：数据停在 2025-07（清单版本偏旧），且单游戏
+		// 的 DLC 覆盖不如 MAU 系。
+		//
+		// 其 lua 有两处与 Hubcap 格式的差异，均已在解析层处理：
+		// setManifestid 只有两个参数（无 fileSize）、主游戏的 addappid
+		// 不带密钥。
+		{Name: "ManifestHub 快照", Kind: KindGitHubBranch, Repo: "SSMGAlt/ManifestHub2", Enabled: true},
+
+		// XXX: ManifestHub 本体已被清空，`git ls-remote --heads` 只返回 main
 		// 一个分支，所有 AppID 分支均返回 404。故默认停用，不让它参与工作——
 		// 启用只会让每次查找都多等一个必然失败的探测。
 		//
 		// 保留条目而非删除：该仓库本体仍存在，将来若恢复分支只需把 Enabled
 		// 改回 true。删掉了反而要重新考证一遍仓库地址与形态。
 		{Name: "ManifestHub", Kind: KindGitHubBranch, Repo: "SteamAutoCracks/ManifestHub", Enabled: false},
-		{Name: "MAU", Kind: KindGitHubBranch, Repo: "Auiowu/ManifestAutoUpdate", Enabled: true},
-		{Name: "MAU 镜像", Kind: KindGitHubBranch, Repo: "Satisl/MAU", Enabled: true},
 	}
 }
 
@@ -201,92 +252,150 @@ func (r *RepoClient) enabledSources() []RepoSource {
 // Lookup 并发询问所有启用的源，返回收录了该 AppID 的源名称。
 //
 // 用 HEAD 请求探测下载地址是否存在，不消耗 GitHub API 配额。
-// 三个源并发执行，总耗时取决于最慢的那个而非三者之和。
+// 所有源并发执行，总耗时取决于最慢的那个而非各源之和。
 //
 // 参数：
 //   - appID: 游戏的 Steam AppID，纯数字字符串
 //
 // 返回值：
-//   - []string: 收录该 AppID 的源名称，按 defaultRepoSources 的顺序排列。
-//     全部未收录时为空切片而非 nil
+//   - []string: 收录该 AppID 的源名称，按配置顺序排列。全部未收录时为空切片而非 nil
 //   - error: 仅在 appID 格式非法时返回。单个源探测失败不视为错误——
 //     那与「该源未收录」对用户而言是同一件事，都只能换源
+//
+// NOTE: 本方法只报告「确定收录」的源，探测未得出结论者不计入。故其返回值
+// 适合展示给用户，但不适合用来排除下载候选——那需要区分「确定未收录」与
+// 「没探明白」，见 narrowToHits。
 //
 // 用法示例：
 //
 //	names, _ := rc.Lookup("1364780")
 //	if len(names) == 0 {
-//	    // 三源均未收录，引导用户改用本地导入
+//	    // 无源确认收录，引导用户改用本地导入
 //	}
 func (r *RepoClient) Lookup(appID string) ([]string, error) {
+	sources, results, err := r.probeAll(appID)
+	if err != nil {
+		return []string{}, err
+	}
+
+	names := make([]string, 0, len(sources))
+	for i, res := range results {
+		if res == probeHit {
+			names = append(names, sources[i].Name)
+		}
+	}
+
+	r.log("AppID %s 收录检测完成：%d/%d 个源确认收录 %v", appID, len(names), len(sources), names)
+	return names, nil
+}
+
+// probeAll 并发探测所有启用的源，返回源列表与与之下标对应的探测结果。
+//
+// 两个返回切片长度相同且下标一一对应。按下标写入固定长度的切片而非在
+// goroutine 中 append，以保证结果顺序与源的配置顺序一致——用户每次看到的
+// 排列都相同。
+func (r *RepoClient) probeAll(appID string) ([]RepoSource, []probeResult, error) {
 	appID = strings.TrimSpace(appID)
 	if !isNumeric(appID) {
-		return []string{}, fmt.Errorf("AppID 必须为纯数字: %q", appID)
+		return nil, nil, fmt.Errorf("AppID 必须为纯数字: %q", appID)
 	}
 
 	sources := r.enabledSources()
-	// 按下标写入固定长度的切片，而非在 goroutine 中 append——
-	// 这样结果顺序与源的配置顺序一致，用户每次看到的排列都相同。
-	hits := make([]bool, len(sources))
+	results := make([]probeResult, len(sources))
+
+	// 以带缓冲的 channel 作信号量限制并发，避免同时向 codeload 发起
+	// 过多请求而触发限流。
+	sem := make(chan struct{}, maxProbeConcurrency)
 
 	var wg sync.WaitGroup
 	for i, src := range sources {
 		wg.Add(1)
 		go func(idx int, s RepoSource) {
 			defer wg.Done()
-			hits[idx] = r.probe(s, appID)
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			results[idx] = r.probe(s, appID)
 		}(i, src)
 	}
 	wg.Wait()
 
-	names := make([]string, 0, len(sources))
-	for i, ok := range hits {
-		if ok {
-			names = append(names, sources[i].Name)
-		}
-	}
-
-	r.log("AppID %s 收录检测完成：%d/%d 个源命中 %v", appID, len(names), len(sources), names)
-	return names, nil
+	return sources, results, nil
 }
+
+// probeResult 是单次收录检测的三态结果。
+//
+// 之所以需要三态而非布尔值：「确定未收录」与「探测不成功」对下载阶段的
+// 含义完全不同。前者可安全跳过该源，后者必须保留候选资格——大陆直连
+// codeload 超时是常态（实测 git ls-remote 曾耗 21 秒仍失败，而同一时刻
+// raw.githubusercontent 可正常访问），若把超时当作未收录，用户会在明明
+// 有清单的情况下被引向本地导入这条更麻烦的路。
+type probeResult int
+
+const (
+	// probeMiss 表示服务端明确回应了「无此资源」，可信地排除该源。
+	probeMiss probeResult = iota
+
+	// probeHit 表示确认收录。
+	probeHit
+
+	// probeUnknown 表示探测未得出结论（超时、连接重置、DNS 失败等）。
+	// 该源保留候选资格，交由下载阶段的镜像链重试。
+	probeUnknown
+)
 
 // probe 检测单个源是否收录指定 AppID。
 //
 // 只试直连地址，不走镜像链：镜像的作用是提升下载成功率，而检测阶段
 // 若因代理故障误报未收录，用户会被引向本地导入这条更麻烦的路。
-// 直连 HEAD 失败时宁可返回 false 并在下载阶段由镜像链兜底重试。
-func (r *RepoClient) probe(src RepoSource, appID string) bool {
+// 直连不通时返回 probeUnknown，由下载阶段的镜像链兜底。
+func (r *RepoClient) probe(src RepoSource, appID string) probeResult {
 	// 认证型源有专用的免额度检测端点，比 HEAD 可靠：它明确区分
 	// 「未收录」与「已知但尚未生成清单」，还附带清单年龄。
 	if src.Kind == KindAPIZip {
 		status, err := r.msiteStatus(src, appID)
 		if err != nil {
+			// 认证型源的专用端点能明确区分「未收录」与其他故障，
+			// 故此处的错误一律视为未得出结论而非未收录。
+			// 凭据失效、额度耗尽都属此类——它们与该游戏有无清单无关。
 			r.log("源 %s 检测 AppID %s: %v", src.Name, appID, err)
-			return false
+			return probeUnknown
 		}
 		r.log("源 %s 收录 %s（%s），清单 %.1f 天前生成",
 			src.Name, appID, status.GameName, status.FileAgeDays)
-		return true
+		return probeHit
 	}
 
 	rawURL := sourceDownloadURL(src, appID)
 	if rawURL == "" {
-		return false
+		return probeMiss
 	}
 
 	req, err := http.NewRequest(http.MethodHead, rawURL, nil)
 	if err != nil {
-		return false
+		return probeMiss
 	}
 
 	resp, err := r.lookupHTTP.Do(req)
 	if err != nil {
-		r.log("源 %s 探测 AppID %s 失败: %v", src.Name, appID, err)
-		return false
+		// 传输层失败（超时、连接重置、DNS）无从判断资源是否存在。
+		r.log("源 %s 探测 AppID %s 未得出结论: %v", src.Name, appID, err)
+		return probeUnknown
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	return resp.StatusCode == http.StatusOK
+	switch {
+	case resp.StatusCode == http.StatusOK:
+		return probeHit
+	case resp.StatusCode == http.StatusNotFound:
+		// 唯一可信的「未收录」信号：服务端明确回应了无此分支。
+		return probeMiss
+	default:
+		// 5xx、429、403 等均属服务端或中间设备的临时状态，
+		// 与该 AppID 有无清单无关。
+		r.log("源 %s 探测 AppID %s 返回状态码 %d，不作未收录处理",
+			src.Name, appID, resp.StatusCode)
+		return probeUnknown
+	}
 }
 
 // sourceDownloadURL 依据源的形态拼出清单包的直连下载地址。
@@ -400,23 +509,58 @@ func (r *RepoClient) Fetch(appID string, sourceName string) (string, string, err
 
 // narrowToHits 依据收录检测结果缩小候选源范围。
 //
-// 检测结果为空时原样返回全部候选，而非返回空列表直接判定失败：
-// HEAD 请求可能因网络抖动或代理拦截而全部失败，此时仍应让下载链路
-// 试一遍——检测只是优化手段，不该拥有否决下载的权力。
+// 只排除**确定未收录**（服务端明确回应 404）的源；探测未得出结论者予以保留。
+// 这个区分是必要的：大陆直连 codeload 超时是常态，若把超时当作未收录，
+// 会出现「明明有清单却提示需要本地导入」——而下载阶段的镜像链本可救回。
+//
+// 排除后的候选保持原有顺序，确认收录的源不因排序而提前。故最终尝试顺序
+// 仍是配置顺序，与用户在设置页看到的一致。
+//
+// 全部候选都被排除时原样返回全部候选：检测只是优化手段，不该拥有否决
+// 下载的权力。
 func (r *RepoClient) narrowToHits(candidates []RepoSource, appID string) []RepoSource {
-	names, err := r.Lookup(appID)
-	if err != nil || len(names) == 0 {
+	probed, results, err := r.probeAll(appID)
+	if err != nil {
 		return candidates
 	}
 
-	hit := make(map[string]bool, len(names))
-	for _, n := range names {
-		hit[n] = true
+	narrowed := narrowByProbeResults(candidates, probed, results)
+	if len(narrowed) < len(candidates) {
+		r.log("AppID %s 排除 %d 个明确未收录的源，保留 %d 个候选",
+			appID, len(candidates)-len(narrowed), len(narrowed))
+	}
+	return narrowed
+}
+
+// narrowByProbeResults 依据探测结果从候选中排除确定未收录的源。
+//
+// 从 narrowToHits 中抽出的纯逻辑部分，不涉及网络，便于测试覆盖。
+//
+// 参数：
+//   - candidates: 待筛选的候选源
+//   - probed:     被探测的源列表，与 results 下标一一对应
+//   - results:    探测结果，长度须与 probed 相同
+//
+// 返回值：
+//   - []RepoSource: 保留下来的候选，维持 candidates 的原有顺序。
+//     无源可排除、或排除后为空时，原样返回 candidates
+func narrowByProbeResults(candidates []RepoSource, probed []RepoSource, results []probeResult) []RepoSource {
+	missed := make(map[string]bool, len(probed))
+	for i, res := range results {
+		if i >= len(probed) {
+			break
+		}
+		if res == probeMiss {
+			missed[probed[i].Name] = true
+		}
+	}
+	if len(missed) == 0 {
+		return candidates
 	}
 
-	narrowed := make([]RepoSource, 0, len(names))
+	narrowed := make([]RepoSource, 0, len(candidates))
 	for _, src := range candidates {
-		if hit[src.Name] {
+		if !missed[src.Name] {
 			narrowed = append(narrowed, src)
 		}
 	}
