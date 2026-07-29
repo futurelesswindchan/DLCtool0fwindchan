@@ -422,12 +422,22 @@ func (a *App) parseLuaFile(luaPath string) (*GamePackage, error) {
 	}))
 
 	// 注册 setManifestid 回调
-	// 调用形式：setManifestid(depotID, "manifestID", fileSize)
+	// 支持两种调用形式：
+	//   setManifestid(depotID, "manifestID", fileSize)  ← Hubcap 等完整源
+	//   setManifestid(depotID, "manifestID")            ← GitHub 快照源（无 fileSize）
+	//
+	// 第三参数缺失时 fileSize 记 0。部署器照常输出三参数形式（第三位为 0），
+	// OST 不依赖该值——它只用 GID 去上游换取 manifest request code。
+	// 界面亦不将 fileSize 当下载体积展示（见 DECISIONS.md）。
 	L.SetGlobal("setManifestid", L.NewFunction(func(L *lua.LState) int {
 		depotID := L.CheckNumber(1)
 		depotIDStr := strconv.FormatInt(int64(depotID), 10)
 		manifestID := L.CheckString(2)
-		fileSize := int64(L.CheckNumber(3))
+
+		var fileSize int64
+		if L.GetTop() >= 3 {
+			fileSize = int64(L.CheckNumber(3))
+		}
 
 		collector.SetManifest(depotIDStr, manifestID, fileSize)
 		return 0
