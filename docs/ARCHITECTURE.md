@@ -698,10 +698,16 @@ go build -ldflags "-X main.appVersion=2.0.1"
 | `GetMSiteStats`      | `() → (MSiteStats, error)`                   | 额度与到期日，未配置凭据时返回 nil  |
 | `GetPackage`         | `(mainAppID) → (StoredPackage, error)`       | 读 `packages/`，无留存时返回 nil    |
 | `ScanDeployed`       | `() → []DeployedEntry`                       | 扫 `config/lua/` 对账，按内容匹配   |
-| `CheckUpdate`        | `() → UpdateInfo`                            | **未实现**，302 探测                |
-| `SkipVersion`        | `(version) → OperationResult`                | **未实现**，写 `skippedVersion`     |
-| `OpenURL`            | `(url) → OperationResult`                    | **未实现**，交外部浏览器打开        |
-| `GetAppVersion`      | `() → string`                                | **未实现**，返回编译期注入值        |
+| `CheckUpdate`        | `() → (UpdateInfo, error)`                   | 查 GitHub 最新 Release 并比对版本   |
+| `OpenURL`            | `(url) → OperationResult`                    | 交外部浏览器打开，仅放行 http(s)    |
+| `GetAppVersion`      | `() → string`                                | 编译期注入值，未注入时返回 `dev`    |
+| `GetReleasePageURL`  | `() → string`                                | 发布页地址，检查失败时的兜底跳转    |
+
+上述四个方法位于 `app_meta.go`，与 DLC 清单管理无关，故不入 `app.go`。
+
+原设计的 `SkipVersion`（写 `skippedVersion` 以忽略某版本）**已取消**。它的前提是
+启动时自动弹出更新提示，而现行设计中检查更新只由用户在设置页主动点击——没有
+自动弹窗，也就没有需要「跳过」的东西。
 
 原设计的 `FetchRepoList`（列出仓库全部收录）已移除，理由见 DECISIONS.md：
 `ManifestHub` 有数万个分支，完整列表对用户无使用价值，搜索是唯一合理入口。
@@ -861,9 +867,16 @@ frameless 的已知代价，实现时需留意：
 | `no-drag` 遗漏     | 按钮点击会被识别为拖拽起始而失灵，最常见的翻车点 |
 | 双击标题栏最大化   | 系统行为丧失，需自行绑定 `dblclick`              |
 | Win11 Snap Layouts | 悬停最大化按钮的分屏浮层不可用，属原生标题栏特权 |
-| 边缘缩放热区       | 边框变窄，前端元素勿占据边缘，留 4~6px 空隙      |
+| 边缘缩放热区       | 系统提供，位于客户区之外，前端元素挡不住它        |
 
-拖到屏幕边缘的 Aero Snap 在当前 Wails 版本下是否保留**尚未验证**。
+**Aero Snap 保留**（已查证 Wails v2.11 源码）。其 `startDrag()` 为
+`ReleaseCapture()` + `PostMessage(WM_NCLBUTTONDOWN, HTCAPTION)`，把拖动过程整个
+交还系统的标题栏循环，Snap 正由该循环处理。边缘缩放同理——`WM_NCCALCSIZE` 返回 0
+只隐去标题栏，`WS_THICKFRAME` 仍在。
+
+最大化状态须以 `resize` 事件同步而非点击时翻转本地值：Aero Snap 与 `Win+↑`
+同样改变窗口状态却不产生点击事件。同步调用需防抖，`WindowIsMaximised` 是跨边界
+异步调用，缩放期间不防抖会打出上百次 IPC。
 
 ### 页面结构
 
@@ -1125,6 +1138,7 @@ frontend/src/
 ├── api/index.ts           24 个方法，含 unwrap 与 ApiError
 ├── stores/                env / config / library / ui
 ├── composables/           useToast / useConfirm / useDlcSelection
+│                          useWindowControls（frameless 窗口控制与状态）
 ├── components/            TopBar / GameCard / DlcList / ConfirmDialog
 │                          ToastHost / EnvBanner / DropZone
 └── views/                 Search / Game / Library / Settings / Setup
@@ -1133,8 +1147,9 @@ frontend/src/
 样式采用纯 CSS 变量，不引入原子类框架；组件全部手写，不引入 UI 组件库——
 全站只需按钮 / 复选框 / 卡片 / 弹窗 / Toast 五种，引库反而要与其主题系统打架。
 
-`Frameless` **尚未启用**。Aero Snap 保留情况未经实机验证，且 `no-drag` 遗漏是
-已知的高频翻车点，故留待正式上线前单独评估与实现，以便翻车时干净回退。
+`Frameless` **已启用**（2026-07-30）。标题栏由 `TopBar.vue` 自绘，窗口控制与最大化
+状态由 `composables/useWindowControls.ts` 承担。Aero Snap 经 Wails v2.11 源码确认
+可继承系统实现，详见 DECISIONS-2。
 
 ### 路由
 
