@@ -6,14 +6,64 @@
 
 ---
 
-## 当前阶段：清单源接入完工，待 UI 打磨（分支 `feat/ui-v2`）
+## 当前阶段：窗口形态与元信息方法完工，待视觉打磨（分支 `feat/ui-v2`）
 
-距 v2.0.0 只剩两件事，其中第二件很小，可随第一件顺手完成：
+距 v2.0.0 只剩视觉细化一件事：
 
-| #   | 事项                                            | 性质     |
-| :-- | :---------------------------------------------- | :------- |
-| 1   | 正式 UI 设计与打磨（含 `Frameless` 与实机验证） | 最大块   |
-| 2   | 补 `CheckUpdate` / `OpenURL` / `GetAppVersion`  | 半天以内 |
+| #   | 事项                                     | 性质   |
+| :-- | :--------------------------------------- | :----- |
+| 1   | 前端视觉细化（配色、间距、动效、空状态） | 最大块 |
+
+### ✅ Frameless 启用与三个元信息方法（2026-07-30）
+
+两件卡在 v2.0.0 门口的事一并做完。测试新增 `app_meta_test.go`（3 个测试函数、
+含 12 个子用例），全量 `go test -v` 现有 **70 条 PASS**（含父项；叶子用例 58 个）。
+
+> 口径说明：此前文档记的「35 / 50 个用例」未注明统计方式，与本次的
+> 「PASS 行数」不可直接相减。今后统一记 `go test -count=1 -v .` 的 PASS 行数，
+> 便于复核。
+
+**Frameless 启用**。此前一直推迟，卡在「Aero Snap 是否保留」这一未验证的疑问上。
+本轮直接读 Wails v2.11 源码定论——`startDrag()` 实现为
+`ReleaseCapture()` + `PostMessage(WM_NCLBUTTONDOWN, HTCAPTION)`，即把拖动过程
+整个交还系统的标题栏循环，**Aero Snap 与边缘缩放均零成本继承**。
+Snap Layouts 确认不可用（需 `WM_NCHITTEST` 返回 `HTMAXBUTTON`，自绘按钮在
+WebView 客户区内触达不到），接受。
+
+落地三处：`main.go` / `wails.json` 开 `Frameless`、`TopBar.vue` 自绘标题栏与窗口
+控制、新增 `composables/useWindowControls.ts` 承担控制与状态。
+
+施工中处理的两个易漏点：
+
+- **最大化状态以 `resize` 事件同步**，而非点击时翻转本地布尔值。Aero Snap 与
+  `Win+↑` 同样改变窗口状态却不产生点击事件，只翻本地值必然与真实形态错位。
+  同步调用加 120ms 防抖——`WindowIsMaximised` 是跨边界异步调用，缩放期间不防抖
+  会打出上百次 IPC
+- **`no-drag` 用宽泛选择器兜住**（`.topbar button, a, input, select`）而非逐个类名
+  列举。按钮点击被识别为拖拽起始是 frameless 最高频的翻车点，宽泛选择器使日后
+  新增控件默认即被覆盖，不依赖施工者记得补规则
+
+**三个元信息方法**（新增 `app_meta.go`，不入已逾 1170 行的 `app.go`）：
+
+| 方法 | 要点 |
+| :--- | :--- |
+| `GetAppVersion` | 经 `-ldflags -X main.appVersion=` 注入，默认 `dev` |
+| `OpenURL` | **仅放行 http 与 https** |
+| `CheckUpdate` | 查 `/releases/latest`，返回 `error` 而非 `OperationResult` |
+| `GetReleasePageURL` | 发布页地址，检查失败时的兜底跳转 |
+
+`OpenURL` 的 scheme 限制不是过度防御：`BrowserOpenURL` 在 Windows 上最终交给
+`ShellExecute`，会执行 `file:` 指向的程序、按注册表处理任意自定义协议。当前前端
+只传常量链接，但这个方法一旦存在便是通用出口。
+
+`CheckUpdate` 失败按「暂时查不到」就地提示而非弹错——国内访问 `api.github.com`
+经常直接超时，这是常态而非故障，弹错会让用户误以为工具坏了。
+
+原设计的 `SkipVersion` **取消**：其前提是启动时自动弹更新提示，而现行设计中检查
+更新只由用户主动点击，没有需要跳过的东西。
+
+**待实机验证**：frameless 下的拖动、Aero Snap、边缘缩放、双击最大化四项行为，
+以及三个方法的真实网络路径。
 
 ### ✅ 清单源扩容与探测策略修正（2026-07-30）
 
