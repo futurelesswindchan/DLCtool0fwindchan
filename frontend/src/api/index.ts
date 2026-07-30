@@ -29,6 +29,7 @@ export type GameSearchResult = main.GameSearchResult
 export type GameDetail = main.GameDetail
 export type MSiteStats = main.MSiteStats
 export type StoredPackage = main.StoredPackage
+export type UpdateInfo = main.UpdateInfo
 
 /**
  * 后端业务失败所抛出的异常。
@@ -196,3 +197,24 @@ export const openDataDir = (): Promise<string> => unwrap(App.OpenDataDir())
 
 /** 返回当前日志文件路径。 */
 export const getLogPath = (): Promise<string> => App.GetLogPath()
+
+/* ─── 应用自身 ─── */
+
+/** 返回当前构建的版本号。未经 ldflags 注入的本地构建返回 `dev`。 */
+export const getAppVersion = (): Promise<string> => App.GetAppVersion()
+
+/** 返回项目发布页地址，供检查更新失败时的手动跳转。 */
+export const getReleasePageURL = (): Promise<string> => App.GetReleasePageURL()
+
+/** 在系统默认浏览器中打开链接。后端只放行 http 与 https。 */
+export const openURL = (url: string): Promise<string> =>
+  unwrap(App.OpenURL(url))
+
+/**
+ * 查询最新版本并与当前版本比对。
+ *
+ * NOTE: 后端在此处返回 error 而非 OperationResult，故调用方需自行 catch。
+ * 检查更新失败是常态（国内访问 api.github.com 常直接超时），应按「暂时
+ * 查不到」呈现，配合 getReleasePageURL 引导手动查看，而非报为操作失败。
+ */
+export const checkUpdate = (): Promise<UpdateInfo> => App.CheckUpdate()

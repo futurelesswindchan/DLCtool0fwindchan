@@ -331,6 +331,30 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class UpdateInfo {
+	    hasUpdate: boolean;
+	    currentVersion: string;
+	    latestVersion: string;
+	    releaseName: string;
+	    releaseNotes: string;
+	    releaseURL: string;
+	    publishedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new UpdateInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.hasUpdate = source["hasUpdate"];
+	        this.currentVersion = source["currentVersion"];
+	        this.latestVersion = source["latestVersion"];
+	        this.releaseName = source["releaseName"];
+	        this.releaseNotes = source["releaseNotes"];
+	        this.releaseURL = source["releaseURL"];
+	        this.publishedAt = source["publishedAt"];
+	    }
+	}
 
 }
 

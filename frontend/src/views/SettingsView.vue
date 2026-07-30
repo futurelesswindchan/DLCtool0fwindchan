@@ -4,9 +4,8 @@
  *
  * 四区：环境、清单源、外观、关于。
  *
- * NOTE: 后端的 CheckUpdate / OpenURL / GetAppVersion 尚未实现，因此本页
- * 暂不提供「检查更新」与外链按钮，版本号取自前端构建常量。
- * TODO(后端): 上述三个方法实现后，在「关于」区补上对应入口。
+ * 版本号取自后端的编译期注入值（GetAppVersion），不在前端硬编码——
+ * 两处各存一份必然出现偏差，而排障时版本号错了会把方向带偏。
  */
 
 import { ref, onMounted } from 'vue'
@@ -21,7 +20,12 @@ import {
   setRepoToken,
   getMSiteStats,
   clearHistory,
+  getAppVersion,
+  getReleasePageURL,
+  checkUpdate,
+  openURL,
   type MSiteStats,
+  type UpdateInfo,
 } from '../api'
 import EnvBanner from '../components/EnvBanner.vue'
 
@@ -35,11 +39,20 @@ const msite = ref<MSiteStats | null>(null)
 const tokenInput = ref('')
 const savingToken = ref(false)
 
+const version = ref('')
+const releasePage = ref('')
+const update = ref<UpdateInfo | null>(null)
+const checking = ref(false)
+/** 检查更新的失败原因。与 update 互斥，仅用于在按钮下方就地提示。 */
+const updateError = ref('')
+
 /** 认证型源的名称。与后端内置源配置保持一致。 */
 const M_SITE = 'Hubcap Manifest'
 
 onMounted(async () => {
   logPath.value = await getLogPath()
+  version.value = await getAppVersion()
+  releasePage.value = await getReleasePageURL()
   await refreshMSite()
 })
 
@@ -146,6 +159,38 @@ async function onClearHistory() {
     toast.success(await clearHistory())
   } catch (e) {
     toast.fromError(e, '清空记录失败')
+  }
+}
+
+/* ─── 版本与更新 ─── */
+
+/**
+ * 检查更新。
+ *
+ * 失败不弹 Toast 而是就地显示：国内访问 api.github.com 经常直接超时，
+ * 这是预期内的常态而非操作失败，弹错会让用户误以为工具坏了。就地提示
+ * 配合下方常驻的发布页链接，用户自己就能完成后续动作。
+ */
+async function onCheckUpdate() {
+  checking.value = true
+  update.value = null
+  updateError.value = ''
+
+  try {
+    update.value = await checkUpdate()
+  } catch (e) {
+    updateError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    checking.value = false
+  }
+}
+
+/** 打开外链。后端只放行 http 与 https，此处只需处理失败提示。 */
+async function onOpenURL(url: string) {
+  try {
+    await openURL(url)
+  } catch (e) {
+    toast.fromError(e, '打开链接失败')
   }
 }
 
@@ -279,6 +324,39 @@ function kindLabel(kind: string): string {
     <section class="block">
       <h2 class="block__title">关于</h2>
       <dl class="kv">
+        <dt>版本</dt>
+        <dd>
+          <span class="kv__btns">
+            <code>{{ version || '—' }}</code>
+            <button class="btn" :disabled="checking" @click="onCheckUpdate">
+              {{ checking ? '检查中…' : '检查更新' }}
+            </button>
+          </span>
+
+          <p v-if="update?.hasUpdate" class="hint hint--accent">
+            有新版本 <strong>{{ update.latestVersion }}</strong>
+            <template v-if="update.publishedAt">（{{ update.publishedAt }}）</template>
+            ——
+            <button class="linkbtn" @click="onOpenURL(update.releaseURL)">
+              前往下载
+            </button>
+          </p>
+          <p v-else-if="update" class="hint">
+            已是最新版本（远端最新 {{ update.latestVersion }}）。
+          </p>
+          <p v-if="updateError" class="hint">
+            暂时查不到更新信息：{{ updateError }}。可
+            <button class="linkbtn" @click="onOpenURL(releasePage)">
+              手动前往发布页
+            </button>
+            查看。
+          </p>
+          <p class="hint">
+            发布顺序是蓝奏云先行、GitHub Release 收尾，所以这里一旦提示新版本，
+            安装包必然已经可以下载。
+          </p>
+        </dd>
+
         <dt>日志文件</dt>
         <dd><code>{{ logPath || '—' }}</code></dd>
         <dt>数据目录</dt>
@@ -328,6 +406,31 @@ function kindLabel(kind: string): string {
 
 .hint--dim {
   color: var(--color-text-dim);
+}
+
+/* 有新版本时的提示用强调色，是本区唯一需要用户注意的信息 */
+.hint--accent {
+  color: var(--color-accent);
+}
+
+/*
+  行内文字按钮。
+  不用 <a href> 是因为 WebView 里的真链接会把整个界面导航走，而 target
+  与 rel 组合在 WebView2 中行为并不一致。统一走后端的 OpenURL 更可控。
+*/
+.linkbtn {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.linkbtn:hover {
+  color: var(--color-accent);
 }
 
 .kv {
