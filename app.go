@@ -802,33 +802,6 @@ func mainAppIDFromFileName(fileName string) string {
 }
 
 // ============================================================
-// 诊断
-// ============================================================
-
-// GetLogPath 返回当前日志文件的完整路径。
-//
-// 供前端「打开日志」功能使用。日志系统降级运行时返回空字符串。
-func (a *App) GetLogPath() string {
-	return a.logger.Path()
-}
-
-// OpenDataDir 在系统文件管理器中打开本工具的数据目录。
-//
-// 用户报障时常被要求「把日志发过来」，直接提供一个按钮跳转到
-// 目录比让人手动输入 %USERPROFILE%\.kazeusa 友好得多。
-func (a *App) OpenDataDir() *OperationResult {
-	dir, err := appDataDir()
-	if err != nil {
-		return failure(fmt.Sprintf("数据目录不可用：%v", err))
-	}
-
-	// 用系统默认方式打开目录。Wails 的 BrowserOpenURL 对本地路径
-	// 同样有效，且省去手动拼 explorer 命令的平台差异处理。
-	runtime.BrowserOpenURL(a.ctx, dir)
-	return success("已打开数据目录")
-}
-
-// ============================================================
 // 在线商店元数据
 // ============================================================
 
