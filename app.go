@@ -54,6 +54,10 @@ type App struct {
 	store    *StoreClient
 	repo     *RepoClient
 	packages *PackageStore
+
+	// trials 缓存试下载的结果与产物，使用户选定源后无需二次下载。
+	// 进程内缓存，退出即丢弃——试下载产物的价值仅限于当次决策。
+	trials *trialCache
 }
 
 // NewApp 创建并初始化 App 实例。
@@ -85,6 +89,7 @@ func NewApp() *App {
 		store:    NewStoreClient(logger),
 		repo:     NewRepoClient(config, logger),
 		packages: NewPackageStore(logger),
+		trials:   newTrialCache(),
 	}
 	app.rebuildDeployer()
 
