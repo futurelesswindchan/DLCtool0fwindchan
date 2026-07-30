@@ -20,12 +20,14 @@ import { useRoute, useRouter } from 'vue-router'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime'
 import {
   getGameDetail,
-  lookupRepos,
-  downloadFromRepo,
+  trialSources,
+  trialOneSource,
+  installFromTrial,
   getPackage,
   findHistory,
   type GameDetail,
   type GamePackage,
+  type TrialReport,
 } from '../api'
 import { useLibraryStore } from '../stores/library'
 import { useEnvStore } from '../stores/env'
@@ -44,9 +46,20 @@ const confirm = useConfirm()
 const appID = computed(() => String(route.params.appID))
 
 const detail = ref<GameDetail | null>(null)
-const sources = ref<string[]>([])
+
+/**
+ * 各源的试下载结果。替代原先只有源名的字符串列表。
+ *
+ * 改动的根因是「收录」与「有用」是两件事：probe 只能回答该源存在这个游戏
+ * 的文件，而实测同一个游戏 7 个源全报收录、实得从 200 个 DLC 到 0 个。
+ * 只给源名的话，用户唯一的选择方式是盲猜。
+ */
+const report = ref<TrialReport | null>(null)
 const looking = ref(false)
 const downloading = ref(false)
+
+/** 正在手动试的认证型源名，空表示无。用于只禁用那一行的按钮。 */
+const quotaTrying = ref('')
 /** 下载进度事件推送的当前尝试源，用于让用户看到「正在做什么」 */
 const progressText = ref('')
 
@@ -130,7 +143,7 @@ watch(
 
 async function load() {
   detail.value = null
-  sources.value = []
+  report.value = null
   progressText.value = ''
   savedAt.value = ''
   pkgSource.value = ''
@@ -171,16 +184,71 @@ async function loadStored() {
   }
 }
 
-/** 查询三源收录情况。失败不阻断页面，仅提示。 */
-async function lookup() {
+/**
+ * 对各源做试下载，得出实得 DLC 数的对比。失败不阻断页面，仅提示。
+ *
+ * 比原先的收录查询慢得多（要真下载并解析），但换来的是用户能看见差异。
+ * 等待成本由缓存与「选定源后免二次下载」两处摊平。
+ *
+ * @param refresh 为真时忽略缓存强制重查
+ */
+async function lookup(refresh = false) {
   looking.value = true
   try {
-    sources.value = await lookupRepos(appID.value)
+    report.value = await trialSources(appID.value, refresh)
   } catch (e) {
     toast.fromError(e, '查询清单源失败')
   } finally {
     looking.value = false
   }
+}
+
+/**
+ * 手动试某个认证型源。
+ *
+ * 独立成一个动作是因为它消耗用户自己申请的 API 额度——这笔开销必须由一次
+ * 明确的点击表达，不能夹在自动流程里替用户花掉。
+ */
+async function tryQuotaSource(source: string) {
+  if (!report.value) return
+
+  const idx = report.value.trials.findIndex((t) => t.source === source)
+  if (idx < 0) return
+
+  quotaTrying.value = source
+  try {
+    const t = await trialOneSource(appID.value, source)
+    // 就地替换该行，不整表重查——重查会把其他源也再跑一遍
+    report.value.trials[idx] = t
+    recomputeBest()
+  } catch (e) {
+    toast.fromError(e, `试 ${source} 失败`)
+  } finally {
+    quotaTrying.value = ''
+  }
+}
+
+/**
+ * 手动试完认证源后重算「实得最多」。
+ *
+ * 前端自行重算而非回后端取：后端的汇总是在整表试下载时算的，此处只多了
+ * 一行数据，为它再走一次跨边界调用不值得。
+ */
+function recomputeBest() {
+  if (!report.value) return
+
+  let best = ''
+  let max = 0
+  for (const t of report.value.trials) {
+    // 严格大于，与后端 summarizeTrials 保持一致：并列时保留在前者，
+    // 使推荐结果稳定可复现
+    if (t.status === 'ok' && t.dlcCount > max) {
+      max = t.dlcCount
+      best = t.source
+    }
+  }
+  report.value.bestSource = best
+  report.value.maxDLC = max
 }
 
 /**
@@ -197,9 +265,11 @@ async function install(sourceName: string) {
   }
 
   downloading.value = true
-  progressText.value = `正在尝试 ${sourceName}…`
+  progressText.value = `正在从 ${sourceName} 入库…`
   try {
-    pkg.value = await downloadFromRepo(appID.value, sourceName)
+    // 走 installFromTrial 而非 downloadFromRepo：试下载的产物已缓存，
+    // 命中时零网络请求。这是那一轮等待的收益端，缺了它试下载就只是变慢。
+    pkg.value = await installFromTrial(appID.value, sourceName)
     // 下载得到的包默认全选，与本地导入路径保持一致的语义。
     // selectAll 会触发防抖落盘，完成首次部署。
     selection.selectAll()
@@ -219,17 +289,21 @@ async function install(sourceName: string) {
   }
 }
 
-/** 重新获取：用于状态 C，或用户想覆盖为新版清单。 */
+/**
+ * 重新获取：用于状态 C，或用户想覆盖为新版清单。
+ *
+ * 不自动选源，只把对比表摆出来让用户自己挑。原实现取列表首位，等同于写死
+ * 优先级，而实测存在反例——Kingdom Rush Vengeance (1367550) 上通常最优的
+ * Hubcap 只给 2 个 DLC，快照源给 4 个。既然「最优源」因游戏而异，就没有
+ * 任何固定顺序是对的。
+ */
 async function reacquire() {
-  if (!sources.value.length) await lookup()
-  if (!sources.value.length) {
-    toast.warn('所有清单源都没有该游戏，可尝试本地导入清单包')
-    return
+  pkg.value = null
+  await lookup(true)
+
+  if (!report.value?.usableCount) {
+    toast.warn('没有源能提供该游戏的清单，可尝试本地导入清单包')
   }
-  // FIXME(源选择): 此处取首位源，等同于写死了优先级。实测存在反例——
-  // Kingdom Rush Vengeance (1367550) 上排在首位的源只给 2 个 DLC，而某个
-  // 快照源给出 4 个。待「试下载对比」落地后改为由用户选择。
-  await install(sources.value[0])
 }
 
 /**
@@ -269,9 +343,12 @@ async function uninstall() {
  * 而不是终点。跳走之后用户得重新搜索、重新进详情页才能换源，且刚看过的
  * 源对比信息全部丢失。留在原页则卸载与重装是连续动作。
  *
- * 必须重新 lookup：状态 A 的界面依赖 sources，而它在进入状态 B 后不会被
+ * 必须重新 lookup：状态 A 的界面依赖 report，而它在进入状态 B 后不会被
  * 刷新。不重查的话用户会看到一个「没有任何可用源」的空页面，与「卸载把
  * 源也弄坏了」难以区分。
+ *
+ * 不传 refresh：卸载后立刻换源是高频操作，此时试下载缓存通常仍有效，
+ * 复用它可让「卸载 → 换源重装」几乎无等待。
  */
 async function resetToUninstalled() {
   pkg.value = null
@@ -308,25 +385,107 @@ async function resetToUninstalled() {
     <section v-if="!installed && !pkg" class="block">
       <h2 class="block__title">清单源</h2>
 
-      <p v-if="looking" class="hint">正在查询清单源…</p>
-
-      <template v-else-if="sources.length">
-        <p class="hint">{{ sources.length }} 个源可能收录了该游戏</p>
-        <p class="hint hint--warn">
-          注意：「收录」只表示该源存在这个游戏的文件，不代表内容完整。
-          各源质量差距可以很大——同一个游戏，有的源给出两百个 DLC，
-          有的只给出本体。若某个源拿到的 DLC 偏少，换一个源再试，
-          这不是本工具出错。
+      <template v-if="looking">
+        <p class="hint">正在逐个试取清单，这一步会实际下载并解析…</p>
+        <p class="hint">
+          比单纯查询「有没有」慢一些，但能看出各源实际能给多少 DLC。
+          结果会缓存 30 分钟，稍后再来不必重等。
         </p>
-        <div class="actions">
-          <button
-            v-for="s in sources"
-            :key="s"
-            class="btn btn--primary"
-            :disabled="downloading"
-            @click="install(s)"
+      </template>
+
+      <template v-else-if="report?.trials?.length">
+        <p class="hint">
+          已试 {{ report.trials.length }} 个源，其中
+          <strong>{{ report.usableCount }}</strong> 个可用<template
+            v-if="report.bestSource"
           >
-            从 {{ s }} 入库
+            ，实得最多的是
+            <strong>{{ report.bestSource }}</strong>（{{ report.maxDLC }} 个 DLC）</template
+          >。
+        </p>
+        <p class="hint">
+          各源内容差距可以很大，DLC 数少通常是那个源本身收录得少，不是本工具
+          出错。下面的数字就是实际能装上的数量，按需自行选择。
+        </p>
+
+        <!-- 免额度源：已自动试取，直接给结果 -->
+        <ul class="trials">
+          <li
+            v-for="t in report.trials.filter((x) => !x.needsQuota)"
+            :key="t.source"
+            class="trial"
+            :class="`trial--${t.status}`"
+          >
+            <span class="trial__name">{{ t.source }}</span>
+            <span class="trial__num">
+              <template v-if="t.status === 'ok'">{{ t.dlcCount }} DLC</template>
+              <template v-else-if="t.status === 'empty'">仅本体</template>
+              <template v-else>—</template>
+            </span>
+            <span class="trial__msg">
+              {{ t.message }}
+              <template v-if="t.cached">（缓存）</template>
+            </span>
+            <button
+              v-if="t.status === 'ok' || t.status === 'empty'"
+              class="btn btn--primary trial__btn"
+              :disabled="downloading"
+              @click="install(t.source)"
+            >
+              用这个入库
+            </button>
+            <span v-else class="trial__btn trial__btn--none">不可用</span>
+          </li>
+        </ul>
+
+        <!-- 认证型源：单列，需用户主动花额度 -->
+        <template v-if="report.quotaSources.length">
+          <h3 class="subtitle">需要 API 额度的源</h3>
+          <p class="hint">
+            这类源通常收录得最全，但每次获取都会消耗你自己申请的额度，
+            因此不会自动试取。若上面的结果不满意，再来试这里。
+          </p>
+          <ul class="trials">
+            <li
+              v-for="t in report.trials.filter((x) => x.needsQuota)"
+              :key="t.source"
+              class="trial"
+              :class="`trial--${t.status}`"
+            >
+              <span class="trial__name">{{ t.source }}</span>
+              <span class="trial__num">
+                <template v-if="t.status === 'ok'">{{ t.dlcCount }} DLC</template>
+                <template v-else-if="t.status === 'empty'">仅本体</template>
+                <template v-else>?</template>
+              </span>
+              <span class="trial__msg">{{ t.message }}</span>
+              <button
+                v-if="t.status === 'skipped' || t.status === 'failed'"
+                class="btn trial__btn"
+                :disabled="quotaTrying === t.source"
+                @click="tryQuotaSource(t.source)"
+              >
+                {{ quotaTrying === t.source ? '获取中…' : '试这个源' }}
+              </button>
+              <button
+                v-else-if="t.status === 'ok' || t.status === 'empty'"
+                class="btn btn--primary trial__btn"
+                :disabled="downloading"
+                @click="install(t.source)"
+              >
+                用这个入库
+              </button>
+              <span v-else class="trial__btn trial__btn--none">不可用</span>
+            </li>
+          </ul>
+        </template>
+
+        <div class="actions">
+          <button class="btn" :disabled="looking" @click="lookup(true)">
+            全部重新试取
+          </button>
+          <button class="btn" @click="router.push({ name: 'search' })">
+            改用本地导入
           </button>
         </div>
       </template>
@@ -500,6 +659,95 @@ async function resetToUninstalled() {
   margin: 0 0 var(--space-2);
   color: var(--color-text-muted);
   font-size: 0.82rem;
+}
+
+/* ─── 源试取对比表 ───
+   视觉设计留待下一轮统一重构，此处只保证「三种没结果视觉分家」这一
+   功能要求：可用与不可用要一眼分清，否则用户仍会把源的贫瘠误判为故障。 */
+
+.subtitle {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.trials {
+  list-style: none;
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.trial {
+  display: grid;
+  /* 数字列定宽，使各行的 DLC 数上下对齐——对比表的核心就是纵向比较，
+     宽度随内容浮动会让「哪个更多」需要逐行读数字才能看出 */
+  grid-template-columns: minmax(8em, 1fr) 6em minmax(0, 2fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+  font-size: 0.82rem;
+}
+
+/* 左边框色承担状态区分。用颜色而非图标是因为它不占宽度，
+   且在密集列表里更易形成整体印象 */
+.trial--ok {
+  border-left-color: var(--color-accent);
+}
+
+.trial--empty {
+  border-left-color: var(--color-warning);
+}
+
+/* unsupported 与 miss 都是「该源没有可用内容」，同色处理——
+   对用户而言两者的处置方式相同（换源），无需在颜色上再作区分 */
+.trial--unsupported,
+.trial--miss {
+  border-left-color: var(--color-text-dim);
+  opacity: 0.7;
+}
+
+.trial--failed {
+  border-left-color: var(--color-danger, #c0392b);
+}
+
+.trial--skipped {
+  border-left-color: var(--color-text-muted);
+  border-left-style: dashed;
+}
+
+.trial__name {
+  font-weight: 500;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.trial__num {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--color-text);
+  text-align: right;
+}
+
+.trial__msg {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.trial__btn {
+  white-space: nowrap;
+}
+
+.trial__btn--none {
+  color: var(--color-text-dim);
+  font-size: 0.78rem;
 }
 
 .hint--warn {

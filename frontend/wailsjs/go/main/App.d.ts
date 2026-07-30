@@ -38,6 +38,8 @@ export function GetSteamPath():Promise<string>;
 
 export function InstallDLCs(arg1:main.GamePackage,arg2:Array<string>):Promise<main.OperationResult>;
 
+export function InstallFromTrial(arg1:string,arg2:string):Promise<main.GamePackage>;
+
 export function LookupRepos(arg1:string):Promise<Array<string>>;
 
 export function OpenDataDir():Promise<main.OperationResult>;
@@ -63,3 +65,7 @@ export function SelectZipFile():Promise<string>;
 export function SetRepoToken(arg1:string,arg2:string):Promise<main.OperationResult>;
 
 export function SetSteamPath(arg1:string):Promise<main.OperationResult>;
+
+export function TrialOneSource(arg1:string,arg2:string):Promise<main.SourceTrial>;
+
+export function TrialSources(arg1:string,arg2:boolean):Promise<main.TrialReport>;

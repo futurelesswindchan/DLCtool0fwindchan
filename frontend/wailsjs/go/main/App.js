@@ -74,6 +74,10 @@ export function InstallDLCs(arg1, arg2) {
   return window['go']['main']['App']['InstallDLCs'](arg1, arg2);
 }
 
+export function InstallFromTrial(arg1, arg2) {
+  return window['go']['main']['App']['InstallFromTrial'](arg1, arg2);
+}
+
 export function LookupRepos(arg1) {
   return window['go']['main']['App']['LookupRepos'](arg1);
 }
@@ -124,4 +128,12 @@ export function SetRepoToken(arg1, arg2) {
 
 export function SetSteamPath(arg1) {
   return window['go']['main']['App']['SetSteamPath'](arg1);
+}
+
+export function TrialOneSource(arg1, arg2) {
+  return window['go']['main']['App']['TrialOneSource'](arg1, arg2);
+}
+
+export function TrialSources(arg1, arg2) {
+  return window['go']['main']['App']['TrialSources'](arg1, arg2);
 }

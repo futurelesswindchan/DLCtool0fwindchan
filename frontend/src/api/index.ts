@@ -32,6 +32,8 @@ export type StoredPackage = main.StoredPackage
 export type UpdateInfo = main.UpdateInfo
 export type DiagnosticsResult = main.DiagnosticsResult
 export type BuildInfo = main.BuildInfo
+export type SourceTrial = main.SourceTrial
+export type TrialReport = main.TrialReport
 
 /**
  * 后端业务失败所抛出的异常。
@@ -173,6 +175,45 @@ export const getGameDetail = (appID: string): Promise<GameDetail> =>
   App.GetGameDetail(appID)
 
 /** 并发查询各源的收录情况，返回收录了该游戏的源名称列表。 */
+/**
+ * 对各源做试下载，返回实得 DLC 数的对比。
+ *
+ * 存在意义：`lookupRepos` 只能回答「该源存在这个游戏的文件」，而用户关心
+ * 的是「这个源能给我多少 DLC」。实测同一个游戏 7 个源全报确认收录，实得
+ * 从 200 个到 0 个——用户看到「收录 7/7」却拿到 0 个 DLC，必然认为是本
+ * 工具坏了。
+ *
+ * NOTE: 耗时较长（最坏为两批超时之和），调用期间必须展示进度。
+ * 认证型源不参与自动试下载，需用 `trialOneSource` 由用户主动触发。
+ *
+ * @param refresh 为真时忽略缓存强制重查
+ */
+export const trialSources = (
+  appID: string,
+  refresh = false,
+): Promise<TrialReport> => App.TrialSources(appID, refresh)
+
+/**
+ * 对单个源做试下载。供认证型源由用户主动触发。
+ *
+ * 与 `trialSources` 分开而非加开关：开关式设计下前端传错参数就会静默消耗
+ * 用户的 API 额度，而额度不可退还。
+ */
+export const trialOneSource = (
+  appID: string,
+  source: string,
+): Promise<SourceTrial> => App.TrialOneSource(appID, source)
+
+/**
+ * 用试下载得到的清单包入库，缓存缺失时自动回退为重新下载。
+ *
+ * 这是试下载那一轮等待的收益端——缓存命中时零网络请求。
+ */
+export const installFromTrial = (
+  appID: string,
+  source: string,
+): Promise<GamePackage> => App.InstallFromTrial(appID, source)
+
 export const lookupRepos = (appID: string): Promise<string[]> =>
   App.LookupRepos(appID)
 
