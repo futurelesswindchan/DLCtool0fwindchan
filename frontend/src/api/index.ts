@@ -30,6 +30,8 @@ export type GameDetail = main.GameDetail
 export type MSiteStats = main.MSiteStats
 export type StoredPackage = main.StoredPackage
 export type UpdateInfo = main.UpdateInfo
+export type DiagnosticsResult = main.DiagnosticsResult
+export type BuildInfo = main.BuildInfo
 
 /**
  * 后端业务失败所抛出的异常。
@@ -198,10 +200,31 @@ export const openDataDir = (): Promise<string> => unwrap(App.OpenDataDir())
 /** 返回当前日志文件路径。 */
 export const getLogPath = (): Promise<string> => App.GetLogPath()
 
+/**
+ * 导出脱敏诊断包到数据目录，并自动打开所在文件夹。
+ *
+ * 存在意义是替代危险行为：数据目录里的 `config.json` 明文存着用户自己
+ * 申请的 API 凭据，而报障场合最常见的一句话是「把日志发上来」。若不给
+ * 一个更省事的脱敏出口，用户就会直接分享原始配置文件。
+ *
+ * NOTE: 后端返回 error 而非 OperationResult，调用方需自行 catch。
+ */
+export const exportDiagnostics = (): Promise<DiagnosticsResult> =>
+  App.ExportDiagnostics()
+
 /* ─── 应用自身 ─── */
 
 /** 返回当前构建的版本号。未经 ldflags 注入的本地构建返回 `dev`。 */
 export const getAppVersion = (): Promise<string> => App.GetAppVersion()
+
+/**
+ * 返回构建身份（版本 + 提交哈希 + 构建时刻）。
+ *
+ * 封测期间同一版本号会被反复重新构建，此时版本号无法区分用户手里的包
+ * 是哪一次构建，而报障最需要确定的恰恰是这一点。`label` 字段是供界面
+ * 直接展示、供用户抄写的单行标识，格式与诊断包内的完全一致。
+ */
+export const getBuildInfo = (): Promise<BuildInfo> => App.GetBuildInfo()
 
 /** 返回项目发布页地址，供检查更新失败时的手动跳转。 */
 export const getReleasePageURL = (): Promise<string> => App.GetReleasePageURL()

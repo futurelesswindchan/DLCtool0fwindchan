@@ -223,9 +223,12 @@ async function install(sourceName: string) {
 async function reacquire() {
   if (!sources.value.length) await lookup()
   if (!sources.value.length) {
-    toast.warn('三个清单源均未收录该游戏，可尝试本地导入清单包')
+    toast.warn('所有清单源都没有该游戏，可尝试本地导入清单包')
     return
   }
+  // FIXME(源选择): 此处取首位源，等同于写死了优先级。实测存在反例——
+  // Kingdom Rush Vengeance (1367550) 上排在首位的源只给 2 个 DLC，而某个
+  // 快照源给出 4 个。待「试下载对比」落地后改为由用户选择。
   await install(sources.value[0])
 }
 
@@ -250,14 +253,31 @@ async function uninstall() {
 
   try {
     const msg = await library.remove(appID.value)
-    pkg.value = null
     toast.success(msg)
-    router.push({ name: 'library' })
+    await resetToUninstalled()
   } catch (e: any) {
     // 外部声明导致的不彻底卸载，文案已由后端组装好，原样呈现
     toast.warn(e?.message ?? '卸载未完全成功')
-    pkg.value = null
+    await resetToUninstalled()
   }
+}
+
+/**
+ * 卸载后把本页复位为「未入库」形态，而非跳转到库页面。
+ *
+ * 原实现跳回库列表，问题在于卸载常常是「装错了源、想换一个」的中间步骤，
+ * 而不是终点。跳走之后用户得重新搜索、重新进详情页才能换源，且刚看过的
+ * 源对比信息全部丢失。留在原页则卸载与重装是连续动作。
+ *
+ * 必须重新 lookup：状态 A 的界面依赖 sources，而它在进入状态 B 后不会被
+ * 刷新。不重查的话用户会看到一个「没有任何可用源」的空页面，与「卸载把
+ * 源也弄坏了」难以区分。
+ */
+async function resetToUninstalled() {
+  pkg.value = null
+  savedAt.value = ''
+  pkgSource.value = ''
+  await lookup()
 }
 </script>
 
@@ -288,10 +308,16 @@ async function uninstall() {
     <section v-if="!installed && !pkg" class="block">
       <h2 class="block__title">清单源</h2>
 
-      <p v-if="looking" class="hint">正在查询三个清单源…</p>
+      <p v-if="looking" class="hint">正在查询清单源…</p>
 
       <template v-else-if="sources.length">
-        <p class="hint">{{ sources.length }} 个源收录了该游戏</p>
+        <p class="hint">{{ sources.length }} 个源可能收录了该游戏</p>
+        <p class="hint hint--warn">
+          注意：「收录」只表示该源存在这个游戏的文件，不代表内容完整。
+          各源质量差距可以很大——同一个游戏，有的源给出两百个 DLC，
+          有的只给出本体。若某个源拿到的 DLC 偏少，换一个源再试，
+          这不是本工具出错。
+        </p>
         <div class="actions">
           <button
             v-for="s in sources"
@@ -306,7 +332,11 @@ async function uninstall() {
       </template>
 
       <template v-else>
-        <p class="hint hint--warn">三个清单源均未收录该游戏。</p>
+        <p class="hint hint--warn">所有已启用的清单源都没有该游戏。</p>
+        <p class="hint">
+          这通常意味着社区尚未收录它，而非本工具或网络出错。若查询过程中
+          出现过网络报错，也可以先点「重新查询」再看一次。
+        </p>
         <p class="hint">
           若已从其他渠道拿到清单包，可回到搜索页用底部的本地导入功能。
         </p>

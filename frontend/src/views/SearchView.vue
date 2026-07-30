@@ -5,12 +5,13 @@
  * 搜索结果不进 store：属会话级临时数据，无其他页面需要读取，放在全局
  * 反而要额外考虑何时清理。
  *
- * 底部保留本地导入入口——三源均未收录时，这是用户唯一的出路，故不能藏。
+ * 底部保留本地导入入口——所有在线源均未收录时，这是用户唯一的出路，故不能藏。
+ * 另需注意本地导入并非退路：该站网页端额度是 API 的 4~60 倍，对重度用户而言
+ * 手动下载再导入反而是更划算的主路径。
  */
 
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { useDebounceFn } from '@vueuse/core'
 import {
   searchGames,
   processZipFile,
@@ -35,19 +36,26 @@ const searching = ref(false)
 const searched = ref(false)
 const importing = ref(false)
 
+/** 关键词为空或正在搜索时，禁用搜索按钮。 */
+const canSearch = computed(() => !!term.value.trim() && !searching.value)
+
 /**
- * 输入停止 400ms 后才发起搜索。
+ * 发起搜索。由按钮点击或回车触发，不再随输入自动执行。
  *
- * 该值不必与部署侧的 800ms 一致——此处只是节省商店接口调用，无需迁就
- * 注入器的防抖窗口。
+ * 改为显式触发的理由是网络现实而非交互偏好：Steam 商店接口在国内经常
+ * 以 `wsarecv: An existing connection was forcibly closed` 中断，而输入
+ * 即搜会把「打一个词」放大成多次失败请求——实测输入 monster 期间日志里
+ * 出现了 5 次搜索失败。用户看到连续 5 条报错，合理的结论是「工具坏了」，
+ * 而实际只是自己还没打完字。
+ *
+ * 显式触发把请求次数交回用户，失败与操作也就一一对应，归因清晰。
+ *
+ * NOTE: 纯数字 AppID 的直查分支在后端 SearchGames 内部处理，前端只有这
+ * 一个入口，无需为两种输入分别安排触发时机。
  */
-const runSearch = useDebounceFn(async () => {
+async function runSearch() {
   const q = term.value.trim()
-  if (!q) {
-    results.value = []
-    searched.value = false
-    return
-  }
+  if (!q || searching.value) return
 
   searching.value = true
   try {
@@ -58,7 +66,19 @@ const runSearch = useDebounceFn(async () => {
   } finally {
     searching.value = false
   }
-}, 400)
+}
+
+/**
+ * 清空关键词与结果。
+ *
+ * 自动搜索取消后，清空输入不再自动收起结果列表，需要一个显式出口——
+ * 否则用户想回到初始状态只能刷新页面。
+ */
+function clearSearch() {
+  term.value = ''
+  results.value = []
+  searched.value = false
+}
 
 function openGame(appID: string) {
   router.push({ name: 'game', params: { appID } })
@@ -109,10 +129,26 @@ async function importPackage(load: () => Promise<GamePackage>) {
         type="search"
         placeholder="请搜索游戏本体的简体中文名或 AppID"
         autofocus
-        @input="runSearch()"
         @keydown.enter="runSearch()"
       />
-      <span v-if="searching" class="search__spin" aria-label="搜索中">⋯</span>
+      <button
+        class="search__btn"
+        type="button"
+        :disabled="!canSearch"
+        @click="runSearch()"
+      >
+        {{ searching ? '搜索中…' : '搜索' }}
+      </button>
+      <button
+        v-if="term || searched"
+        class="search__clear"
+        type="button"
+        :disabled="searching"
+        title="清空"
+        @click="clearSearch()"
+      >
+        清空
+      </button>
     </div>
 
     <p class="tips">
@@ -158,12 +194,50 @@ async function importPackage(load: () => Promise<GamePackage>) {
   margin: 0 auto;
 }
 
+/* 输入框与按钮同排。改按钮驱动后不再需要 relative 定位的加载指示器，
+   加载态直接由按钮文案承担——它就在用户刚点击的位置，比右侧的省略号
+   更容易被注意到。 */
 .search {
-  position: relative;
+  display: flex;
+  gap: var(--space-2);
+  align-items: stretch;
+}
+
+.search__btn,
+.search__clear {
+  flex: 0 0 auto;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.search__btn {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-bg);
+  min-width: 6em;
+}
+
+.search__btn:disabled,
+.search__clear:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.search__btn:not(:disabled):hover,
+.search__clear:not(:disabled):hover {
+  filter: brightness(1.1);
 }
 
 .search__input {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -176,14 +250,6 @@ async function importPackage(load: () => Promise<GamePackage>) {
 .search__input:focus {
   border-color: var(--color-accent);
   outline: none;
-}
-
-.search__spin {
-  position: absolute;
-  right: var(--space-4);
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--color-text-dim);
 }
 
 .results {

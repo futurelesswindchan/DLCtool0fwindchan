@@ -18,12 +18,20 @@ export function DownloadFromRepo(arg1, arg2) {
   return window['go']['main']['App']['DownloadFromRepo'](arg1, arg2);
 }
 
+export function ExportDiagnostics() {
+  return window['go']['main']['App']['ExportDiagnostics']();
+}
+
 export function FindHistory(arg1) {
   return window['go']['main']['App']['FindHistory'](arg1);
 }
 
 export function GetAppVersion() {
   return window['go']['main']['App']['GetAppVersion']();
+}
+
+export function GetBuildInfo() {
+  return window['go']['main']['App']['GetBuildInfo']();
 }
 
 export function GetConfig() {

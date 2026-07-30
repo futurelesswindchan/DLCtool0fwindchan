@@ -10,9 +10,13 @@ export function DetectEnvironment():Promise<main.DetectorResult>;
 
 export function DownloadFromRepo(arg1:string,arg2:string):Promise<main.GamePackage>;
 
+export function ExportDiagnostics():Promise<main.DiagnosticsResult>;
+
 export function FindHistory(arg1:string):Promise<main.GameRecord>;
 
 export function GetAppVersion():Promise<string>;
+
+export function GetBuildInfo():Promise<main.BuildInfo>;
 
 export function GetConfig():Promise<main.AppConfig>;
 

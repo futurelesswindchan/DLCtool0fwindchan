@@ -17,15 +17,18 @@ import {
   selectDirectory,
   getLogPath,
   openDataDir,
+  exportDiagnostics,
   setRepoToken,
   getMSiteStats,
   clearHistory,
   getAppVersion,
+  getBuildInfo,
   getReleasePageURL,
   checkUpdate,
   openURL,
   type MSiteStats,
   type UpdateInfo,
+  type BuildInfo,
 } from '../api'
 import EnvBanner from '../components/EnvBanner.vue'
 
@@ -40,6 +43,12 @@ const tokenInput = ref('')
 const savingToken = ref(false)
 
 const version = ref('')
+
+/**
+ * 构建身份。封测期间同一版本号会被反复重新构建，仅凭版本号无法确定
+ * 用户手里是哪一次的包，故展示带提交哈希的完整标识供其抄进报障消息。
+ */
+const build = ref<BuildInfo | null>(null)
 const releasePage = ref('')
 const update = ref<UpdateInfo | null>(null)
 const checking = ref(false)
@@ -52,6 +61,7 @@ const M_SITE = 'Hubcap Manifest'
 onMounted(async () => {
   logPath.value = await getLogPath()
   version.value = await getAppVersion()
+  build.value = await getBuildInfo()
   releasePage.value = await getReleasePageURL()
   await refreshMSite()
 })
@@ -134,6 +144,33 @@ async function onOpenDataDir() {
     await openDataDir()
   } catch (e) {
     toast.fromError(e, '打开数据目录失败')
+  }
+}
+
+/** 诊断包导出中，用于禁用按钮避免重复生成 */
+const exporting = ref(false)
+
+/**
+ * 导出脱敏诊断包。
+ *
+ * 提示文案刻意强调「已移除凭据」而非只说「已导出」：用户需要知道这个包
+ * 可以安全外发，否则仍会犹豫，转而去手动翻目录——那正是本功能要避免的
+ * 行为。仅在用户确实填过凭据时才提这句（masked 为真），没填过的人看到
+ * 「凭据已移除」只会困惑。
+ */
+async function onExportDiagnostics() {
+  exporting.value = true
+  try {
+    const r = await exportDiagnostics()
+    toast.success(
+      r.masked
+        ? `已导出 ${r.fileName}（${r.sizeKB} KB），API 凭据已移除，可安全发送`
+        : `已导出 ${r.fileName}（${r.sizeKB} KB），可安全发送`,
+    )
+  } catch (e) {
+    toast.fromError(e, '导出诊断包失败')
+  } finally {
+    exporting.value = false
   }
 }
 
@@ -327,11 +364,20 @@ function kindLabel(kind: string): string {
         <dt>版本</dt>
         <dd>
           <span class="kv__btns">
-            <code>{{ version || '—' }}</code>
+            <code>{{ build?.label || version || '—' }}</code>
             <button class="btn" :disabled="checking" @click="onCheckUpdate">
               {{ checking ? '检查中…' : '检查更新' }}
             </button>
           </span>
+
+          <p class="hint">
+            反馈问题时请连括号里的提交哈希一起提供——同一个版本号可能对应
+            多次构建，只说版本号无法确定你手里是哪一个包。
+          </p>
+          <p v-if="build?.dirty" class="hint hint--warn">
+            此包构建时存在未提交的改动，其对应的代码不在仓库中。
+            若非你自行编译，请向发布者反馈。
+          </p>
 
           <p v-if="update?.hasUpdate" class="hint hint--accent">
             有新版本 <strong>{{ update.latestVersion }}</strong>
@@ -359,6 +405,27 @@ function kindLabel(kind: string): string {
 
         <dt>日志文件</dt>
         <dd><code>{{ logPath || '—' }}</code></dd>
+
+        <dt>报障诊断包</dt>
+        <dd>
+          <span class="kv__btns">
+            <button class="btn" :disabled="exporting" @click="onExportDiagnostics">
+              {{ exporting ? '正在导出…' : '导出诊断包' }}
+            </button>
+          </span>
+          <p class="hint">
+            打包最近的日志与一份<strong>已移除 API 凭据</strong>的配置副本，
+            生成后自动打开所在文件夹。反馈问题时请提供这个文件。
+          </p>
+          <p class="hint hint--warn">
+            请勿直接分享数据目录里的 <code>config.json</code>——它含有你自己
+            申请的 API 凭据，一旦外泄，额度会被他人消耗，账号也可能被封禁。
+          </p>
+          <p class="hint">
+            诊断包不含安装记录与清单内容，只有排查问题所需的日志与环境信息。
+          </p>
+        </dd>
+
         <dt>数据目录</dt>
         <dd>
           <span class="kv__btns">

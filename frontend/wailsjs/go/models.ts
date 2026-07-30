@@ -58,6 +58,28 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class BuildInfo {
+	    version: string;
+	    commit: string;
+	    builtAt: string;
+	    dirty: boolean;
+	    devBuild: boolean;
+	    label: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new BuildInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.commit = source["commit"];
+	        this.builtAt = source["builtAt"];
+	        this.dirty = source["dirty"];
+	        this.devBuild = source["devBuild"];
+	        this.label = source["label"];
+	    }
+	}
 	export class DLCInfo {
 	    appID: string;
 	    name: string;
@@ -140,6 +162,26 @@ export namespace main {
 	        this.message = source["message"];
 	        this.missingFiles = source["missingFiles"];
 	        this.checkedPath = source["checkedPath"];
+	    }
+	}
+	export class DiagnosticsResult {
+	    path: string;
+	    fileName: string;
+	    logCount: number;
+	    masked: boolean;
+	    sizeKB: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DiagnosticsResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.fileName = source["fileName"];
+	        this.logCount = source["logCount"];
+	        this.masked = source["masked"];
+	        this.sizeKB = source["sizeKB"];
 	    }
 	}
 	export class GameDetail {
