@@ -31,6 +31,100 @@ import (
 // 开发构建与任何 Release 比较都没有意义。
 var appVersion = "dev"
 
+// appCommit 是构建所基于的 git 提交短哈希，由编译期注入：
+//
+//	go build -ldflags "-X main.appCommit=d0e73d4"
+//
+// 为何有了版本号还要记哈希：封测期间同一个版本号会被反复重新构建
+// （修一个 bug 打一次包，但 tag 还没动），此时版本号无法区分「用户手里
+// 的包」是哪一次构建。而报障最需要确定的恰恰是这一点——同样的现象在
+// 修复前后的两个包上表现相同，靠版本号无从分辨。
+//
+// 哈希同时打在**发布文件名**与**程序内部**两处。文件名便于分发时肉眼
+// 识别，但它会在用户重命名、解压后只留 exe、或转发给他人时丢失，而
+// 报障往往发生在下载后数日。注入程序内部则跟随 exe 本身，不会丢。
+//
+// 默认值 unknown 表示未注入，通常意味着直接 go build 而未走发布脚本。
+var appCommit = "unknown"
+
+// appBuiltAt 是构建时刻，由编译期注入，形如 2026-07-30T09:52:05Z。
+//
+// 与哈希互补：哈希回答「基于哪份代码」，构建时刻回答「什么时候打的包」。
+// 后者在用户手里有多个同哈希的包（例如反复下载）时用于确认新旧。
+var appBuiltAt = "unknown"
+
+// appDirty 标识构建时工作树是否有未提交的改动，注入值为 "true" 时成立。
+//
+// 这一项存在的理由是防止自欺：带 dirty 标记的包所对应的代码在仓库里
+// **根本不存在**，据其哈希去 checkout 得到的是另一份代码。若不显式标出，
+// 排障时会照着错误的代码找原因，而且完全察觉不到。
+//
+// 用字符串而非 bool：ldflags 的 -X 只能注入字符串。
+var appDirty = ""
+
+// BuildInfo 描述当前构建的完整身份，供「关于」页与诊断包使用。
+//
+// 跨 Wails 边界的 DTO，字段全为基础类型。
+type BuildInfo struct {
+	// Version 是版本号，未注入时为 dev。
+	Version string `json:"version"`
+
+	// Commit 是 git 短哈希，未注入时为 unknown。
+	Commit string `json:"commit"`
+
+	// BuiltAt 是构建时刻，未注入时为 unknown。
+	BuiltAt string `json:"builtAt"`
+
+	// Dirty 标识构建时工作树是否脏。
+	Dirty bool `json:"dirty"`
+
+	// DevBuild 标识是否为 wails dev 的开发构建。
+	DevBuild bool `json:"devBuild"`
+
+	// Label 是供界面直接展示的单行标识，形如 2.0.0-rc.1 (d0e73d4)。
+	//
+	// 由后端组装而非前端拼接：这串文字会被用户抄进报障消息，
+	// 格式必须与诊断包中的完全一致，两处各自拼接迟早会不一致。
+	Label string `json:"label"`
+}
+
+// GetBuildInfo 返回当前构建的完整身份信息。
+//
+// 返回值：
+//   - *BuildInfo: 恒非 nil
+func (a *App) GetBuildInfo() *BuildInfo {
+	return currentBuildInfo()
+}
+
+// currentBuildInfo 组装构建信息。
+//
+// 独立成函数以便诊断包复用，且不依赖 App 实例——诊断包在环境报告里
+// 也要写同一串标识。
+func currentBuildInfo() *BuildInfo {
+	dirty := appDirty == "true"
+
+	label := appVersion
+	if appCommit != "" && appCommit != "unknown" {
+		label = fmt.Sprintf("%s (%s)", appVersion, appCommit)
+	}
+	if dirty {
+		// 后缀而非前缀：用户抄写时习惯从左读起，版本号仍应最先出现。
+		label += " [已修改]"
+	}
+	if isDevBuild {
+		label += " [开发构建]"
+	}
+
+	return &BuildInfo{
+		Version:  appVersion,
+		Commit:   appCommit,
+		BuiltAt:  appBuiltAt,
+		Dirty:    dirty,
+		DevBuild: isDevBuild,
+		Label:    label,
+	}
+}
+
 const (
 	// releaseAPIURL 是查询最新 Release 的 GitHub 接口。
 	//

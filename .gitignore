@@ -35,7 +35,15 @@ frontend/.vite/
 Thumbs.db
 
 # Build output
-build/
+#
+# build/ 整体忽略（内含 wails 生成的 bin/ 与平台资源），但发布脚本必须入库——
+# 它承载版本与哈希的注入规则，是「产出的包能否被追溯」的唯一依据。
+# 脚本不入库则每次发布都要凭记忆重敲 ldflags，迟早漏掉 dirty 检测。
+# NOTE: 必须写 build/* 而非 build/。目录级忽略会让 git 完全不进入该目录，
+# 其下的 ! 例外规则永远不生效——这一点没有任何报错提示，表现为「加了例外
+# 但文件仍未被追踪」。
+build/*
+!build/release.ps1
 dist/
 
 # Logs
