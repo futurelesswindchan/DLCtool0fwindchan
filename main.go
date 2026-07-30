@@ -44,8 +44,31 @@ func main() {
 		// 与 wails.json 的 backgroundColour 保持一致，
 		// 避免深色界面在首帧渲染前闪出白屏。
 		BackgroundColour: &options.RGBA{R: 30, G: 30, B: 30, A: 1},
-		OnStartup:        app.startup,
-		OnShutdown:       app.shutdown,
+
+		// 隐去系统标题栏，改由前端的 TopBar 组件自绘，令 Logo、导航页签、
+		// 环境状态与窗口控制融为一行。
+		//
+		// 拖动、缩放与 Aero Snap 的保留情况（v2.11 实现）：
+		//
+		//   - 拖动：CSS 声明 --wails-draggable: drag 后，Wails 收到 drag 消息即
+		//     ReleaseCapture() + PostMessage(WM_NCLBUTTONDOWN, HTCAPTION)，
+		//     等于把后续过程交还给系统的标题栏拖动循环。Aero Snap（拖至屏幕
+		//     边缘吸附）正由该循环处理，因此完整保留，无需自行实现
+		//   - 缩放：WM_NCCALCSIZE 返回 0 只隐去标题栏，WS_THICKFRAME 仍在，
+		//     故边缘缩放热区照常可用。前端元素不要占据窗口边缘 4~6px
+		//   - Snap Layouts（Win11 悬停最大化按钮弹出的分屏浮层）不可用：
+		//     它要求 WM_NCHITTEST 对最大化按钮区域返回 HTMAXBUTTON，
+		//     而自绘按钮位于 WebView 客户区内，命中测试到不了那里。
+		//     属原生标题栏特权，无绕行方案
+		//   - 双击最大化：系统行为随标题栏一同消失，已在 TopBar 自行绑定
+		//
+		// NOTE: 不设 DisableFramelessWindowDecorations。保留默认的 DWM 客户区
+		// 扩展可换来系统级的窗口阴影、圆角与边框，关掉它就得自己画，
+		// 且自绘的阴影永远与系统主题对不齐。
+		Frameless: true,
+
+		OnStartup:  app.startup,
+		OnShutdown: app.shutdown,
 		Bind: []interface{}{
 			app,
 		},

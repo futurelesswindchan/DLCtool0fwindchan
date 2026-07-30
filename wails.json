@@ -24,7 +24,7 @@
     "maxHeight": 0,
     "unsafeUseFullscreenApi": false,
     "fullscreen": false,
-    "frameless": false,
+    "frameless": true,
     "skipTaskbar": false,
     "zoom": 100,
     "alwaysOnTop": false,
