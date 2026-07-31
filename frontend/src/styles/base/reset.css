@@ -1,0 +1,44 @@
+/**
+ * 基础重置
+ *
+ * 性能纪律（写任何动画前请先读这三条）：
+ *   1. 只对 transform 与 opacity 做过渡——二者由合成器处理，不触发布局
+ *      重算。改 width / height / top / left 会引发重排，在长列表上尤其明显。
+ *      唯一例外是侧栏高度过渡（宪法 14 节），它只在跨页切换时发生一次。
+ *   2. 长列表容器加 content-visibility: auto，让浏览器跳过视口外元素的
+ *      渲染工作。这一行 CSS 足以替代虚拟滚动库。
+ *   3. 需要 GPU 合成层时用 will-change，但仅在动画期间保留——
+ *      长期挂着会白占显存。
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+
+  /* 桌面应用不应出现整页拖动滚动 */
+  overflow: hidden;
+
+  /* 禁用整页默认拖放：WebView 会把拖入的文件当作导航请求直接打开，
+     导致界面被替换成文件内容。拖拽区组件需自行 preventDefault 后再处理。 */
+  overscroll-behavior: none;
+}
+
+#app {
+  height: 100%;
+}

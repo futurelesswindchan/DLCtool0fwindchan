@@ -41,9 +41,10 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		// 与 wails.json 的 backgroundColour 保持一致，
-		// 避免深色界面在首帧渲染前闪出白屏。
-		BackgroundColour: &options.RGBA{R: 30, G: 30, B: 30, A: 1},
+		// 与 wails.json 的 backgroundColour 及前端 styles/tokens/color.css 的
+		// --color-bg 保持一致，避免深色界面在首帧渲染前闪出旧色。
+		// 当前 #1b1a20（冷紫底），三处共同定义，改一处必须同改另两处。
+		BackgroundColour: &options.RGBA{R: 27, G: 26, B: 32, A: 1},
 
 		// 隐去系统标题栏，改由前端的 TopBar 组件自绘，令 Logo、导航页签、
 		// 环境状态与窗口控制融为一行。

@@ -30,7 +30,7 @@
     "alwaysOnTop": false,
     "menu": null,
     "hideWindowOnClose": false,
-    "backgroundColour": "#1e1e1e",
+    "backgroundColour": "#1b1a20",
     "assets": {
       "handler": "embed",
       "dir": ""

@@ -1,0 +1,91 @@
+/**
+ * 色彩令牌
+ *
+ * 主色调为冷紫偏灰，深浅两套均不含纯白与纯黑。
+ * 色偏刻意小到「说不出它是什么颜色，但一眼觉得比纯灰高级」——
+ * 一旦能看出「这是紫色背景」就过头了。饱和度约 8~12 度。
+ *
+ * ⚠️ --color-bg 共有三处定义，改一处必须同改另两处，
+ *    否则窗口创建到首帧渲染之间会闪一下旧色：
+ *      1. 本文件 --color-bg
+ *      2. wails.json  的 backgroundColour
+ *      3. main.go     的 BackgroundColour（RGBA 十进制）
+ *    当前值 #1b1a20 = RGBA(27, 26, 32)
+ *
+ * 主题切换机制：
+ *   颜色全部经 CSS 变量下发，切换主题只需改写 <html> 的 data-theme。
+ *   浏览器自行完成级联重算，不触发 Vue 重渲染，因此无论界面上有
+ *   多少组件，切换开销都是恒定的。
+ *
+ * 见 docs/UI-ARCHITECTURE.md 第 4.1 节。
+ */
+
+/* ============================================================
+   深色主题（默认）
+   ============================================================ */
+
+:root,
+:root[data-theme='dark'] {
+  --color-bg: #1b1a20;
+  --color-surface: #232128;
+  --color-surface-2: #2a2731;
+
+  --color-border: #37343f;
+  --color-border-str: #4a4655;
+
+  --color-text: #eceaf0;
+  --color-text-muted: #a5a0b0;
+  --color-text-dim: #6f6a7c;
+
+  /* 主色沿用粉调，与冷紫底同源 */
+  --color-accent: #ff8fb1;
+  --color-accent-hover: #ffa5c0;
+  /* 主色之上的文字色。不用纯白，纯白压在粉上会发飘 */
+  --color-on-accent: #2a1a20;
+
+  /* 状态色：独立于 --color-accent，不共享。
+     可用 / 仅本体 / 不可用是三种「事实」，主色是一种「引导」，
+     混用会暗示某个源被推荐——而项目铁律明令不得写死源优先级。 */
+  --state-ok: #5fc9a3;
+  --state-warn: #d9b268;
+  --state-neutral: #79738a;
+  --state-danger: #e0757e;
+  --state-wash: 6%;
+
+  /* 花纹墨色：深色底上用主色，会透出一层很淡的暖意 */
+  --pattern-ink: var(--color-accent);
+  --pattern-alpha: 0.035;
+}
+
+/* ============================================================
+   浅色主题
+   ============================================================ */
+
+:root[data-theme='light'] {
+  --color-bg: #f4f2f8;
+  --color-surface: #fbfaff;
+  --color-surface-2: #edeaf4;
+
+  --color-border: #ddd8e6;
+  --color-border-str: #bcb5cc;
+
+  --color-text: #221f2a;
+  --color-text-muted: #5d5769;
+  --color-text-dim: #8b8499;
+
+  --color-accent: #e8628f;
+  --color-accent-hover: #d4547e;
+  --color-on-accent: #fffafc;
+
+  --state-ok: #2f9a78;
+  --state-warn: #a8792a;
+  --state-neutral: #8b8499;
+  --state-danger: #c9505c;
+  /* 浅底对淡染更敏感，同样 6% 会显得像选中态，故取下限 */
+  --state-wash: 4%;
+
+  /* 浅色底上主色粉会发脏，改用文字色更干净；
+     浓度也需略提，浅底对低对比更不敏感 */
+  --pattern-ink: var(--color-text);
+  --pattern-alpha: 0.05;
+}

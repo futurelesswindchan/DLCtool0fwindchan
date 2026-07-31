@@ -1,0 +1,31 @@
+/**
+ * 排版令牌
+ *
+ * 六档字号，替代 v1 那九档手感取值的 rem 小数
+ * （0.72 / 0.75 / 0.76 / 0.78 / 0.8 / 0.82 / 0.85 / 0.92 / 1.25）——
+ * 那是视觉不整最直接的来源。迁移映射见宪法第 4.3 节。
+ *
+ * 用 px 而非 rem：桌面应用不需要跟随浏览器字号缩放，
+ * 而 rem 会让「13px」这个决定隐藏在一次乘法之后。
+ */
+
+:root {
+  --text-xs: 11px; /* 角标、图例 */
+  --text-sm: 12px; /* 元信息、提示 */
+  --text-base: 13px; /* 正文。桌面端 14px 偏大 */
+  --text-md: 15px; /* 区块标题 */
+  --text-lg: 19px; /* 页面标题 */
+  --text-xl: 25px; /* 数字强调、空态主文案 */
+
+  /* 字重只用三档 */
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  --font-sans: system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei',
+    sans-serif;
+  --font-mono: 'Cascadia Code', Consolas, 'Courier New', monospace;
+
+  --leading-tight: 1.35;
+  --leading-normal: 1.6;
+}

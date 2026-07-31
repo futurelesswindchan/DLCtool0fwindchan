@@ -5,6 +5,26 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DLC解锁工具</title>
+
+    <!--
+      CSS 层顺序声明。
+
+      ⚠️ 必须写在这里，不能写在 styles/ 里——实测（2026-08-01）Vite 的
+         @import 内联流程会把不含任何规则的裸 @layer 声明整条抹掉，
+         无论放在 index.css 顶部还是单独成文件都一样。
+         结果是层顺序退化为「首次出现顺序」、domain 层根本没注册，
+         且完全静默：不报错、不警告，只是覆盖关系不再符合预期。
+
+      写在 HTML 里可行的原因：这条不经 PostCSS，Vite 不会改它；
+      而 CSS 规范规定层顺序由首次出现确定，内联样式表先于外链 CSS 解析，
+      故此处必定是第一次出现，顺序就此钉死。
+
+      对应文档：docs/UI-ARCHITECTURE.md 第 11.3 / 12.2 节。
+      调整层结构时，此处与 styles/index.css 的 @import 分组须同步。
+    -->
+    <style>
+      @layer tokens, base, ui, domain, utilities;
+    </style>
   </head>
   <body>
     <div id="app"></div>

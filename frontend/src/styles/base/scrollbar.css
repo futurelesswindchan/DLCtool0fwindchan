@@ -1,0 +1,28 @@
+/**
+ * 滚动条
+ *
+ * WebView2 的原生滚动条带着操作系统自己的配色与宽度，
+ * 与设计语言不同源——这与「界面里混进一个原生控件」是同一类问题
+ * （宪法 2.3 节）。故全局接管。
+ *
+ * 第 2 步会引入 UiScrollArea 处理需要更精细控制的场景，
+ * 但全局这一层仍需保留：它兜住所有没被组件包住的滚动容器。
+ */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius-chip);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-str);
+}

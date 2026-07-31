@@ -14,11 +14,47 @@
 
 07-31 起功能层面已无待办，剩下的都是呈现层与文档：
 
-| #   | 事项                                       | 性质           |
-| :-- | :----------------------------------------- | :------------- |
-| 1   | **前端视觉全面翻新**（下一轮主线）         | 最大块，未开工 |
-| 2   | 教程补 M 站 API key 申请指引               | 未开工         |
-| 3   | 试下载首次 41 秒等待的体感优化（可选）     | 未开工         |
+| #   | 事项                                       | 性质              |
+| :-- | :----------------------------------------- | :---------------- |
+| 1   | **前端视觉全面翻新**（当前主线）           | 六步中已完成第 1 步 |
+| 2   | 教程补 M 站 API key 申请指引               | 未开工            |
+| 3   | 试下载首次 41 秒等待的体感优化（可选）     | 未开工            |
+
+### ✅ UI 施工第 1 步：样式拆分与令牌落地（2026-08-01）
+
+`frontend/src/style.css`（单文件 244 行）拆为 `styles/` 十二个文件，
+按 `@layer tokens, base, ui, domain, utilities` 归层。宪法第 12 章六步中的第 1 步。
+
+**产出**：
+
+| 目录 | 内容 |
+| :--- | :--- |
+| `styles/index.css` | 唯一入口，只做按层 `@import` |
+| `styles/tokens/` | `color` / `typography` / `shape` / `elevation` / `motion` / `legacy` |
+| `styles/base/` | `reset` / `scrollbar` / `a11y` / `frameless` |
+| `styles/shim.css` | `.btn` 过渡期实现，待 `UiButton` 铺开后删除 |
+| `styles/utilities.css` | `.u-truncate` / `.u-tnum` / `.u-long-list` 三个 |
+
+**本步补齐了宪法留空的三处规格**（已回写文档）：状态色双主题取值、
+浅色阴影与内高光、既有九档 rem 的迁移映射表。
+
+**零调用点改动**：旧令牌名经 `tokens/legacy.css` 别名指向新名，
+故界面变冷紫调而 12 个 `.vue` 文件一行未动。详见 `DECISIONS-2`。
+
+**顺手修的三处**（都不改变布局）：`.btn` 补 `font-family: inherit`（原先在
+Windows 上会掉回系统 UI 字体）、按钮圆角 4px → 8px（与卡片同心）、
+主按钮文字色由 `#fff` 改为 `--color-on-accent`（宪法禁纯白）。
+
+**踩到一个静默失效的坑**：Vite 会把裸 `@layer` 顺序声明整条吃掉，
+`domain` 层因此根本没注册，且产物哈希一字未变。已改写在 `index.html`
+内联 `<style>` 里，详见 `DECISIONS-2` 同日条目。
+
+**验证**：`vue-tsc --noEmit` / `vite build` / `go build ./...` /
+`go build -tags dev ./...` / `go vet ./...` / `go test -count=1 ./...` 全过，
+113 条 PASS 无变化。背景色三处（令牌 / `wails.json` / `main.go`）已同步为 `#1b1a20`。
+
+**待主人手动清理**：`frontend/src/style.css`（旧文件，已无引用点）与
+`frontend/src/styles/layers.css`（中途尝试的方案，已废弃）。
 
 ### ✅ 试下载对比表落地（2026-07-31）
 

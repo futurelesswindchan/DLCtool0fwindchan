@@ -1,0 +1,34 @@
+/**
+ * 工具类
+ *
+ * 刻意极少。这里不是 Tailwind——每加一个工具类，就多一条绕过组件封装的
+ * 捷径，最终得到一堆无法整体调整的散装样式。
+ *
+ * 收录标准：跨越至少三个不相关组件，且无法由原语内部承担。
+ *
+ * 本层声明在最后，故这些类总是生效。
+ */
+
+/* 单行截断。侧栏游戏名、源名、路径都要用 */
+.u-truncate {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 等宽数字。对比表的核心动作是纵向扫一列数字，字宽浮动会毁掉这件事。
+
+   NOTE: 所有承载数字的元素都该带上它，不只是对比表——
+   DLC 计数、AppID、耗时秒数同理。 */
+.u-tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 长列表容器。让浏览器跳过视口外元素的渲染，一行 CSS 替代虚拟滚动库。
+
+   contain-intrinsic-size 提供占位高度估值，缺了它滚动条长度会跳变。
+   取值按单项实际高度调整，不必精确。 */
+.u-long-list {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 48px;
+}
