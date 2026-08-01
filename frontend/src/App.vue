@@ -1,23 +1,23 @@
 <script setup lang="ts">
 /**
- * 应用外壳
+ * 应用根
  *
- * 只负责三件事：启动时拉取一次后端状态、绘制顶栏与路由出口、挂载全局
- * 反馈宿主（Toast 与确认弹窗）。任何业务逻辑都不放在这里。
+ * 第 3 步起职责收窄为三件：启动时拉取一次后端状态、挂载全局反馈宿主、
+ * 决定当前路由要不要套三板斧外壳。骨架长什么样归 `layout/AppShell`。
  *
  * 启动顺序有意为之：配置先于环境检测——主题取自配置，先落主题可避免
- * 首屏以默认暗色渲染后再跳成亮色。
+ * 首屏以默认色渲染后再跳成另一套。
  */
 
-import { onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { onMounted, onUnmounted, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { watchSystemTheme } from './styles/theme-boot'
 import { useEnvStore } from './stores/env'
 import { useConfigStore } from './stores/config'
 import { useLibraryStore } from './stores/library'
 import { useUiStore } from './stores/ui'
 import { getMSiteStats } from './api'
-import TopBar from './components/TopBar.vue'
+import AppShell from './components/layout/AppShell.vue'
 import ToastHost from './components/ToastHost.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
 
@@ -26,6 +26,18 @@ const config = useConfigStore()
 const library = useLibraryStore()
 const ui = useUiStore()
 const router = useRouter()
+const route = useRoute()
+
+/**
+ * 独立全屏的路由：不套顶栏与三板斧。
+ *
+ * 引导页是一次性流程，侧栏与页签在此只会分散注意（宪法 3.2）；
+ * 预览页要验的是原语本身，套壳反而多一层干扰。
+ *
+ * 判据用路由名而非路径：路径在嵌套改造中会变，名字是稳定契约。
+ */
+const FULLSCREEN_ROUTES = new Set(['setup', 'dev-ui'])
+const fullscreen = computed(() => FULLSCREEN_ROUTES.has(String(route.name)))
 
 /**
  * 跟随系统档下，运行期间系统主题变化需即时生效。
@@ -39,6 +51,30 @@ const router = useRouter()
  */
 const unwatchSystemTheme = watchSystemTheme(() => config.theme === 'system')
 onUnmounted(unwatchSystemTheme)
+
+/**
+ * 侧栏折叠态随窗口宽度同步。
+ *
+ * 必须走 resize 事件而非 CSS 媒体查询：折叠态是 store 状态，
+ * 侧栏内部多个组件（SidebarItem 的文字、SidebarSection 的标题）都要读它，
+ * 纯 CSS 做不到「隐藏文字的同时也不渲染它」。
+ *
+ * 防抖 120ms：与 TopBar 里最大化状态同步用的是同一个量级，
+ * Aero Snap 拖拽期间会连续触发 resize。
+ */
+let resizeTimer = 0
+function onResize() {
+  window.clearTimeout(resizeTimer)
+  resizeTimer = window.setTimeout(
+    () => ui.syncSidebarToWidth(window.innerWidth),
+    120,
+  )
+}
+window.addEventListener('resize', onResize)
+onUnmounted(() => {
+  window.clearTimeout(resizeTimer)
+  window.removeEventListener('resize', onResize)
+})
 
 onMounted(async () => {
   await config.refresh()
@@ -85,107 +121,21 @@ async function checkMSiteExpiry() {
 </script>
 
 <template>
-  <div class="shell">
-    <TopBar />
+  <!--
+    两条渲染路径。
+    独立全屏那条直接放 RouterView，不加过渡——引导页与预览页都是「到了就
+    停在那」的终点，进出时再来一段位移动效只是噪音。
+  -->
+  <RouterView v-if="fullscreen" />
 
-    <div v-if="ui.banner" class="banner" :class="`banner--${ui.banner.kind}`">
-      <span class="banner__text">{{ ui.banner.message }}</span>
-      <button
-        v-if="ui.banner.actionText"
-        class="banner__action"
-        @click="ui.banner.onAction?.()"
-      >
-        {{ ui.banner.actionText }}
-      </button>
-      <button class="banner__close" aria-label="关闭" @click="ui.clearBanner()">
-        ✕
-      </button>
-    </div>
+  <!--
+    三板斧那条。Shell 自己渲染侧栏与 PaneTransition，
+    故这里的 RouterView 出口是「哪个壳」，不是「哪个 Pane」。
+  -->
+  <AppShell v-else>
+    <RouterView />
+  </AppShell>
 
-    <main class="content">
-      <RouterView v-slot="{ Component }">
-        <Transition name="page" mode="out-in">
-          <component :is="Component" />
-        </Transition>
-      </RouterView>
-    </main>
-
-    <ToastHost />
-    <ConfirmDialog />
-  </div>
+  <ToastHost />
+  <ConfirmDialog />
 </template>
-
-<style scoped>
-.shell {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.content {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  padding: var(--space-5);
-}
-
-.banner {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-4);
-  border-bottom: 1px solid var(--color-border);
-  font-size: 0.82rem;
-  flex: 0 0 auto;
-}
-
-.banner--warn {
-  background: color-mix(in srgb, var(--color-warning) 16%, var(--color-bg));
-  color: var(--color-warning);
-}
-
-.banner--error {
-  background: color-mix(in srgb, var(--color-danger) 16%, var(--color-bg));
-  color: var(--color-danger);
-}
-
-.banner--info,
-.banner--success {
-  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-bg));
-  color: var(--color-accent);
-}
-
-.banner__text {
-  flex: 1 1 auto;
-}
-
-.banner__action,
-.banner__close {
-  border: none;
-  background: transparent;
-  color: inherit;
-  font-family: inherit;
-  font-size: inherit;
-  cursor: pointer;
-}
-
-.banner__action {
-  text-decoration: underline;
-}
-
-/* 页面切换只做位移与淡入，时长压在快档——过渡不该让用户等 */
-.page-enter-active,
-.page-leave-active {
-  transition: opacity var(--duration-fast) var(--ease-out),
-    transform var(--duration-fast) var(--ease-out);
-}
-
-.page-enter-from {
-  opacity: 0;
-  transform: translateY(6px);
-}
-
-.page-leave-to {
-  opacity: 0;
-  transform: translateY(-6px);
-}
-</style>

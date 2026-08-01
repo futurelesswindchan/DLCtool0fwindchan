@@ -359,9 +359,12 @@ async function resetToUninstalled() {
 </script>
 
 <template>
+  <!--
+    「← 返回」已于第 3 步删除。三板斧下侧栏常驻，用户点侧栏下一个候选即可，
+    不必先退回列表（宪法 3.7）；且嵌套路由下 router.back() 会退出整个 Shell，
+    行为与用户预期相反。
+  -->
   <div class="page">
-    <button class="back" @click="router.back()">← 返回</button>
-
     <header class="hero">
       <img
         class="hero__cover"
@@ -569,27 +572,11 @@ async function resetToUninstalled() {
 </template>
 
 <style scoped>
+/* 限宽与居中已上移至 layout/ContentPane（放宽至 1040px，宪法 3.9） */
 .page {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  max-width: 860px;
-  margin: 0 auto;
-}
-
-.back {
-  align-self: flex-start;
-  border: none;
-  background: transparent;
-  color: var(--color-text-muted);
-  font-family: inherit;
-  font-size: 0.82rem;
-  cursor: pointer;
-  padding: 0;
-}
-
-.back:hover {
-  color: var(--color-text);
 }
 
 .hero {

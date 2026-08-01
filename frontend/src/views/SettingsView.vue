@@ -261,7 +261,12 @@ function kindLabel(kind: string): string {
 
 <template>
   <div class="page">
-    <section class="block">
+    <!--
+      section 的 id 是 SettingsShell 侧栏锚点跳转的落点，改名须同步那边的
+      sections 数组。第 4 步这些 block 会拆成独立 Pane，届时 id 连同
+      锚点机制一起退场，换为 /settings/:section 子路由。
+    -->
+    <section id="env" class="block">
       <h2 class="block__title">环境</h2>
 
       <EnvBanner
@@ -286,7 +291,7 @@ function kindLabel(kind: string): string {
       </dl>
     </section>
 
-    <section class="block">
+    <section id="sources" class="block">
       <h2 class="block__title">清单源</h2>
 
       <ul class="sources">
@@ -343,7 +348,7 @@ function kindLabel(kind: string): string {
       </div>
     </section>
 
-    <section class="block">
+    <section id="appearance" class="block">
       <h2 class="block__title">外观</h2>
       <div class="theme">
         <button
@@ -358,7 +363,7 @@ function kindLabel(kind: string): string {
       </div>
     </section>
 
-    <section class="block">
+    <section id="about" class="block">
       <h2 class="block__title">关于</h2>
       <dl class="kv">
         <dt>版本</dt>
@@ -449,6 +454,11 @@ function kindLabel(kind: string): string {
 </template>
 
 <style scoped>
+/*
+  760px 比 ContentPane 的 1040 更窄，这是刻意的，不是漏改。
+  设置项以说明性长文本为主，行宽超过约 75 字符后眼睛回行会找错行。
+  ContentPane 那 1040 是「上限」，页面可以更窄，但不该更宽。
+*/
 .page {
   display: flex;
   flex-direction: column;

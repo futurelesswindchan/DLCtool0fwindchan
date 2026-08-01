@@ -1,30 +1,27 @@
 <script setup lang="ts">
 /**
- * 搜索页（首页）
+ * 在线搜索（首页默认 Pane）
  *
  * 搜索结果不进 store：属会话级临时数据，无其他页面需要读取，放在全局
  * 反而要额外考虑何时清理。
  *
- * 底部保留本地导入入口——所有在线源均未收录时，这是用户唯一的出路，故不能藏。
- * 另需注意本地导入并非退路：该站网页端额度是 API 的 4~60 倍，对重度用户而言
- * 手动下载再导入反而是更划算的主路径。
+ * 本地导入已于第 3 步搬去 `panes/ImportPane.vue`，并在侧栏获得与在线搜索
+ * 平级的常驻入口（宪法 3.4）。它并非退路——该站网页端额度是 API 的
+ * 4~60 倍，对重度用户而言手动下载再导入反而是更划算的主路径，
+ * 而躺在本页底部折叠区时它「视觉上就是个退路」。
+ *
+ * 滚动、内边距与最大宽度由 `layout/ContentPane` 提供，本组件不再自己限宽。
  */
 
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   searchGames,
-  processZipFile,
-  processDroppedFile,
-  selectZipFile,
-  installDLCs,
   type GameSearchResult,
-  type GamePackage,
 } from '../api'
 import { useLibraryStore } from '../stores/library'
 import { useToast } from '../composables/useToast'
 import GameCard from '../components/GameCard.vue'
-import DropZone from '../components/DropZone.vue'
 
 const router = useRouter()
 const library = useLibraryStore()
@@ -34,7 +31,6 @@ const term = ref('')
 const results = ref<GameSearchResult[]>([])
 const searching = ref(false)
 const searched = ref(false)
-const importing = ref(false)
 
 /** 关键词为空或正在搜索时，禁用搜索按钮。 */
 const canSearch = computed(() => !!term.value.trim() && !searching.value)
@@ -82,41 +78,6 @@ function clearSearch() {
 
 function openGame(appID: string) {
   router.push({ name: 'game', params: { appID } })
-}
-
-/* ─── 本地导入 ─── */
-
-async function onPickFile() {
-  const path = await selectZipFile()
-  if (!path) return
-  await importPackage(() => processZipFile(path))
-}
-
-async function onDropFile(file: File) {
-  await importPackage(() => processDroppedFile(file))
-}
-
-/**
- * 导入本地清单包并直接部署全部 DLC。
- *
- * 本地导入的语义是「用户已经明确知道自己要装什么」，故默认全选后落盘，
- * 随后跳转到游戏页让用户按需取消——若停在此页要求再点一次安装，
- * 与在线路径的「勾选即生效」模型不一致。
- */
-async function importPackage(load: () => Promise<GamePackage>) {
-  importing.value = true
-  try {
-    const pkg = await load()
-    const allIDs = pkg.dlcs.map((d) => d.appID)
-    const msg = await installDLCs(pkg, allIDs)
-    toast.success(msg)
-    await library.refresh()
-    router.push({ name: 'game', params: { appID: pkg.mainAppID } })
-  } catch (e) {
-    toast.fromError(e, '导入失败')
-  } finally {
-    importing.value = false
-  }
 }
 </script>
 
@@ -171,27 +132,18 @@ async function importPackage(load: () => Promise<GamePackage>) {
     </ul>
 
     <p v-else-if="searched && !searching" class="empty">
-      没找到匹配的游戏。可以试试直接输入 AppID，或用下方的本地导入。
+      没找到匹配的游戏。可以试试直接输入 AppID，或从左侧的「本地导入」进入。
     </p>
 
-    <section class="local">
-      <h2 class="local__title">已有清单包？</h2>
-      <p class="tips">
-        导入后会自动部署包内全部 DLC，随后可在游戏页按需取消。
-        文件名请避免中文与特殊字符——注入器遇到非 ASCII 文件名会直接放弃解析。
-      </p>
-      <DropZone :busy="importing" @drop-file="onDropFile" @pick-file="onPickFile" />
-    </section>
   </div>
 </template>
 
 <style scoped>
+/* 限宽与居中已上移至 layout/ContentPane，此处不再重复定义 */
 .page {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
-  max-width: 860px;
-  margin: 0 auto;
 }
 
 /* 输入框与按钮同排。改按钮驱动后不再需要 relative 定位的加载指示器，
@@ -285,10 +237,4 @@ async function importPackage(load: () => Promise<GamePackage>) {
   font-weight: 500;
 }
 
-.local__title {
-  margin: 0 0 var(--space-3);
-  color: var(--color-text-muted);
-  font-size: 0.85rem;
-  font-weight: 500;
-}
 </style>
