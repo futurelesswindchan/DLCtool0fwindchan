@@ -42,9 +42,12 @@ func main() {
 			Assets: assets,
 		},
 		// 与 wails.json 的 backgroundColour 及前端 styles/tokens/color.css 的
-		// --color-bg 保持一致，避免深色界面在首帧渲染前闪出旧色。
-		// 当前 #1b1a20（冷紫底），三处共同定义，改一处必须同改另两处。
-		BackgroundColour: &options.RGBA{R: 27, G: 26, B: 32, A: 1},
+		// 浅色 --color-bg 保持一致，避免界面在首帧渲染前闪出别的颜色。
+		// 当前 #f4f2f8（默认浅色主题的冷紫白底），三处共同定义，改一处必须同改另两处。
+		//
+		// 此值是编译期常量，无法随主题切换。选了深色主题的用户在窗口创建的
+		// 那一瞬仍会看到浅底，属 frameless 窗口的固有限制，无绕行方案。
+		BackgroundColour: &options.RGBA{R: 244, G: 242, B: 248, A: 1},
 
 		// 隐去系统标题栏，改由前端的 TopBar 组件自绘，令 Logo、导航页签、
 		// 环境状态与窗口控制融为一行。

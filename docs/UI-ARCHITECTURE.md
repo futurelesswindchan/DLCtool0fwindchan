@@ -49,6 +49,9 @@
 | 28 | 层顺序声明只能写在 `index.html`，写进 CSS 会被 Vite 吃掉 | 12.2 |
 | 29 | 背景色三处同改（令牌 / `wails.json` / `main.go`） | 12.1 |
 | 30 | `tokens/` 下只允许 `:root` 选择器 | 12.2 |
+| 31 | 表达层级的颜色必须抽语义令牌，不靠两个平级令牌的明暗碰巧成立 | 4.1 |
+| 32 | 每步验证须过 `npm run verify`（含未定义令牌自查） | 12 |
+| 33 | 默认主题是**浅色**，五处默认值须一致 | 4.1 |
 
 ---
 
@@ -382,6 +385,24 @@ WebView2 + CSS——内高光、同心圆角、`content-visibility`、可中断 
 
 **`--state-wash` 深浅不同取值**：浅底对淡染更敏感，同样 6% 在浅色下会显得
 像选中态。这与第 4.2 节同属「双主题不能只换变量」。
+
+#### `--color-raised`：凸起在面之上的那一层
+
+```css
+/* 深色 */ --color-raised: #3a3645;
+/* 浅色 */ --color-raised: #fdfcff;
+```
+
+为什么需要它而不直接用 `--color-surface`：**深色主题下 `--color-surface`
+比 `--color-surface-2` 更暗**，于是「凸起的元素放在次级面上」会得到
+「凸起的东西比底更暗」——这在物理上不成立，观感就是没凸起。
+浅色主题恰好相反，`surface` 本就比 `surface-2` 亮。
+
+分段控件的滑移指示器正是踩了这个坑：浅色下看着正常，深色下几乎看不见。
+
+**一般判断**：**凡是表达「层级关系」的颜色，都不能靠两个平级令牌的明暗
+碰巧成立**——它在一套主题下对，在另一套下就会反。
+必须抽成语义令牌由各主题自己给值。
 
 `skipped` 状态**不分配颜色**，只用虚线描边——它表达「还没发生」，
 给颜色就等于宣称它有结论（第 10.3 节）。
@@ -1078,6 +1099,8 @@ frontend/src/
 │  │   UiButton  UiCheckbox  UiRadio  UiSwitch  UiInput  UiSelect
 │  │   UiTooltip  UiHelpBadge  UiScrollArea  UiProgress
 │  │   UiEmptyState  UiSegmented  Ornament
+│  │   index.ts              统一出口
+│  │   types.ts              公共契约类型（见下方 TS 限制）
 │  ├─ layout/
 │  │   AppShell  TopBar  Sidebar  SidebarSection  ContentPane  PaneTransition
 │  ├─ feedback/
@@ -1179,6 +1202,15 @@ invalid?: boolean                 // 校验态，视觉由原语自己管
 
 实现要求见第 6.3 节三条。
 
+#### 契约类型必须住在 `.ts` 里，不能写在 `.vue` 中
+
+`<script setup>` 里的 `export interface` **无法被别处再导出**，`vue-tsc` 报
+TS2459。故 `SelectOption` / `SegmentedOption` 这类调用方需要引用的类型
+统一放 `ui/types.ts`。
+
+这个限制反而指向更好的结构——**契约与实现分离**：调用方只需 import 类型
+即可构造数据，不必知道是哪个组件在消费它。
+
 ### 11.6 动效的工程化：三个机制，不是散写
 
 **① `PaneTransition`**
@@ -1228,7 +1260,7 @@ const { styleFor } = useStagger({ max: 8, step: 24 })
 | # | 内容 | 验证要点 |
 | :-- | :--- | :--- |
 | 1 | `styles/` 拆分 + 令牌全量落地 + `@layer` 声明 | 界面变色但功能不变；**须连带改 Go 侧背景色**，见下 |
-| 2 | `ui/` 原语建齐（含 `Ornament`）+ `.btn` 转 shim | 原语可用，旧页面照旧 |
+| 2 | `ui/` 原语建齐（含 `Ornament`）+ `.btn` 转 shim | 原语可用，旧页面照旧；**须有预览页**，见 12.3 |
 | 3 | `layout/` 三板斧骨架 + 路由嵌套改造 | **唯一结构性改动，单独 commit** |
 | 4 | 三页各自迁进壳，`views/` 拆 shells / panes | 逐页迁，**每页一个 commit** |
 | 5 | 原生控件替换为原语 + 花纹投放 + LOGO 占位 | `DlcList`、设置页重点验 |
@@ -1289,12 +1321,38 @@ const { styleFor } = useStagger({ max: 8, step: 24 })
 **推广到一条一般判断**：凡是「只声明不产生规则」的 CSS at-rule，
 都要假设构建工具可能把它当空语句优化掉，**必须验产物而不是验源码**。
 
+### 12.3 第 2 步必须配一个预览页
+
+第 2 步不改任何页面，于是**十三个原语全部无人引用，会被 tree-shake 掉**——
+`vite build` 通过，但没有一行原语代码真正跑过。「原语可用」这个验证要点
+在没有落点的情况下是无法验证的。
+
+故建 `views/UiGalleryView.vue`，路由 `#/dev/ui`，
+**仅在 `import.meta.env.DEV` 下注册**（Vite 静态替换，生产构建连同那句
+`import()` 一起摇掉，不进封测包）。已实测确认产物中无 `Gallery` chunk。
+
+它同时是三项风险的实机验证场：双主题同等打磨、自绘控件的 `:focus-visible`、
+frameless 下浮层是否被窗口边界裁切。
+
+**第 6 步之后建议保留**而非删除：维护成本几乎为零，而每次改原语都需要
+一个地方一眼看全所有形态。删掉之后再想验证，就只能挨个翻业务页面。
+
 **第 3 步是唯一有回退风险的**，前后各打一个 commit 边界。
 
 **第 5 步之前界面处于「新骨架 + 旧控件」的中间态**——能跑，
 但不要在这个状态发封测包。
 
-每步照旧过 `npx vue-tsc --noEmit` + `npx vite build`。
+每步照旧过 `npm run verify`——它串起三道检查：
+
+```
+type-check    vue-tsc --noEmit
+check-tokens  scripts/check-tokens.mjs   未定义的令牌引用
+build         vite build
+```
+
+**`check-tokens` 不是可选的**：未定义的 CSS 变量不报错也不警告，
+`vue-tsc` 与 `vite build` 会全部通过，而界面上那处颜色是透明的。
+第 2 步实机时就踩到一次（`--seg-knob`），详见 `DECISIONS-2`。
 本轮为纯前端改动，预期不需要 `wails generate module`；
 若因故新增 DTO 字段，该步骤交主人执行。
 

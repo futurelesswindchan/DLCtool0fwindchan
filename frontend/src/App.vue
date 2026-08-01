@@ -9,8 +9,9 @@
  * 首屏以默认暗色渲染后再跳成亮色。
  */
 
-import { onMounted } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { watchSystemTheme } from './styles/theme-boot'
 import { useEnvStore } from './stores/env'
 import { useConfigStore } from './stores/config'
 import { useLibraryStore } from './stores/library'
@@ -25,6 +26,19 @@ const config = useConfigStore()
 const library = useLibraryStore()
 const ui = useUiStore()
 const router = useRouter()
+
+/**
+ * 跟随系统档下，运行期间系统主题变化需即时生效。
+ *
+ * 不接这个监听的话，「跟随系统」只在启动那一刻跟随一次，之后要重启才更新——
+ * 而 Windows 会在日落时自动切换主题，用户恰好开着工具时就会看到
+ * 系统变了而工具没变，那比不提供这个选项更让人困惑。
+ *
+ * 监听必须在 setup 同步作用域构造（含清理的 composable 的既有约束），
+ * 故不能挪进 onMounted。
+ */
+const unwatchSystemTheme = watchSystemTheme(() => config.theme === 'system')
+onUnmounted(unwatchSystemTheme)
 
 onMounted(async () => {
   await config.refresh()

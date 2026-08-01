@@ -10,8 +10,15 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { getConfig, saveConfig, type AppConfig } from '../api'
+import { applyTheme, type ThemeName } from '../styles/theme-boot'
 
-export type Theme = 'dark' | 'light' | 'system'
+/**
+ * 主题档位。
+ *
+ * 实现在 styles/theme-boot.ts——它必须能在 Vue 挂载前独立运行，
+ * 故不能住在 store 里。此处只做类型再导出，调用方无需知道这层分工。
+ */
+export type Theme = ThemeName
 
 export const useConfigStore = defineStore('config', () => {
   const config = ref<AppConfig | null>(null)
@@ -21,7 +28,13 @@ export const useConfigStore = defineStore('config', () => {
     () => config.value?.repoSources?.filter((s) => s.enabled) ?? [],
   )
 
-  const theme = computed<Theme>(() => (config.value?.theme as Theme) ?? 'dark')
+  /**
+   * 当前主题。默认浅色，须与后端 defaultTheme 保持一致。
+   *
+   * 两处默认值必须同改：后端管首次运行落盘的值，此处管配置尚未拉到时的
+   * 临时值。不一致会让首屏先按一种主题渲染、拉到配置后再跳一次。
+   */
+  const theme = computed<Theme>(() => (config.value?.theme as Theme) ?? 'light')
 
   async function refresh() {
     config.value = await getConfig()
@@ -44,18 +57,4 @@ export const useConfigStore = defineStore('config', () => {
   return { config, enabledSources, theme, refresh, save, setTheme }
 })
 
-/**
- * 把主题写到 <html data-theme> 上。
- *
- * system 档不写死值，而是查询系统偏好后落为具体档位——CSS 侧只需处理
- * dark / light 两种情形，不必再写一套 prefers-color-scheme 规则。
- */
-function applyTheme(t: Theme) {
-  const resolved =
-    t === 'system'
-      ? window.matchMedia('(prefers-color-scheme: light)').matches
-        ? 'light'
-        : 'dark'
-      : t
-  document.documentElement.setAttribute('data-theme', resolved)
-}
+

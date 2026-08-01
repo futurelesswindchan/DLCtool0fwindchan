@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "type-check": "vue-tsc --noEmit"
+    "type-check": "vue-tsc --noEmit",
+    "check-tokens": "node scripts/check-tokens.mjs",
+    "verify": "npm run type-check && npm run check-tokens && npm run build"
   },
   "dependencies": {
     "@vueuse/core": "^13.5.0",

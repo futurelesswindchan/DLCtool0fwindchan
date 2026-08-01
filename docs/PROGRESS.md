@@ -16,9 +16,79 @@
 
 | #   | 事项                                       | 性质              |
 | :-- | :----------------------------------------- | :---------------- |
-| 1   | **前端视觉全面翻新**（当前主线）           | 六步中已完成第 1 步 |
+| 1   | **前端视觉全面翻新**（当前主线）           | 六步中已完成 1、2 步 |
 | 2   | 教程补 M 站 API key 申请指引               | 未开工            |
 | 3   | 试下载首次 41 秒等待的体感优化（可选）     | 未开工            |
+
+### ✅ UI 施工第 2 步：自绘原语建齐（2026-08-01）
+
+`components/ui/` 下建成十三个原语 + `index.ts` 出口 + `types.ts` 契约类型，
+另加两个 composable。宪法第 6 章「界面中不得出现任何未经完全接管的原生表单控件」
+自此有了落点。
+
+| 类别 | 组件 |
+| :--- | :--- |
+| 动作 | `UiButton`（default / primary / danger / ghost，含 icon 与 loading 形态） |
+| 选择 | `UiCheckbox`（含 indeterminate）/ `UiRadio` / `UiSwitch` / `UiSegmented` |
+| 输入 | `UiInput`（含 mono 形态）/ `UiSelect` |
+| 反馈 | `UiProgress`（确定 / 不确定态）/ `UiEmptyState` / `UiScrollArea` |
+| 提示 | `UiTooltip` / `UiHelpBadge` |
+| 装饰 | `Ornament` |
+
+新增 `composables/useAnchoredLayer.ts`（浮层定位，约 90 行，不引 floating-ui）
+与 `composables/useStagger.ts`（错开入场，JS 只发序号、延迟在 CSS 里算）。
+
+**三条实现要求全部落实**：自绘控件各自实现 `:focus-visible`；
+可点区一律 ≥ 28px（`UiCheckbox` 视觉方框 15px、热区靠整个 label 撑够，
+针对 `DlcList` 原生 checkbox 只有 13px 那笔欠账）；
+`UiCheckbox` / `UiRadio` / `UiSwitch` 内部都是真 `<input>`，
+`appearance: none` 后自绘，未用 `div + role`。
+
+**新增开发专用预览页** `#/dev/ui`：第 2 步不改任何页面，若无落点则十三个原语
+会被 tree-shake 掉，构建通过但一行未跑。仅 `import.meta.env.DEV` 下注册，
+已实测确认生产产物中无 `Gallery` chunk。
+
+**撞到一个 TS 限制**：`<script setup>` 里的 `export interface` 无法被别处
+再导出（TS2459），故契约类型统一移入 `ui/types.ts`。
+
+**验证**：`vue-tsc --noEmit` / `vite build` / `go build ./...` /
+`go build -tags dev ./...` / `go vet` / `go test -count=1 ./...` 全过，
+113 条 PASS 无变化。
+
+**实机验证结果**：浮层裁切、焦点环、双主题、`UiSelect` 键盘操作四项全部通过。
+frameless 下浮层未被窗口边界裁切，宪法第 13 章该项风险可结案。
+
+### ✅ 第 2 步实机反馈的三处修正（2026-08-01）
+
+**① 分段控件指示器错位。** 根因是 flex 项的 `min-width` 默认为 `auto`
+（不得窄于内容），「跟随系统」四字 72px 撑得比「深色」两字 48px 宽，
+各段不再等宽，而指示器位置是按均分算出的，故必然错开且字数差越大错得越远。
+
+容器改 `display: inline-grid` + `grid-auto-columns: 1fr`——grid 的 `1fr`
+让所有列等于**最宽内容**的宽度，flex 的 `1` 只是等分剩余空间。
+加 `min-width: 0` 治不了这个问题：那样文字会溢出。
+
+**② 深色下指示器不明显。** 配色方向反了：深色主题的 `--color-surface`(#232128)
+比轨道 `--color-surface-2`(#2a2731) **更暗**，而「凸起的东西比底更暗」在物理上
+不成立，观感就是没凸起。浅色主题恰好相反所以看着正常。
+
+新增 `--color-raised` 语义令牌由两套主题各自给值（深 `#3a3645` / 浅 `#fdfcff`），
+组件侧不必知道这层差异。
+
+**③ 「跟随系统」无法设置。** 根因在 Go 侧，详见 `DECISIONS-2`——
+`normalize` 只认两档，`system` 被静默改回 `dark`。已补测试钉住三档契约。
+
+**另修两处半成品**：`theme-boot.ts` 的 `watchSystemTheme` 已接进 `App.vue`
+（否则「跟随系统」只在启动那一刻跟随一次，而 Windows 会在日落时自动切换主题）；
+`--seg-knob` 曾被引用但从未定义，指示器背景一度是透明的。
+
+**后一处促成了一道新检查**：`frontend/scripts/check-tokens.mjs`。
+未定义的 CSS 变量不报错也不警告，`vue-tsc` 与 `vite build` 全部通过——
+这类问题必须有专门的检查拦住。已接入 `npm run verify`。
+
+**验证**：`npm run verify`（type-check → check-tokens → build）/
+`go build ./...` / `go build -tags dev ./...` / `go vet` /
+`go test -count=1 ./...` 全过，测试 **113 → 117 条 PASS**。
 
 ### ✅ UI 施工第 1 步：样式拆分与令牌落地（2026-08-01）
 

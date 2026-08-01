@@ -20,6 +20,25 @@ const routes = [
   { path: '/setup', name: 'setup', component: () => import('../views/SetupView.vue') },
 ]
 
+/**
+ * 原语预览页，仅开发构建注册。
+ *
+ * 它的作用不只是「看一眼」：第 2 步不改任何页面，若无此页则十三个原语
+ * 全部无人引用、被 tree-shake 掉——构建通过但一行都没真正跑过。
+ *
+ * import.meta.env.DEV 由 Vite 静态替换，生产构建下整个分支连同
+ * 那句 import 一起被摇掉，不会进封测包。
+ *
+ * 访问路径：开发模式下打开 #/dev/ui
+ */
+if (import.meta.env.DEV) {
+  routes.push({
+    path: '/dev/ui',
+    name: 'dev-ui',
+    component: () => import('../views/UiGalleryView.vue'),
+  })
+}
+
 export const router = createRouter({
   history: createWebHashHistory(),
   routes,
@@ -41,6 +60,8 @@ let guarded = false
 router.beforeEach((to) => {
   if (guarded) return true
   if (to.name === 'setup' || to.name === 'settings') return true
+  // 预览页与环境状态无关，被引导拦走反而没法验证原语
+  if (to.name === 'dev-ui') return true
 
   const env = useEnvStore()
   if (!env.checked) return true
