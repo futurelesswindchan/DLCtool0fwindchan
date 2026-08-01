@@ -44,7 +44,7 @@
 | 23 | 正文端正，只在反馈时刻放松语气 | 8.2 |
 | 24 | 新增设置项须先回答「不加会不会卡住用户」 | 9 |
 | 25 | `ui/` 不得 import stores / api / wailsjs / router | 11.1 |
-| 26 | **不要给 `<RouterView>` 加 `:key="appID"`** | 11.4 |
+| 26 | **不要给 `<RouterView>` 加 `:key`**，含 `route.path` 等一切随 appID 变的值 | 11.4 |
 | 27 | 只过渡 `transform` 与 `opacity`，侧栏高度是唯一例外 | 14 |
 | 28 | 层顺序声明只能写在 `index.html`，写进 CSS 会被 Vite 吃掉 | 12.2 |
 | 29 | 背景色三处同改（令牌 / `wails.json` / `main.go`） | 12.1 |
@@ -52,6 +52,9 @@
 | 31 | 表达层级的颜色必须抽语义令牌，不靠两个平级令牌的明暗碰巧成立 | 4.1 |
 | 32 | 每步验证须过 `npm run verify`（含未定义令牌自查） | 12 |
 | 33 | 默认主题是**浅色**，五处默认值须一致 | 4.1 |
+| 34 | 内容区过渡须挂在滚动容器**内部**，限宽归 `ContentPane` | 11.4 |
+| 35 | 新增文件不得引用 `legacy.css` 里的旧令牌名 | 12.4 |
+| 36 | 侧栏条目一律用 `SidebarItem`，不各页手写 | 3.1 / 11.2 |
 
 ---
 
@@ -468,24 +471,48 @@ Aero 让人觉得精致的核心**不是半透明，而是顶边一道 1px 内�
 
 字重只用 `400 / 500 / 600` 三档。
 
-#### 既有九档 rem 的迁移映射
+#### 既有 rem 字号的迁移映射（全量）
 
-**第 1 步只建令牌不改调用点，界面上依然是九档。** 故映射在此定死，
+**第 1 步只建令牌不改调用点，界面上依然是旧档。** 故映射在此定死，
 具体替换随第 4 步逐页迁移执行——不定死的话，六个页面会各自拍板一次，
-九档就变成了新的九档。
+旧档就变成了新的旧档。
 
-| 既有 rem | 迁移到 | px |
-| :--- | :--- | :--- |
-| `0.72` / `0.75` / `0.76` | `--text-xs` | 11 |
-| `0.78` / `0.8` / `0.82` | `--text-sm` | 12 |
-| `0.85` | `--text-base` | 13 |
-| `0.92` | `--text-md` | 15 |
-| `1.25` | `--text-lg` | 19 |
+⚠️ **实测修正（2026-08-01，第 3 步收尾时）**：本节原写「既有九档」，
+实际扫描 `frontend/src/**/*.vue` 得 **18 档、63 处**。原映射表只覆盖九个值，
+另九个值无归属——而第 4 步是逐页施工，六页会各自为这些值拍板一次，
+恰好落进本节开头要防的那个坑。下表为全量映射。
+
+| 既有 rem | px | 迁移到 | 处数 |
+| :--- | :--- | :--- | :--- |
+| `0.7` / `0.72` / `0.74` / `0.75` / `0.76` | 11.2~12.2 | `--text-xs`（11） | 13 |
+| `0.78` / `0.8` / `0.82` | 12.5~13.1 | `--text-sm`（12） | 25 |
+| `0.83` / `0.85` | 13.3~13.6 | `--text-base`（13） | 10 |
+| `0.9` / `0.92` / `0.95` / `1` | 14.4~16 | `--text-md`（15） | 10 |
+| `1.05` / `1.1` / `1.15` / `1.25` | 16.8~20 | `--text-lg`（19） | 4 |
+
+**归档依据是语义，不是就近取整。** 六档令牌的定义本身是语义的
+（角标／元信息／正文／区块标题／页面标题），按 px 距离归会把页面标题
+塞进区块标题档，那是把层级关系算没了。
+
+两个可对照的例子：
+
+- `1rem`（16px）离 15 比离 19 近，且它在 `ConfirmDialog` 与 `DropZone`
+  上都是**区块标题**，归 `--text-md` 恰好。
+- `1.05rem`（16.8px）只比它大 0.8px，但那是 `LibraryView` 的 `h1`，
+  是**页面标题**，必须归 `--text-lg`。
+
+**遇到语义与本表冲突时以语义为准，并在此表补一行说明**——
+表是为了让六页得出同一结论，不是为了让人机械套用。
 
 `--text-xl`（25px）**无既有来源**，是新增档位，专供空态主文案与对比表数字强调
 （第 10.2 节「数字放大加粗」的落点）。
 
 迁移期判据：任一视图迁完后，其 scoped 样式里不应再出现 `rem` 字号字面量。
+全量判据（六页迁完后）：
+
+```
+findstr /s /n rem; frontend\src\*.vue     须无输出
+```
 
 **所有数字强制 `font-variant-numeric: tabular-nums`**——对比表的核心动作是
 纵向扫一列数字，字宽浮动会毁掉这件事。
@@ -1102,7 +1129,12 @@ frontend/src/
 │  │   index.ts              统一出口
 │  │   types.ts              公共契约类型（见下方 TS 限制）
 │  ├─ layout/
-│  │   AppShell  TopBar  Sidebar  SidebarSection  ContentPane  PaneTransition
+│  │   AppShell  TopBar  Sidebar  SidebarSection  SidebarItem
+│  │   ContentPane  PaneTransition
+│  │   ↑ SidebarItem 是第 3 步补的一件。三页若各自手写条目标记，
+│  │     选中态/悬停/焦点环/折叠态一定分头长歪，而 3.1 要求三页语义一致——
+│  │     一致性靠约定守不住，得靠同一个组件。它归 layout 而非 ui，
+│  │     因为 import 了 router（RouterLink）。
 │  ├─ feedback/
 │  │   ToastHost  ConfirmDialog  StatusBanner
 │  └─ domain/
@@ -1165,7 +1197,20 @@ Windows 上按钮会掉回系统 UI 字体、与正文不同源。`UiButton` 中
 
 /settings                     -> SettingsShell  侧栏：四个小节
    └─ ':section'              -> 对应 Pane
+
+/game/:appID                  -> 重定向至 /app/:appID（旧路径兼容）
 ```
+
+**第 3 步的实际落地与上表有一处差异**：`/settings` 下暂时只有 `''` 一条
+子路由指向未拆的 `SettingsView`，侧栏用 `scrollIntoView` 锚点跳转过渡。
+`:section` 子路由归第 4 步——627 行的拆分与路由改造混进同一个 commit，
+回退时就分不开了，而第 3 步是六步里唯一有回退风险的一步。
+
+换子路由时只需把 `SidebarItem` 的 `@click` 换成 `to`，侧栏结构一行不动。
+**这是刻意留的接缝。** 过渡期代价：地址栏不变，刷新回不到刚才那一节。
+
+`/game/:appID` 保留重定向而非直接删除：它在 07-29 前是正式路径，
+改造前若有调用点遗漏，重定向能让它继续工作而不是白屏。
 
 关键在于：**`:appID` 变化时父级 Shell 不重建。** Vue Router 的嵌套路由天然
 如此，所以侧栏保持不动、列表滚动位置不丢、选中态指示器可以平滑滑移——
@@ -1173,13 +1218,46 @@ Windows 上按钮会掉回系统 UI 字体、与正文不同源。`UiButton` 中
 
 #### 一个必须写死的坑
 
-> **不要给 `<RouterView>` 加 `:key="appID"`。**
+> **不要给 `<RouterView>` 加 `:key`。**
+>
+> **以及任何与之等价的东西**——包括 `:key="route.path"` 与
+> `:key="route.fullPath"`。
 
 加了 key 会强制重建组件，那么 `GameView` 里现有的 `watch(appID, load)`
 **永远不触发**——而那段逻辑是实机验证过的。不加 key 则组件实例复用、
 watch 正常工作，改动量最小。
 
+⚠️ **实测补充（2026-08-01，第 3 步）**：本条原先只写了 `:key="appID"`，
+施工时的第一版 `PaneTransition` 因此改用了 `:key="route.path"`——
+**那是等价的**，`:appID` 变化时 `path` 也变，同样销毁重建。
+已在 `PaneTransition.vue` 内以注释写死，此处补全约束范围。
+
+**推广到一条一般判断**：凡以「不要用 X」形式写下的约束，都应补一句
+「以及任何与 X 等价的东西」，否则读者会绕道踩进同一个坑，
+而且会觉得自己已经遵守了规则。
+
+不加 key 的实际行为（已确认）：
+
+- 切到不同组件（`SearchView` → `ImportPane`）：vnode 类型不同，
+  `Transition` 正常播放
+- 同组件换 `appID`：实例复用、无过渡、watch 触发、内容就地更新。
+  **这正是 5.2 节要的效果**——侧栏指示器滑移，右侧就地换内容，
+  而不是整块闪一下
+
 写进本文是为了防止以后有人「为了保险」加个 key，**静默改掉已验证的行为**。
+
+#### 过渡必须挂在滚动容器内部
+
+`PaneTransition` 自带 `ContentPane`（滚动容器），并把 `Transition` 包在其内。
+
+反过来把过渡挂在滚动容器外面，切换瞬间滚动容器本身参与位移，
+滚动条会跟着抖一下——**那是「界面是拼出来的」那种观感的典型来源**，
+且用户说不出哪里怪。
+
+顺带一并收进 `ContentPane` 的还有限宽与留白。现状 `SearchView` 与 `GameView`
+各写一份 `max-width: 860px; margin: 0 auto`，那种「每页自己记得对齐」的做法
+迟早对不齐。`SettingsView` 是刻意的例外（760px，长文本行宽），
+已在该文件内注明「不是漏改」。
 
 #### `keep-alive` 边界
 
@@ -1259,10 +1337,10 @@ const { styleFor } = useStagger({ max: 8, step: 24 })
 
 | # | 内容 | 验证要点 |
 | :-- | :--- | :--- |
-| 1 | `styles/` 拆分 + 令牌全量落地 + `@layer` 声明 | 界面变色但功能不变；**须连带改 Go 侧背景色**，见下 |
-| 2 | `ui/` 原语建齐（含 `Ornament`）+ `.btn` 转 shim | 原语可用，旧页面照旧；**须有预览页**，见 12.3 |
-| 3 | `layout/` 三板斧骨架 + 路由嵌套改造 | **唯一结构性改动，单独 commit** |
-| 4 | 三页各自迁进壳，`views/` 拆 shells / panes | 逐页迁，**每页一个 commit** |
+| 1 ✅ | `styles/` 拆分 + 令牌全量落地 + `@layer` 声明 | 界面变色但功能不变；**须连带改 Go 侧背景色**，见下 |
+| 2 ✅ | `ui/` 原语建齐（含 `Ornament`）+ `.btn` 转 shim | 原语可用，旧页面照旧；**须有预览页**，见 12.3 |
+| 3 ✅ | `layout/` 三板斧骨架 + 路由嵌套改造 | **唯一结构性改动，单独 commit** |
+| 4 | 三页各自迁进壳，`views/` 拆 shells / panes | 逐页迁，**每页一个 commit**；账本见 12.4 |
 | 5 | 原生控件替换为原语 + 花纹投放 + LOGO 占位 | `DlcList`、设置页重点验 |
 | 6 | 术语帮助系统铺开（`UiHelpBadge` 挂到各术语） | 键盘可达性逐个验 |
 
@@ -1337,6 +1415,57 @@ frameless 下浮层是否被窗口边界裁切。
 **第 6 步之后建议保留**而非删除：维护成本几乎为零，而每次改原语都需要
 一个地方一眼看全所有形态。删掉之后再想验证，就只能挨个翻业务页面。
 
+### 12.4 第 4 步的迁移账本（2026-08-01 实测清点）
+
+第 4 步要「每页一个 commit」逐页改令牌，而 `tokens/legacy.css` 只给了映射
+方向，没有给调用点分布。**不清点的话，`legacy.css` 敢不敢删会变成悬案**——
+漏一处不报错、不警告，界面照常跑，与第 1 步那次 `@layer` 被吃掉是同一形状
+的失效。
+
+下表为全量分布，随第 4 步逐页归零。
+
+| 旧令牌 | 新令牌 | 处数 | 分布 |
+| :--- | :--- | :--- | :--- |
+| `--color-bg-elevated` | `--color-surface` | 17 | ConfirmDialog 1、DlcList 3、DropZone 1、EnvBanner 1、GameCard 1、ToastHost 1、TopBar 1、GameView 3、LibraryView 1、SearchView 2、SettingsView 1、SetupView 1 |
+| `--color-bg-hover` | `--color-surface-2` | 8 | DlcList 1、EnvBanner 1、GameCard 1、TopBar 3、GameView 1、SetupView 1 |
+| `--color-border-strong` | `--color-border-str` | 1 | DropZone 1 |
+| `--radius-sm` | `--radius-chip` | 8 | DlcList 1、GameCard 3、TopBar 1、GameView 1、LibraryView 1、SettingsView 1 |
+| `--radius-md` | `--radius-ctrl` | 13 | DlcList 2、EnvBanner 1、GameCard 1、ToastHost 1、GameView 3、LibraryView 1、SearchView 2、SettingsView 1、SetupView 1 |
+| `--radius-lg` | `--radius-card` | 2 | ConfirmDialog 1、DropZone 1 |
+| `--duration-fast` | `--dur-instant` | 6 | ConfirmDialog 1、GameCard 2、TopBar 3 |
+| `--duration-base` | `--dur-fast` | 9 | ConfirmDialog 1、DlcList 1、DropZone 2、ToastHost 2、TopBar 1、SetupView 1 |
+| `--ease-out` | `--ease-decelerate` | 15 | 与上两行同处 |
+
+⚠️ **时长映射不是一一对等**，`legacy.css` 已警示，此处重申：
+`--duration-base`(200ms) 映到 `--dur-fast`(160ms) 而非同名的 `--dur-base`(240ms)。
+v1 按组件类型分档，新令牌按位移距离分档。**按名字对应会把动效整体拖慢。**
+
+`--duration-slow` 与 `--color-success` 扫描无调用点，可在 `legacy.css`
+删除时直接移除，无需迁移。
+
+**完成判据**（六页迁完后逐条验，须全部无输出）：
+
+```
+findstr /s /n color-bg-elevated   frontend\src\*.vue
+findstr /s /n color-bg-hover      frontend\src\*.vue
+findstr /s /n color-border-strong frontend\src\*.vue
+findstr /s /n radius-sm           frontend\src\*.vue
+findstr /s /n radius-md           frontend\src\*.vue
+findstr /s /n radius-lg           frontend\src\*.vue
+findstr /s /n duration-           frontend\src\*.vue
+findstr /s /n ease-out            frontend\src\*.vue
+findstr /s /n rem;                frontend\src\*.vue
+```
+
+全部无输出后才允许删 `tokens/legacy.css`，删后须再过一次 `npm run verify`
+——`check-tokens` 会抓出任何遗漏引用。**这是唯一能确认迁移干净的手段**，
+因为未定义的 CSS 变量在浏览器里完全静默。
+
+⚠️ 新增文件不得再引用旧令牌名。别名是给既有调用点的过渡期通道，
+新代码走它只会让 `legacy.css` 更难删。第 3 步新建的 8 个文件已全部直接用新名。
+
+---
+
 **第 3 步是唯一有回退风险的**，前后各打一个 commit 边界。
 
 **第 5 步之前界面处于「新骨架 + 旧控件」的中间态**——能跑，
@@ -1364,7 +1493,7 @@ build         vite build
 | :--- | :--- |
 | frameless 下 `popover` 浮层被窗口边界裁切 | 第 2 步实机验证；不通则退回 `position: fixed` 手动定位 |
 | `content-visibility: auto` 与错开入场动效冲突 | 视口外元素不参与动画，需实测确认无跳变 |
-| 三板斧最小宽度 | 须与 `main.go` 的 `MinWidth` 对齐，可能要调后端 |
+| ~~三板斧最小宽度~~ | ✅ **已结案（08-01 第 3 步）**：折叠阈值取 900 > `MinWidth` 800，故 800 宽下侧栏必定已是图标条（56px），内容区余 744px。**无需改后端** |
 | 侧栏高度过渡与 `content-visibility` 同时作用 | 高度过渡是**唯一**允许的重排例外，需实测帧率 |
 | `mask-image` 在 WebView2 的表现 | 需确认前缀要求 |
 | 逐条推送试下载结果 | 第 5.5 节依赖后端按源推送事件，属功能层改动 |

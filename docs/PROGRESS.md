@@ -16,9 +16,62 @@
 
 | #   | 事项                                       | 性质              |
 | :-- | :----------------------------------------- | :---------------- |
-| 1   | **前端视觉全面翻新**（当前主线）           | 六步中已完成 1、2 步 |
+| 1   | **前端视觉全面翻新**（当前主线）           | 六步中已完成 1、2、3 步 |
 | 2   | 教程补 M 站 API key 申请指引               | 未开工            |
 | 3   | 试下载首次 41 秒等待的体感优化（可选）     | 未开工            |
+
+### ✅ UI 施工第 3 步：三板斧骨架与路由嵌套改造（2026-08-01）
+
+六步中唯一有结构性回退风险的一步，已实机验收并 push。
+
+**新增 `components/layout/` 六件套**：
+
+| 组件 | 职责 |
+| :--- | :--- |
+| `AppShell` | 顶栏 + 全局横幅 + 三板斧承载区，从 `App.vue` 拆出 |
+| `Sidebar` | 侧栏容器，含折叠开关与 brand / default / footer 三插槽 |
+| `SidebarSection` | 分组，折叠态下隐藏标题但保留分隔线 |
+| `SidebarItem` | 可选中条目。**宪法 11.2 清单外补的一件** |
+| `ContentPane` | 内容区滚动 / 留白 / 限宽，三页统一定义一次 |
+| `PaneTransition` | 内容区切换过渡，自带 `ContentPane` 与 `RouterView` |
+
+**新增三壳两 Pane**：`views/shells/`（`HomeShell` / `LibraryShell` /
+`SettingsShell`）与 `views/panes/`（`ImportPane` / `LibraryOverviewPane`）。
+
+**路由改嵌套**，`GameView` 在两棵树下以两个路由名注册同一组件
+（`game` 与 `library-game`），`/game/:appID` 保留为重定向。
+
+**其他改动**：`ui` store 增侧栏折叠态；`SearchView` 的本地导入**整块搬去**
+`ImportPane`（不留重复）；`GameView` 删「← 返回」；两页移除各自的
+`max-width` 改由 `ContentPane` 统一；`SettingsView` 四个 section 补 `id`。
+
+**设置页刻意不拆**（627 行），侧栏用锚点跳转过渡。拆分归第 4 步——
+与路由改造混进同一 commit 则回退时分不开。代价：此刻刷新回不到刚才那一节。
+
+**施工中现踩现修的两处静默错误**（均已写进注释与 `DECISIONS-2`）：
+
+1. 第一版 `PaneTransition` 用了 `:key="route.path"`——**与宪法禁止的
+   `:key="appID"` 等价**，`appID` 变则 `path` 也变，同样销毁重建组件，
+   使 `watch(appID, load)` 永久失效且不报错。宪法 11.4 已补全约束范围。
+2. `SidebarItem` 的 `exact` 不能给 `active-class` 与 `exact-active-class`
+   同一个值。`activeClass` 在子路径也匹配时生效、会先命中，
+   `exactActiveClass` 形同虚设——表现为进到 `/app/123` 时「在线搜索」仍高亮，
+   侧栏出现两个选中项。
+
+**验证**：`npm run verify` 三道全过（type-check / check-tokens 72 令牌 /
+build）；`go build ./...` + `-tags dev` + `go vet` + `go test -count=1` 全过；
+`findstr domain dist\index.html` 有输出；生产产物无 `Gallery` chunk。
+
+**结掉一条风险项**：宪法第 13 章「三板斧最小宽度须与 `MinWidth` 对齐，
+可能要调后端」——折叠阈值 900 > `MinWidth` 800，故 800 宽下侧栏必定已是
+图标条（56px），内容区余 744px，**无需改后端**。
+
+**顺带补了宪法自身的两个缺口**（见 `DECISIONS-2` 末两条）：
+
+- 4.3 节原写「既有九档 rem」，实测为 **18 档、63 处**，另九个值无归属。
+  已补全映射表，并定下「归档依据是语义而非就近取整」。
+- 新增 12.4 节「第 4 步迁移账本」：令牌改名的**全量调用点分布与处数**，
+  含九条可归零的 `findstr` 判据。不清点则 `legacy.css` 敢不敢删是悬案。
 
 ### ✅ UI 施工第 2 步：自绘原语建齐（2026-08-01）
 
