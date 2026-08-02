@@ -14,6 +14,7 @@ import { useRouter } from 'vue-router'
 import { useEnvStore } from '../stores/env'
 import { useToast } from '../composables/useToast'
 import { selectDirectory } from '../api'
+import { UiButton } from '../components/ui'
 
 const router = useRouter()
 const env = useEnvStore()
@@ -74,8 +75,8 @@ async function onRecheck() {
             <code>{{ env.steamPath }}</code>
           </p>
           <div class="step__actions">
-            <button class="btn" @click="onAutoDetect">自动识别</button>
-            <button class="btn" @click="onPickSteamPath">手动选择</button>
+            <UiButton @click="onAutoDetect">自动识别</UiButton>
+            <UiButton @click="onPickSteamPath">手动选择</UiButton>
           </div>
         </div>
       </li>
@@ -123,19 +124,15 @@ async function onRecheck() {
     </ol>
 
     <div class="foot">
-      <button class="btn btn--primary" :disabled="env.loading" @click="onRecheck">
+      <UiButton variant="primary" :loading="env.loading" @click="onRecheck">
         {{ env.loading ? '检测中…' : '重新检测' }}
-      </button>
-      <button
-        v-if="env.ready"
-        class="btn"
-        @click="router.push({ name: 'search' })"
-      >
-        开始使用 →
-      </button>
-      <button v-else class="btn" @click="router.push({ name: 'search' })">
-        先看看界面
-      </button>
+      </UiButton>
+      <!-- 原为 v-if/v-else 两个按钮，行为完全相同、只有文案不同。
+           合并成一个：切换时只更新文本节点，不销毁重建元素，
+           故按下态与焦点环不会在 env.ready 变化那一刻被打断。 -->
+      <UiButton @click="router.push({ name: 'search' })">
+        {{ env.ready ? '开始使用 →' : '先看看界面' }}
+      </UiButton>
     </div>
   </div>
 </template>
@@ -222,6 +219,13 @@ async function onRecheck() {
   color: var(--color-text-muted);
   font-size: var(--text-sm);
   line-height: var(--leading-normal);
+}
+
+/* 步骤三有连续两段说明，而 .step__desc 是 margin: 0，两段会贴在一起糊成
+   一坨。只给「紧跟另一段之后」的那段补间距——直接给 .step__desc 加
+   margin-bottom 会连带把首段与标题的距离撑开，那是两个不同的关系。 */
+.step__desc + .step__desc {
+  margin-top: var(--space-2);
 }
 
 .step__path {
