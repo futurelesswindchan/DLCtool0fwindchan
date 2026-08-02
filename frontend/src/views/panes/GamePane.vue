@@ -1,6 +1,12 @@
 <script setup lang="ts">
 /**
- * 游戏页
+ * 游戏详情 Pane
+ *
+ * 在两棵路由树下注册为同一组件（`game` 与 `library-game`），
+ * 渲染进「用户来的那个列表」的内容区（宪法 3.7）。
+ *
+ * ⚠️ 依赖一个必须守住的前提：外层 `PaneTransition` 不给 `RouterView` 加 key。
+ *    加了会强制重建组件，下方 `watch(appID, load)` 永远不触发且不报错。
  *
  * 同一路由承担三种状态，由是否已有该游戏的清单包决定：
  *   A. 未入库            → 详情 + 三源查找进展 + 入库按钮
@@ -17,7 +23,8 @@
 
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime'
+// wailsjs 位于 frontend/ 下而非 src/ 内，故比其他 import 多一级
+import { EventsOn, EventsOff } from '../../../wailsjs/runtime/runtime'
 import {
   getGameDetail,
   trialSources,
@@ -28,13 +35,13 @@ import {
   type GameDetail,
   type GamePackage,
   type TrialReport,
-} from '../api'
-import { useLibraryStore } from '../stores/library'
-import { useEnvStore } from '../stores/env'
-import { useToast } from '../composables/useToast'
-import { useConfirm } from '../composables/useConfirm'
-import { useDlcSelection } from '../composables/useDlcSelection'
-import DlcList from '../components/DlcList.vue'
+} from '../../api'
+import { useLibraryStore } from '../../stores/library'
+import { useEnvStore } from '../../stores/env'
+import { useToast } from '../../composables/useToast'
+import { useConfirm } from '../../composables/useConfirm'
+import { useDlcSelection } from '../../composables/useDlcSelection'
+import DlcList from '../../components/DlcList.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -589,8 +596,9 @@ async function resetToUninstalled() {
   width: 230px;
   aspect-ratio: 460 / 215;
   object-fit: cover;
-  border-radius: var(--radius-md);
-  background: var(--color-bg-hover);
+  border-radius: var(--radius-ctrl);
+  /* 封面未加载时的占位底色 */
+  background: var(--color-surface-2);
 }
 
 .hero__info {
@@ -601,27 +609,28 @@ async function resetToUninstalled() {
   display: flex;
   gap: var(--space-4);
   padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-elevated);
+  border-radius: var(--radius-chip);
+  background: var(--color-surface);
   color: var(--color-text-muted);
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
 }
 
 .hero__name {
   margin: 0 0 var(--space-1);
-  font-size: 1.25rem;
+  /* 1.25rem(20px) -> --text-lg(19)。这是页面标题 */
+  font-size: var(--text-lg);
 }
 
 .hero__meta {
   margin: 0 0 var(--space-2);
   color: var(--color-text-dim);
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
 }
 
 .hero__desc {
   margin: 0;
   color: var(--color-text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-base);
   /* 简介可能很长，限制三行以免挤压下方的操作区 */
   display: -webkit-box;
   -webkit-line-clamp: 3;
@@ -632,30 +641,43 @@ async function resetToUninstalled() {
 .block {
   padding: var(--space-4);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-elevated);
+  /* 面板取 card 档；其内部元素须按同心圆角相应收窄（宪法 4.4） */
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--elev-1);
 }
 
 .block__title {
   margin: 0 0 var(--space-3);
-  font-size: 0.9rem;
-  font-weight: 500;
+  /* 0.9rem(14.4px) -> --text-md(15)。区块标题 */
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
 }
 
 .hint {
   margin: 0 0 var(--space-2);
   color: var(--color-text-muted);
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
 }
 
 /* ─── 源试取对比表 ───
-   视觉设计留待下一轮统一重构，此处只保证「三种没结果视觉分家」这一
-   功能要求：可用与不可用要一眼分清，否则用户仍会把源的贫瘠误判为故障。 */
+
+   ⚠️ 欠账（第 5 步处理）：宪法 10.1 节已判定现有 border-left 方案作废。
+      作废理由不是配色而是几何打架——3px 直角色条贴在圆角卡片左侧，
+      色条上下两端是方的、卡片角是圆的，看起来像「贴上去的胶带」而非
+      卡片自己长出来的，怎么调色都救不回来。
+      10.2 节的替代方案是双重编码：数字放大加粗承担状态色 + 整行
+      4~6% 淡染（--state-wash 就是为它准备的，目前尚无调用点）。
+
+   本步只把旧令牌名换成新名，不动方案本身——第 4 步的职责是迁进壳与
+   令牌改名，把对比表重构混进来会让本页 commit 同时承担两种性质的改动，
+   而两者验证方式不同（令牌看 check-tokens，重构要逐个验五种状态可辨）。
+   代价是第 5 步会删掉下面几行刚改的名字，可以接受。 */
 
 .subtitle {
   margin: var(--space-4) 0 var(--space-2);
-  font-size: 0.85rem;
-  font-weight: 500;
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
   color: var(--color-text);
 }
 
@@ -678,19 +700,26 @@ async function resetToUninstalled() {
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border);
   border-left-width: 3px;
-  border-radius: var(--radius-md);
-  background: var(--color-bg-elevated);
-  font-size: 0.82rem;
+  /* 同心圆角：外层 .block 是 12px card 档、内边距 16px，
+     故此处取 ctrl 档（8px）而非同为 card 档 */
+  border-radius: var(--radius-ctrl);
+  background: var(--color-surface);
+  font-size: var(--text-sm);
 }
 
 /* 左边框色承担状态区分。用颜色而非图标是因为它不占宽度，
    且在密集列表里更易形成整体印象 */
+
+/* 由 --color-accent 改为 --state-ok（速查第 6 条：状态色不共享主色）。
+   这不是配色偏好——主色是「下一步该点这个」的引导，若某个源的「可用」
+   用主色标出，视觉上就等于推荐了它。而实测结论明确：Hubcap 并非恒优
+   （KRV 上它只给 2 DLC，快照源给 4），任何源相关逻辑都不得写死优先级。 */
 .trial--ok {
-  border-left-color: var(--color-accent);
+  border-left-color: var(--state-ok);
 }
 
 .trial--empty {
-  border-left-color: var(--color-warning);
+  border-left-color: var(--state-warn);
 }
 
 /* unsupported 与 miss 都是「该源没有可用内容」，同色处理——
@@ -701,8 +730,10 @@ async function resetToUninstalled() {
   opacity: 0.7;
 }
 
+/* 去掉了原先的 #c0392b 兜底值：令牌现已在两套主题下都有定义，
+   而那个兜底是暖红，与冷紫调不同源，一旦真的生效就会很显眼 */
 .trial--failed {
-  border-left-color: var(--color-danger, #c0392b);
+  border-left-color: var(--state-danger);
 }
 
 .trial--skipped {
@@ -711,21 +742,21 @@ async function resetToUninstalled() {
 }
 
 .trial__name {
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   color: var(--color-text);
   overflow-wrap: anywhere;
 }
 
 .trial__num {
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   color: var(--color-text);
   text-align: right;
 }
 
 .trial__msg {
   color: var(--color-text-muted);
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
 }
 
 .trial__btn {
@@ -734,17 +765,19 @@ async function resetToUninstalled() {
 
 .trial__btn--none {
   color: var(--color-text-dim);
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
 }
 
 .hint--warn {
-  color: var(--color-warning);
+  color: var(--state-warn);
 }
 
 .hint--dim {
+  /* 0.76rem 按表归 --text-xs，此处同 SearchPane .tips 一样改判 --text-sm：
+     它是带 line-height 的多行说明正文，非角标 */
   color: var(--color-text-dim);
-  font-size: 0.76rem;
-  line-height: 1.7;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
 }
 
 .actions {

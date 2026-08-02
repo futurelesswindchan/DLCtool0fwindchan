@@ -17,10 +17,42 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useLibraryStore } from '../../stores/library'
+import { useToast } from '../../composables/useToast'
+import { useConfirm } from '../../composables/useConfirm'
 import { UiButton, UiEmptyState } from '../../components/ui'
 
 const router = useRouter()
 const library = useLibraryStore()
+const toast = useToast()
+const confirm = useConfirm()
+
+/**
+ * 删除记录丢失的条目。
+ *
+ * 只对 lostRecord 那一类开放（外部清单不归本工具管）。
+ *
+ * NOTE: 后端在存在外部声明时返回失败并列出需手动处理的文件名，
+ * 此处按 warn 而非 error 呈现——文件确实删掉了一部分，说「失败」会让
+ * 用户以为什么都没发生（07-28 实测三条硬约束之一）。
+ */
+async function onRemove(mainAppID: string, name: string) {
+  const ok = await confirm({
+    title: `删除「${name}」的清单文件？`,
+    body: [
+      '本工具的账本里没有这个条目的记录，删除后无法还原当初的 DLC 勾选项。',
+      'Steam 库中的条目可能需要重启 Steam 后才消失。',
+    ],
+    confirmText: '删除',
+    danger: true,
+  })
+  if (!ok) return
+
+  try {
+    toast.success(await library.remove(mainAppID))
+  } catch (e: any) {
+    toast.warn(e?.message ?? '删除未完全成功')
+  }
+}
 
 const managed = computed(() => library.items.filter((i) => i.record))
 const conflicted = computed(() => library.items.filter((i) => i.conflicted))
@@ -94,6 +126,16 @@ const latest = computed(() => {
       <p class="hint">从左侧选一个游戏可查看详情并调整 DLC 勾选。</p>
 
       <!--
+        「重新扫描」的作用必须写出来（宪法铁律三：重构只允许折叠信息，
+        不允许删除）。用户手动动过清单目录时，扫描结果与账本的差异正是
+        本页要如实反映的东西——不说明的话，那个按钮看起来只是个刷新。
+      -->
+      <p class="hint hint--dim">
+        「重新扫描」会核对 Steam 目录里的实际文件与本工具的记录是否一致。
+        若你手动动过清单目录，扫描后这里会如实反映。
+      </p>
+
+      <!--
         异常区。三类分开讲，因为处置方式完全不同：
         冲突要手动删外部文件、孤立外部清单不归本工具管、记录丢失可直接删。
         混成一句「有 3 个异常」用户无从下手。
@@ -120,19 +162,48 @@ const latest = computed(() => {
         </h2>
         <p class="warn__body">
           这些文件不在本工具的记录里，可能是手动放入或由其他工具产生。
-          注入器会加载目录内全部清单的并集，因此它们同样在生效中。
-          其中可能含特意配置的内容，本工具不会自动清理。
+          其中可能含特意配置的内容，本工具不会自动清理，也不提供删除入口。
         </p>
+        <p class="warn__body">
+          注入器会加载目录内全部清单文件的并集，因此这些条目同样在生效中。
+          若某个游戏同时被这里的文件和本工具声明，卸载时只能删掉本工具那一份，
+          游戏会继续留在 Steam 库里，需要你手动删除对应文件。
+        </p>
+        <ul class="warn__list">
+          <li v-for="i in orphaned" :key="i.mainAppID">
+            <span class="warn__files">{{ i.fileNames.join('、') }}</span>
+          </li>
+        </ul>
       </section>
 
+      <!--
+        「记录丢失」是三类异常中唯一提供删除的一类。
+
+        为何只有它能删：外部清单不归本工具管（可能含用户特意配置的内容），
+        而记录丢失的条目本就是本工具部署的文件、只是账本没了，删它属分内事。
+        这个区分在旧 LibraryView 里由 v-if="!item.hasExternal" 表达，
+        第 3 步改壳时漏掉了，此处补回。
+      -->
       <section v-if="lostRecord.length" class="warn">
         <h2 class="warn__title">
           {{ lostRecord.length }} 个条目的安装记录已丢失
         </h2>
         <p class="warn__body">
           清单文件仍在生效，但本工具的账本里没有它们，因此无法还原当初的
-          DLC 勾选项。可以在侧栏选中后删除，或重新获取一次。
+          DLC 勾选项。可以直接删除，或重新获取一次以恢复记录。
         </p>
+        <ul class="lost">
+          <li v-for="i in lostRecord" :key="i.mainAppID" class="lost__row">
+            <span class="warn__files">{{ i.fileNames.join('、') }}</span>
+            <UiButton
+              size="sm"
+              variant="danger"
+              @click="onRemove(i.mainAppID, i.gameName)"
+            >
+              删除
+            </UiButton>
+          </li>
+        </ul>
       </section>
     </template>
   </div>
@@ -245,5 +316,34 @@ const latest = computed(() => {
   color: var(--color-text-dim);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
+  /* 文件名没有空格可断行，不加这条会撑破面板 */
+  word-break: break-all;
+}
+
+/* 记录丢失那一组带删除按钮，故不能用 warn__list 的项目符号缩进布局 */
+.lost {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lost__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.lost__row .warn__files {
+  /* flex 项默认 min-width:auto，不写这条长文件名会把按钮挤出容器 */
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.hint--dim {
+  color: var(--color-text-dim);
 }
 </style>

@@ -5,23 +5,23 @@
  * 搜索结果不进 store：属会话级临时数据，无其他页面需要读取，放在全局
  * 反而要额外考虑何时清理。
  *
- * 本地导入已于第 3 步搬去 `panes/ImportPane.vue`，并在侧栏获得与在线搜索
- * 平级的常驻入口（宪法 3.4）。它并非退路——该站网页端额度是 API 的
- * 4~60 倍，对重度用户而言手动下载再导入反而是更划算的主路径，
+ * 本地导入已于第 3 步搬去 `ImportPane.vue`，并在侧栏获得与在线搜索平级的
+ * 常驻入口（宪法 3.4）。它并非退路——该站网页端额度是 API 的 4~60 倍，
+ * 对重度用户而言手动下载再导入反而是更划算的主路径，
  * 而躺在本页底部折叠区时它「视觉上就是个退路」。
  *
  * 滚动、内边距与最大宽度由 `layout/ContentPane` 提供，本组件不再自己限宽。
+ *
+ * ⚠️ 遗留欠账（第 5 步处理）：搜索框与两个按钮仍是原生控件，
+ *    须换为 `UiInput` 与 `UiButton`。本步只迁令牌与字号。
  */
 
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import {
-  searchGames,
-  type GameSearchResult,
-} from '../api'
-import { useLibraryStore } from '../stores/library'
-import { useToast } from '../composables/useToast'
-import GameCard from '../components/GameCard.vue'
+import { searchGames, type GameSearchResult } from '../../api'
+import { useLibraryStore } from '../../stores/library'
+import { useToast } from '../../composables/useToast'
+import GameCard from '../../components/GameCard.vue'
 
 const router = useRouter()
 const library = useLibraryStore()
@@ -160,11 +160,13 @@ function openGame(appID: string) {
   flex: 0 0 auto;
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-elevated);
+  border-radius: var(--radius-ctrl);
+  background: var(--color-surface);
   color: var(--color-text);
   font-family: inherit;
-  font-size: 0.95rem;
+  /* 0.95rem(15.2px) -> --text-md(15)。搜索框是本页的主入口，
+     字号比正文大一档是刻意的，不能顺手降到 --text-base */
+  font-size: var(--text-md);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -187,16 +189,22 @@ function openGame(appID: string) {
   filter: brightness(1.1);
 }
 
+/*
+  NOTE: 这仍是原生 <input>，属宪法第 6 章要消灭的对象。
+  第 5 步换为 <UiInput size="md">，届时本段样式整体删除。
+  此处只做令牌迁移，不提前换控件——把控件替换混进令牌 commit
+  会让「每页一个 commit」失去回退价值。
+*/
 .search__input {
   flex: 1 1 auto;
   min-width: 0;
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-elevated);
+  border-radius: var(--radius-ctrl);
+  background: var(--color-surface);
   color: var(--color-text);
   font-family: inherit;
-  font-size: 0.95rem;
+  font-size: var(--text-md);
 }
 
 .search__input:focus {
@@ -222,19 +230,27 @@ function openGame(appID: string) {
 .empty {
   margin: 0;
   color: var(--color-text-muted);
-  font-size: 0.85rem;
+  /* 0.85rem(13.6px) -> --text-base(13)。这是搜索无果时的主要说明，属正文 */
+  font-size: var(--text-base);
 }
 
+/*
+  ⚠️ 语义与映射表冲突，按宪法 4.3 节「以语义为准」处理：
+  0.76rem 按表归 --text-xs(11px)，但 --text-xs 的定义是「角标、图例」，
+  而这里是三行带 line-height 1.7 的说明性正文。且第 3 步的 ImportPane
+  同名 .tips 已用 --text-sm——两个兄弟 Pane 的提示字号不该不同。
+  故归 --text-sm。已回填至宪法 4.3 节映射表。
+*/
 .tips {
   margin: 0;
   color: var(--color-text-dim);
-  font-size: 0.76rem;
-  line-height: 1.7;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
 }
 
 .tips strong {
-  color: var(--color-warning);
-  font-weight: 500;
+  color: var(--state-warn);
+  font-weight: var(--weight-medium);
 }
 
 </style>

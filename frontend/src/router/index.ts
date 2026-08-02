@@ -49,7 +49,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: '',
         name: 'search',
-        component: () => import('../views/SearchView.vue'),
+        component: () => import('../views/panes/SearchPane.vue'),
       },
       {
         path: 'import',
@@ -59,7 +59,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'app/:appID',
         name: 'game',
-        component: () => import('../views/GameView.vue'),
+        component: () => import('../views/panes/GamePane.vue'),
       },
     ],
   },
@@ -81,11 +81,19 @@ const routes: RouteRecordRaw[] = [
       {
         path: ':appID',
         name: 'library-game',
-        component: () => import('../views/GameView.vue'),
+        component: () => import('../views/panes/GamePane.vue'),
       },
     ],
   },
 
+  /**
+   * 设置。第 4 步由锚点滚动改为真子路由，四个小节各自独立。
+   *
+   * `settings` 这个名字保留在**重定向**上而非某个小节上：
+   * 五处调用点（TopBar 页签、两处横幅行动按钮、环境指示灯、HomeShell 侧栏）
+   * 都用 `{ name: 'settings' }` 跳转，若把名字挪到 env 小节上，
+   * 语义就变成「设置 = 环境页」——那么以后想改默认落地小节就得同时改五处。
+   */
   {
     path: '/settings',
     component: () => import('../views/shells/SettingsShell.vue'),
@@ -93,7 +101,33 @@ const routes: RouteRecordRaw[] = [
       {
         path: '',
         name: 'settings',
-        component: () => import('../views/SettingsView.vue'),
+        /**
+         * 默认落地「环境」。
+         *
+         * 选它而非「外观」的理由：环境未就绪时整个工具不可用，
+         * 而用户点进设置最常见的动因正是「哪里没配好」。
+         */
+        redirect: { name: 'settings-env' },
+      },
+      {
+        path: 'env',
+        name: 'settings-env',
+        component: () => import('../views/panes/SettingsEnv.vue'),
+      },
+      {
+        path: 'sources',
+        name: 'settings-sources',
+        component: () => import('../views/panes/SettingsSources.vue'),
+      },
+      {
+        path: 'appearance',
+        name: 'settings-appearance',
+        component: () => import('../views/panes/SettingsAppearance.vue'),
+      },
+      {
+        path: 'about',
+        name: 'settings-about',
+        component: () => import('../views/panes/SettingsAbout.vue'),
       },
     ],
   },
@@ -149,7 +183,16 @@ let guarded = false
 
 router.beforeEach((to) => {
   if (guarded) return true
-  if (to.name === 'setup' || to.name === 'settings') return true
+  if (to.name === 'setup') return true
+  /**
+   * 整棵设置树都要放行，不只是 `settings` 这一个名字。
+   *
+   * 第 4 步把设置拆成 settings-env / -sources / -appearance / -about 之后，
+   * 只判 `=== 'settings'` 就不够了：那个名字现在挂在重定向上，
+   * 用户实际到达的是子路由名。漏掉的话，环境未就绪的用户点进设置会被
+   * 弹回引导页——而他要修的东西恰恰在设置里，正是守卫本意要避免的死循环。
+   */
+  if (String(to.name).startsWith('settings')) return true
   // 预览页与环境状态无关，被引导拦走反而没法验证原语
   if (to.name === 'dev-ui') return true
 

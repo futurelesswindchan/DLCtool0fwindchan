@@ -140,14 +140,14 @@ const syncText: Record<SyncState, string> = {
 
 .dlc__title {
   margin: 0;
-  font-size: 0.9rem;
-  font-weight: 500;
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
 }
 
 .dlc__sync {
   margin-left: auto;
   color: var(--color-text-muted);
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
 }
 
 .dlc__list {
@@ -155,7 +155,8 @@ const syncText: Record<SyncState, string> = {
   padding: 0;
   list-style: none;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-card);
+  /* 子行是方角，须被外层圆角裁掉 */
   overflow: hidden;
   content-visibility: auto;
 }
@@ -165,8 +166,8 @@ const syncText: Record<SyncState, string> = {
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
-  background: var(--color-bg-elevated);
-  font-size: 0.85rem;
+  background: var(--color-surface);
+  font-size: var(--text-base);
 }
 
 .row + .row {
@@ -174,7 +175,7 @@ const syncText: Record<SyncState, string> = {
 }
 
 .row:hover {
-  background: var(--color-bg-hover);
+  background: var(--color-surface-2);
 }
 
 .row__label {
@@ -200,14 +201,16 @@ const syncText: Record<SyncState, string> = {
   flex: 0 0 auto;
   color: var(--color-text-dim);
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
+  /* 整列 AppID 要能纵向扫读（速查第 9 条） */
+  font-variant-numeric: tabular-nums;
 }
 
 .row__depot {
   flex: 0 0 auto;
   width: 18px;
   text-align: center;
-  color: var(--color-warning);
+  color: var(--state-warn);
 }
 
 .row__depot--none {
@@ -217,7 +220,8 @@ const syncText: Record<SyncState, string> = {
 .dlc__readonly {
   margin: var(--space-2) 0 0;
   color: var(--color-text-muted);
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
 }
 
 .legend {
@@ -226,9 +230,11 @@ const syncText: Record<SyncState, string> = {
   gap: var(--space-1);
   margin-bottom: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-elevated);
-  font-size: 0.76rem;
+  border-radius: var(--radius-ctrl);
+  background: var(--color-surface);
+  /* 图例是本组件唯一真正归 --text-xs 的地方——它就是「图例」，
+     与那些被改判为 --text-sm 的说明性正文不同 */
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
 }
 
@@ -242,7 +248,7 @@ const syncText: Record<SyncState, string> = {
   flex: 0 0 auto;
   width: 14px;
   text-align: center;
-  color: var(--color-warning);
+  color: var(--state-warn);
 }
 
 .legend__mark--none {
@@ -253,15 +259,15 @@ const syncText: Record<SyncState, string> = {
   margin-top: var(--space-3);
   padding: var(--space-3);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-elevated);
-  font-size: 0.8rem;
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  font-size: var(--text-sm);
 }
 
 .howto__summary {
   cursor: pointer;
   color: var(--color-text-muted);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
 }
 
 .howto__summary:hover {
@@ -272,7 +278,7 @@ const syncText: Record<SyncState, string> = {
   margin: var(--space-3) 0 0;
   padding-left: var(--space-5);
   color: var(--color-text-muted);
-  line-height: 1.7;
+  line-height: var(--leading-normal);
 }
 
 .howto__steps li + li {
@@ -281,18 +287,19 @@ const syncText: Record<SyncState, string> = {
 
 .howto__steps strong {
   color: var(--color-text);
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .howto__note {
   margin: var(--space-3) 0 0;
   color: var(--color-text-dim);
-  font-size: 0.76rem;
+  /* 多行说明正文，同 SearchPane .tips 一样由 --text-xs 改判 --text-sm */
+  font-size: var(--text-sm);
 }
 
 .sync-enter-active,
 .sync-leave-active {
-  transition: opacity var(--duration-base) var(--ease-out);
+  transition: opacity var(--dur-fast) var(--ease-standard);
 }
 
 .sync-enter-from,

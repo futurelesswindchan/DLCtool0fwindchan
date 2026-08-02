@@ -131,7 +131,7 @@ function onTitleBarDblClick(e: MouseEvent) {
   /* 右侧不留内边距——窗口控制按钮须贴到窗口边缘，与系统标题栏观感一致 */
   padding: 0 0 0 var(--space-4);
   border-bottom: 1px solid var(--color-border);
-  background: var(--color-bg-elevated);
+  background: var(--color-surface);
   flex: 0 0 auto;
 
   /* frameless 下本条即是标题栏，整体可拖动 */
@@ -154,11 +154,13 @@ function onTitleBarDblClick(e: MouseEvent) {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
 }
 
 .topbar__logo {
-  font-size: 1.1rem;
+  /* 1.1rem(17.6px) -> --text-lg(19)。它是品牌位，按语义归页面标题档 */
+  font-size: var(--text-lg);
+  line-height: 1;
 }
 
 .topbar__nav {
@@ -166,19 +168,24 @@ function onTitleBarDblClick(e: MouseEvent) {
   gap: var(--space-1);
 }
 
+/*
+  圆角取 ctrl 档而非账本给的 chip 档：页签是可点的按钮性元素，
+  而 chip 档（4px）按宪法 4.4 是「角标、小徽章」用的。
+  4px 配在 8/12 内边距上会显得几乎没圆角，与同屏其他按钮不同源。
+*/
 .nav-tab {
   position: relative;
   padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-ctrl);
   color: var(--color-text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-base);
   text-decoration: none;
-  transition: color var(--duration-fast) var(--ease-out),
-    background var(--duration-fast) var(--ease-out);
+  transition: color var(--dur-instant) var(--ease-standard),
+    background var(--dur-instant) var(--ease-standard);
 }
 
 .nav-tab:hover {
-  background: var(--color-bg-hover);
+  background: var(--color-surface-2);
   color: var(--color-text);
 }
 
@@ -196,7 +203,14 @@ function onTitleBarDblClick(e: MouseEvent) {
   height: 2px;
   border-radius: 1px;
   background: var(--color-accent);
-  animation: tab-in var(--duration-base) var(--ease-out);
+  /*
+    ⚠️ 这是 animation 而非 transition，属宪法 5.4 节的例外情形：
+    下划线是「新出现的元素」而非「从旧位置移到新位置」，没有可插值的起点。
+
+    第 5 步的改法是把下划线抽成一条常驻的指示器、用 transform 在页签间滑移，
+    那时它才能变成可中断的 transition。届时本段连同 @keyframes 一起删。
+  */
+  animation: tab-in var(--dur-fast) var(--ease-decelerate);
 }
 
 @keyframes tab-in {
@@ -211,10 +225,16 @@ function onTitleBarDblClick(e: MouseEvent) {
   gap: var(--space-2);
   padding: var(--space-1) var(--space-3);
   border: 1px solid var(--color-border);
+  /*
+    ⚠️ 999px 是全圆胶囊，宪法 4.4 节明令禁止（那是消费级 App 的语言）。
+       但此处是**状态指示灯**而非按钮——胶囊形恰好把它与同屏的方角控件
+       区分开，让人一眼看出「这不是一个操作」。
+       第 5 步若要统一，替代方案是去掉边框只留色点与文字，而不是改成方角。
+  */
   border-radius: 999px;
   background: transparent;
   color: var(--color-text-muted);
-  font-size: 0.78rem;
+  font-size: var(--text-sm);
   font-family: inherit;
   cursor: pointer;
 }
@@ -225,7 +245,7 @@ function onTitleBarDblClick(e: MouseEvent) {
 }
 
 .env:not(:disabled):hover {
-  background: var(--color-bg-hover);
+  background: var(--color-surface-2);
   color: var(--color-text);
 }
 
@@ -236,8 +256,8 @@ function onTitleBarDblClick(e: MouseEvent) {
   background: currentColor;
 }
 
-.env--ready { color: var(--color-success); }
-.env--missing { color: var(--color-warning); }
+.env--ready { color: var(--state-ok); }
+.env--missing { color: var(--state-warn); }
 .env--nopath { color: var(--color-text-dim); }
 
 /* ─── 窗口控制 ─── */
@@ -260,8 +280,8 @@ function onTitleBarDblClick(e: MouseEvent) {
   background: transparent;
   color: var(--color-text-muted);
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out);
+  transition: background var(--dur-instant) var(--ease-standard),
+    color var(--dur-instant) var(--ease-standard);
 }
 
 .wctl__btn svg {
@@ -274,14 +294,16 @@ function onTitleBarDblClick(e: MouseEvent) {
 }
 
 .wctl__btn:hover {
-  background: var(--color-bg-hover);
+  background: var(--color-surface-2);
   color: var(--color-text);
 }
 
-/* 关闭键沿用系统的红底白字，用户对这一约定的认知比任何自创配色都强 */
+/* 关闭键沿用系统的红底白字，用户对这一约定的认知比任何自创配色都强。
+   文字色用 --color-on-accent 而非 #fff：两套主题下它都是「压在饱和色上
+   的字色」，而纯白压在浅色主题那个偏亮的红上会发飘。 */
 .wctl__btn--close:hover {
-  background: var(--color-danger);
-  color: #fff;
+  background: var(--state-danger);
+  color: var(--color-on-accent);
 }
 
 .wctl__btn:focus-visible {

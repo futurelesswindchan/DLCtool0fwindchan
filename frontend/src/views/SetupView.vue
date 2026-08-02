@@ -151,13 +151,16 @@ async function onRecheck() {
 
 .intro__title {
   margin: 0 0 var(--space-2);
-  font-size: 1.15rem;
+  /* 1.15rem(18.4px) -> --text-lg(19)。引导页的页面标题 */
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
 }
 
 .intro__desc {
   margin: 0;
   color: var(--color-text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
 }
 
 .steps {
@@ -176,13 +179,14 @@ async function onRecheck() {
   padding: var(--space-4);
   border: 1px solid var(--color-border);
   border-left-width: 3px;
-  border-radius: var(--radius-md);
-  background: var(--color-bg-elevated);
-  transition: border-color var(--duration-base) var(--ease-out);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--elev-1);
+  transition: border-color var(--dur-fast) var(--ease-standard);
 }
 
 .step--done {
-  border-left-color: var(--color-success);
+  border-left-color: var(--state-ok);
 }
 
 .step__no {
@@ -192,13 +196,15 @@ async function onRecheck() {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: var(--color-bg-hover);
-  font-size: 0.8rem;
-  font-weight: 700;
+  background: var(--color-surface-2);
+  font-size: var(--text-sm);
+  /* 700 收到 600：字重只用三档（4.3 节） */
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
 }
 
 .step--done .step__no {
-  color: var(--color-success);
+  color: var(--state-ok);
 }
 
 .step__body {
@@ -207,33 +213,36 @@ async function onRecheck() {
 
 .step__title {
   margin: 0 0 var(--space-1);
-  font-size: 0.92rem;
-  font-weight: 500;
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
 }
 
 .step__desc {
   margin: 0;
   color: var(--color-text-muted);
-  font-size: 0.82rem;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
 }
 
 .step__path {
   margin: var(--space-2) 0 0;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   word-break: break-all;
 }
 
 .step__missing {
   margin: var(--space-2) 0 0;
   padding-left: var(--space-4);
-  color: var(--color-warning);
-  font-size: 0.8rem;
+  color: var(--state-warn);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
 }
 
 .step__warn {
   margin: var(--space-2) 0 0;
-  color: var(--color-warning);
-  font-size: 0.8rem;
+  color: var(--state-warn);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
 }
 
 .step__actions {

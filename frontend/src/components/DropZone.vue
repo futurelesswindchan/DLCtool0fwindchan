@@ -72,8 +72,8 @@ function onDrop(event: DragEvent) {
   gap: var(--space-2);
   padding: var(--space-7) var(--space-4);
   border: 2px dashed var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-bg-elevated);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
   cursor: pointer;
   text-align: center;
   user-select: none;
@@ -81,12 +81,12 @@ function onDrop(event: DragEvent) {
   /* 只过渡 border-color 与 transform：二者不触发重排。
      避免对 padding / height 做动画。 */
   transition:
-    border-color var(--duration-base) var(--ease-out),
-    transform var(--duration-base) var(--ease-out);
+    border-color var(--dur-fast) var(--ease-standard),
+    transform var(--dur-fast) var(--ease-standard);
 }
 
 .dropzone:hover {
-  border-color: var(--color-border-strong);
+  border-color: var(--color-border-str);
 }
 
 .dropzone--active {
@@ -101,13 +101,14 @@ function onDrop(event: DragEvent) {
 
 .dropzone__title {
   margin: 0;
-  font-size: 1rem;
-  font-weight: 500;
+  /* 1rem(16px) -> --text-md(15)。它是区块标题 */
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
 }
 
 .dropzone__hint {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--color-text-dim);
 }
 </style>

@@ -106,21 +106,22 @@ const needSetPath = computed(() => props.result?.status === 'unknown')
   padding: var(--space-4);
   border: 1px solid var(--color-border);
   border-left-width: 3px;
-  border-radius: var(--radius-md);
-  background: var(--color-bg-elevated);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--elev-1);
 }
 
 /* 仅用左边框色区分状态，不改整块背景——满屏色块会压过内容。 */
 .banner--ready {
-  border-left-color: var(--color-success);
+  border-left-color: var(--state-ok);
 }
 
 .banner--missing {
-  border-left-color: var(--color-danger);
+  border-left-color: var(--state-danger);
 }
 
 .banner--unknown {
-  border-left-color: var(--color-warning);
+  border-left-color: var(--state-warn);
 }
 
 .banner--pending {
@@ -134,21 +135,23 @@ const needSetPath = computed(() => props.result?.status === 'unknown')
   display: grid;
   place-items: center;
   border-radius: 50%;
-  font-size: 0.8rem;
-  font-weight: 700;
-  background: var(--color-bg-hover);
+  font-size: var(--text-sm);
+  /* 700 收到 --weight-semibold(600)：字重只用三档（4.3 节），
+     且 600 在 12px 上已经足够醒目，700 只会让字形显得糊 */
+  font-weight: var(--weight-semibold);
+  background: var(--color-surface-2);
 }
 
 .banner--ready .banner__icon {
-  color: var(--color-success);
+  color: var(--state-ok);
 }
 
 .banner--missing .banner__icon {
-  color: var(--color-danger);
+  color: var(--state-danger);
 }
 
 .banner--unknown .banner__icon {
-  color: var(--color-warning);
+  color: var(--state-warn);
 }
 
 .banner__body {
@@ -158,13 +161,13 @@ const needSetPath = computed(() => props.result?.status === 'unknown')
 
 .banner__message {
   margin: 0;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .banner__detail {
   margin: var(--space-1) 0 0;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--color-text-dim);
 
   /* 路径可能很长，允许换行而非撑破布局 */
@@ -174,8 +177,9 @@ const needSetPath = computed(() => props.result?.status === 'unknown')
 .banner__missing {
   margin: var(--space-2) 0 0;
   padding-left: var(--space-4);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
+  line-height: var(--leading-normal);
 }
 
 .banner__actions {

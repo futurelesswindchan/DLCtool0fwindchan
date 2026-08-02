@@ -29,7 +29,17 @@
 @import './tokens/shape.css' layer(tokens);
 @import './tokens/elevation.css' layer(tokens);
 @import './tokens/motion.css' layer(tokens);
-@import './tokens/legacy.css' layer(tokens);
+/*
+  tokens/legacy.css 已于第 4 步删除。
+
+  它的职责是过渡期别名：第 1 步只换取值不换名字，让界面立刻变冷紫调而
+  12 个 vue 文件一行不用改；调用点随第 4 步逐页迁移。六页迁完、
+  九条归零判据全部无输出后，它就没有存在理由了。
+
+  删除前的最后一道保险是 check-tokens：未定义的 CSS 变量在浏览器里完全
+  静默（不报错、不警告、渲染为无效值后被忽略），vue-tsc 与 vite build
+  都会通过。若还有遗漏引用，只有它能抓出来。
+*/
 
 /* ---- base：重置与全局行为 ---- */
 @import './base/reset.css' layer(base);
@@ -39,6 +49,9 @@
 
 /* ---- ui：过渡期 shim，待 UiButton 铺开后删除 ---- */
 @import './shim.css' layer(ui);
+
+/* ---- domain：业务组件共用样式，可覆盖 ui 层 ---- */
+@import './domain/settings.css' layer(domain);
 
 /* ---- utilities：极少量，放最后确保总是生效 ---- */
 @import './utilities.css' layer(utilities);

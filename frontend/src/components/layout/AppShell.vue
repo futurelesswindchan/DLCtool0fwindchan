@@ -71,14 +71,24 @@ const ui = useUiStore()
   flex: 0 0 auto;
 }
 
+/*
+  ⚠️ 本段的状态色原先用的是 legacy 别名，那是第 3 步从 App.vue 整段搬
+     横幅样式时连旧令牌一起搬过来的，违反宪法第 35 条
+     「新增文件不得引用 legacy.css 里的旧令牌名」。第 4 步已修正为新名。
+
+     教训：整段搬运代码时，「搬」这个动作本身会绕过对新文件的检查——
+     因为注意力在「有没有搬漏」上，而不在「搬来的东西合不合新规矩」上。
+
+     （此注释刻意不写出那两个旧令牌名，否则会让归零判据出现假阳性。）
+*/
 .banner--warn {
-  background: color-mix(in srgb, var(--color-warning) 16%, var(--color-bg));
-  color: var(--color-warning);
+  background: color-mix(in srgb, var(--state-warn) 16%, var(--color-bg));
+  color: var(--state-warn);
 }
 
 .banner--error {
-  background: color-mix(in srgb, var(--color-danger) 16%, var(--color-bg));
-  color: var(--color-danger);
+  background: color-mix(in srgb, var(--state-danger) 16%, var(--color-bg));
+  color: var(--state-danger);
 }
 
 .banner--info,

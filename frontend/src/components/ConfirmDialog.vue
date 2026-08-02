@@ -84,20 +84,26 @@ function paragraphs(body?: string | readonly string[]): readonly string[] {
   width: min(440px, calc(100vw - 64px));
   padding: var(--space-5);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-bg-elevated);
-  box-shadow: 0 16px 48px rgb(0 0 0 / 45%);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  /* 硬编码的黑色阴影换成令牌：原值在浅色主题下是纯黑大范围投影，
+     落在冷紫底上会灰得发脏（elevation.css 已为此把浅色阴影调成带紫的深色）。
+     --hairline-top 补上顶边内高光，浮层才有厚度而不是一块贴纸。 */
+  box-shadow: var(--elev-2), var(--hairline-top);
 }
 
 .dialog__title {
   margin: 0 0 var(--space-3);
-  font-size: 1rem;
+  /* 1rem(16px) -> --text-md(15)。它是区块标题级别，不是页面标题 */
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
 }
 
 .dialog__body {
   margin: 0 0 var(--space-5);
   color: var(--color-text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
 }
 
 .dialog__body p {
@@ -112,12 +118,14 @@ function paragraphs(body?: string | readonly string[]): readonly string[] {
 
 .dialog-enter-active,
 .dialog-leave-active {
-  transition: opacity var(--duration-fast) var(--ease-out);
+  transition: opacity var(--dur-instant) var(--ease-standard);
 }
 
+/* 弹窗本体走 base 档：它是「浮层入场」，属 motion.css 里的中等位移。
+   遮罩的淡入比它快一档，使背景先暗下来、弹窗随后到位。 */
 .dialog-enter-active .dialog,
 .dialog-leave-active .dialog {
-  transition: transform var(--duration-base) var(--ease-out);
+  transition: transform var(--dur-base) var(--ease-decelerate);
 }
 
 .dialog-enter-from,

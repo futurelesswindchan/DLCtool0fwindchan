@@ -55,6 +55,9 @@
 | 34 | 内容区过渡须挂在滚动容器**内部**，限宽归 `ContentPane` | 11.4 |
 | 35 | 新增文件不得引用 `legacy.css` 里的旧令牌名 | 12.4 |
 | 36 | 侧栏条目一律用 `SidebarItem`，不各页手写 | 3.1 / 11.2 |
+| 37 | **判据本身也要有判据**：「无输出」的检查须先在已知有命中的文件上反向验证 | 12.4 |
+| 38 | 令牌文件不许「存在但未被 `index.css` 引入」，`check-tokens` 会报错拦住 | 12.4 |
+| 39 | 圆角按语义分档：面板 card / 控件 ctrl / 控件内 inner / 角标 chip | 4.4 / 12.4 |
 
 ---
 
@@ -274,6 +277,24 @@ WebView2 + CSS——内高光、同心圆角、`content-visibility`、可中断 
 「设置项不够多所以显得空」不是问题——见第 9 章，本项目的设置页方向是
 **少而准**。
 
+#### 补注：实际落地为四节，与本节设想有两处差异（2026-08-01 第 4 步）
+
+本节原设想侧栏四项为「外观 / 清单源 / 关于 / 调试」，实际落地是
+**环境 / 清单源 / 外观 / 关于与诊断**。两处改动各有理由：
+
+1. **补「环境」为独立首节。** 原设想漏了它，但 Steam 路径是整条部署链路的
+   唯一权威（`DECISIONS` 07-27），且用户点进设置最常见的动因就是
+   「哪里没配好」。故它排第一，且 `/settings` 默认重定向到它。
+
+2. **「调试」并入「关于」。** 该节的全部内容是诊断包导出与两句警示文案，
+   单独一屏会空得反常——而这与「设置项少是优点」是两回事：**一个小节空**
+   和**整页设置项少**给用户的观感相反，前者像没做完。
+   且它与版本号、日志路径同属「报障时要用的东西」，聚在一处更合用。
+   若后续调试项增多再拆。
+
+顺序即用户遇到问题的先后：环境不通则一切不可用；源决定能拿到什么；
+外观是偏好；关于与诊断是出事时才来的地方。
+
 ### 3.7 游戏详情的归属（路由改动的关键）
 
 详情**不再是独立页面**，而是渲染进「用户来的那个列表」的内容区：
@@ -489,6 +510,42 @@ Aero 让人觉得精致的核心**不是半透明，而是顶边一道 1px 内�
 | `0.83` / `0.85` | 13.3~13.6 | `--text-base`（13） | 10 |
 | `0.9` / `0.92` / `0.95` / `1` | 14.4~16 | `--text-md`（15） | 10 |
 | `1.05` / `1.1` / `1.15` / `1.25` | 16.8~20 | `--text-lg`（19） | 4 |
+
+**按语义改判的例外**（随第 4 步逐页记录，每条须说明理由）：
+
+| 位置 | 原值 | 按表应归 | 实际归 | 理由 |
+| :--- | :--- | :--- | :--- | :--- |
+| `SearchPane` `.tips` | `0.76rem` | `--text-xs` | `--text-sm` | 是三行带 `line-height` 的说明性正文，非角标；且 `ImportPane` 同名 `.tips` 已用 `--text-sm`，两个兄弟 Pane 的提示字号不该不同 |
+| `GamePane` `.hint--dim` | `0.76rem` | `--text-xs` | `--text-sm` | 同上，多行说明正文 |
+| `DlcList` `.howto__note` | `0.76rem` | `--text-xs` | `--text-sm` | 同上 |
+| `TopBar` `.topbar__logo` | `1.1rem` | `--text-lg` | `--text-lg` | 符合表；记此行只为说明品牌位按「页面标题」归档，不是按 px 就近 |
+| `ConfirmDialog` `.dialog__title` | `1rem` | `--text-md` | `--text-md` | 符合表，与 4.3 节举的例子一致 |
+
+> `DlcList` 的 `.legend` 是**唯一真正归 `--text-xs` 的地方**——它就是图例。
+> 与上面那些被改判为 `--text-sm` 的多行说明正文形成对照：
+> 判断依据是「这段文字要不要被逐句读」，要读的就不能用 11px。
+
+**圆角的同类改判**（`--radius-md` 的账本方向是 `--radius-ctrl`，但语义为面板时改判 `--radius-card`）：
+
+| 位置 | 账本方向 | 实际归 | 理由 |
+| :--- | :--- | :--- | :--- |
+| `GamePane` `.block` | `--radius-ctrl`（8px） | `--radius-card`（12px） | 它是**面板**而非控件，4.4 节把 card 档定义为「卡片、面板」；且其内部 `.trial` 取 ctrl 档，外层若同为 8px 则同心圆角不成立。这是视觉改动而非等价替换，同时补了 `--elev-1` |
+| `TopBar` `.nav-tab` | `--radius-chip`（4px） | `--radius-ctrl`（8px） | 页签是可点的按钮性元素，chip 档按 4.4 节是「角标、小徽章」用的。4px 配在 8/12 内边距上几乎看不出圆角，与同屏其他按钮不同源 |
+| `GameCard` `.card__cover` | `--radius-chip`（4px） | `--radius-inner`（6px） | 同心圆角：卡片 12px、内边距 12px。chip 档给角标用，配在这个尺寸的图上偏小 |
+| `DlcList` `.dlc__list` / `.howto` | `--radius-ctrl`（8px） | `--radius-card`（12px） | 二者都是面板（前者是整块列表容器，后者是折叠说明块），同 `GamePane .block` 的理由 |
+| `EnvBanner` / `SetupView` `.step` / `DropZone` | `--radius-ctrl` 或 `chip` | `--radius-card` | 同上，均为面板 |
+
+**归纳**：账本给的 `--radius-md -> --radius-ctrl` 是**取值等价**的映射（两者都是 8px），
+但语义上 `--radius-md` 在 v1 被当成了「万能中号圆角」，面板与控件都用它。
+故第 4 步实际做的不只是改名，而是**按语义重新分档**——面板走 card、
+控件走 ctrl、控件内元素走 inner、角标走 chip。这是视觉上的实质改进，
+也是「同心圆角」这条规则第一次真正落地。
+
+#### 时长的同类改判
+
+| 位置 | 账本方向 | 实际归 | 理由 |
+| :--- | :--- | :--- | :--- |
+| `ConfirmDialog` 弹窗本体 | `--dur-fast`（160ms） | `--dur-base`（240ms） | `motion.css` 里 `--dur-base` 的注释**明确写着「侧栏换内容、弹窗入场」**，令牌定义自己就把弹窗入场归在这一档。账本那条「按名字对应会拖慢」的警告针对的是大部分小位移场景，弹窗不属于 |
 
 **归档依据是语义，不是就近取整。** 六档令牌的定义本身是语义的
 （角标／元信息／正文／区块标题／页面标题），按 px 距离归会把页面标题
@@ -1115,6 +1172,11 @@ frontend/src/
 │  │   color.css  typography.css  shape.css  elevation.css  motion.css
 │  ├─ base/
 │  │   reset.css  scrollbar.css  a11y.css  frameless.css
+│  ├─ domain/                业务组件共用样式，可覆盖 ui 层
+│  │   settings.css          .set-block__title .set-hint .set-kv .set-linkbtn
+│  │   ↑ 第 4 步落的第一份 domain 内容。设置页拆成四个 Pane 后这几组
+│  │     四处都要用，各自 scoped 一份就会「改一个忘三个」。
+│  │     该层此前是空的，也正因为空，第 1 步 @layer 被吃掉才没有症状。
 │  ├─ pattern.css            花纹令牌 + .ornament 基类
 │  └─ utilities.css          极少量：.u-truncate .u-tnum .u-stagger
 │
@@ -1145,7 +1207,12 @@ frontend/src/
 │  │   HomeShell  LibraryShell  SettingsShell
 │  ├─ panes/                 填进内容区的东西
 │  │   SearchPane  ImportPane  GamePane  LibraryOverviewPane
-│  │   SettingsAppearance  SettingsSources  SettingsAbout  SettingsDebug
+│  │   SettingsEnv  SettingsSources  SettingsAppearance  SettingsAbout
+│  │   ↑ 实际是四个而非原计划的「外观/源/关于/调试」：
+│  │     「环境」必须有自己的小节（Steam 路径是整条链路的唯一权威），
+│  │     而「调试」的内容只有诊断包导出与两句警示，单独一屏会空得反常，
+│  │     且它与版本号/日志路径同属「报障时要用的东西」，故并入 About。
+│  │     若后续调试项增多再拆。见 3.6 节补注。
 │  └─ SetupView.vue          不套三板斧，独立全屏
 │
 ├─ stores/       env  config  library  ui
@@ -1340,8 +1407,8 @@ const { styleFor } = useStagger({ max: 8, step: 24 })
 | 1 ✅ | `styles/` 拆分 + 令牌全量落地 + `@layer` 声明 | 界面变色但功能不变；**须连带改 Go 侧背景色**，见下 |
 | 2 ✅ | `ui/` 原语建齐（含 `Ornament`）+ `.btn` 转 shim | 原语可用，旧页面照旧；**须有预览页**，见 12.3 |
 | 3 ✅ | `layout/` 三板斧骨架 + 路由嵌套改造 | **唯一结构性改动，单独 commit** |
-| 4 | 三页各自迁进壳，`views/` 拆 shells / panes | 逐页迁，**每页一个 commit**；账本见 12.4 |
-| 5 | 原生控件替换为原语 + 花纹投放 + LOGO 占位 | `DlcList`、设置页重点验 |
+| 4 ✅ | 三页各自迁进壳，`views/` 拆 shells / panes | 逐页迁，**每页一个 commit**；账本见 12.4，已全量归零 |
+| 5 | 原生控件替换为原语 + 花纹投放 + LOGO 占位 | `DlcList`、`SearchPane` 搜索框、对比表重构；见 12.5 |
 | 6 | 术语帮助系统铺开（`UiHelpBadge` 挂到各术语） | 键盘可达性逐个验 |
 
 ### 12.1 第 1 步的跨边界同步点
@@ -1399,6 +1466,22 @@ const { styleFor } = useStagger({ max: 8, step: 24 })
 **推广到一条一般判断**：凡是「只声明不产生规则」的 CSS at-rule，
 都要假设构建工具可能把它当空语句优化掉，**必须验产物而不是验源码**。
 
+#### 补注：同一形状的无害版本（2026-08-01，第 4 步验产物时发现）
+
+产物里还有一条裸声明 `@layer base;`，来源是 `base/frameless.css`——
+该文件**只有注释、没有任何规则**（frameless 的实际样式随 TopBar 走，
+文件本身是约束的存放处）。Vite 同样把它压成了裸声明。
+
+**这一条无害**，因为 `base` 层已由 `reset.css` / `scrollbar.css` /
+`a11y.css` 三个有规则的文件注册过了，这条裸声明是空操作。
+
+由此把判据说得更准一点：**危险的不是「出现裸声明」，而是「某一层的全部
+文件都不产生规则」**。第 1 步 `domain` 出事正是因为它当时一个文件都没有；
+而它在第 4 步有了 `domain/settings.css` 之后，这个风险自然消失。
+
+推论：**新增一个空层时最危险**。若某层暂时没有内容，要么先不声明它，
+要么放一份带真实规则的文件进去，别让它以「已声明」的假象存在。
+
 ### 12.3 第 2 步必须配一个预览页
 
 第 2 步不改任何页面，于是**十三个原语全部无人引用，会被 tree-shake 掉**——
@@ -1440,8 +1523,30 @@ frameless 下浮层是否被窗口边界裁切。
 `--duration-base`(200ms) 映到 `--dur-fast`(160ms) 而非同名的 `--dur-base`(240ms)。
 v1 按组件类型分档，新令牌按位移距离分档。**按名字对应会把动效整体拖慢。**
 
-`--duration-slow` 与 `--color-success` 扫描无调用点，可在 `legacy.css`
-删除时直接移除，无需迁移。
+`--duration-slow` 扫描无调用点，可在 `legacy.css` 删除时直接移除，无需迁移。
+
+⚠️ **账本勘误（2026-08-01，第 4 步第三页施工时发现）**：本节原写
+「`--duration-slow` 与 `--color-success` 扫描无调用点」，**`--color-success`
+这半句是错的**——实测有 **9 处、分布 6 个文件**：
+
+| 旧令牌 | 新令牌 | 处数 | 分布 |
+| :--- | :--- | :--- | :--- |
+| `--color-success` | `--state-ok` | 9 | EnvBanner 2、GameCard 2、ToastHost 1、TopBar 1、SettingsView 1、SetupView 2 |
+
+若照原账本在删 `legacy.css` 时直接移除它，六个文件的「成功／就绪」态配色
+会全部变成无效值——**而这不报错、不警告，`verify` 三道检查全过**，
+正是本节开头要防的那种失效形状。
+
+**由此得到一条一般判断**：清点账本这件事本身也需要判据。
+凡「扫描无调用点」的结论，都必须贴出所用的扫描命令与其输出，
+否则它与「我觉得没有」没有区别。上表的核实命令是：
+
+```
+findstr /s /n "color-success duration-slow" frontend\src\*.vue
+```
+
+（该命令须先在一个已知有命中的文件上反向验证过，排除工具静默失败——
+`grepContent` 在本项目 100% 静默失败，这个前提不能假设。）
 
 **完成判据**（六页迁完后逐条验，须全部无输出）：
 
@@ -1461,8 +1566,63 @@ findstr /s /n rem;                frontend\src\*.vue
 ——`check-tokens` 会抓出任何遗漏引用。**这是唯一能确认迁移干净的手段**，
 因为未定义的 CSS 变量在浏览器里完全静默。
 
+⚠️ **判据命令须先反向验证。** 「无输出」有两种可能：真的归零，或命令
+本身没生效。故每条判据都要先在一个**已知有命中**的文件上跑一遍确认能命中
+（迁移期间正好有孤立旧文件可用）。`grepContent` 在本项目 100% 静默失败，
+这个前提不能靠假设。
+
+#### ⚠️ 实测：`check-tokens` 曾对本步的关键状态是瞎的（2026-08-01）
+
+摘除 `legacy.css` 的 `@import` 之后，`check-tokens` 报告的已定义令牌数
+**一个没少**（仍是 72）。原因是它按**目录**收集定义（`walk(TOKEN_DIR)`），
+不看文件是否真的被 `index.css` 引入。
+
+于是存在这样一个状态——**`legacy.css` 在浏览器里已完全失效，但脚本仍把它
+定义的 13 个旧令牌算作「已定义」，任何遗漏引用都被放过。**
+而这个状态正是「删除 legacy.css」的前一步，也就是最需要检查的那一刻。
+
+**已修**：改为只收集被 `index.css` 实际 `@import` 的令牌文件，
+并对「磁盘上存在但未被引入」的令牌文件**直接报错**——那是最危险的形态，
+它看起来还在项目里，但对浏览器不存在。要么引入，要么删掉，不许以此状态留存。
+
+**由此得到一条一般判断**：**判据本身也要有判据。**
+凡是「扫目录得出结论」的检查，都要问一句「目录里的东西是否等于实际生效的
+东西」——在有构建步骤的项目里，这两者默认不相等。
+
+这与第 1 步 `@layer` 被吃掉、以及本节账本误判 `--color-success` 无调用点，
+是同一类问题的三次不同表现：**检查手段自身的失效是静默的。**
+
 ⚠️ 新增文件不得再引用旧令牌名。别名是给既有调用点的过渡期通道，
 新代码走它只会让 `legacy.css` 更难删。第 3 步新建的 8 个文件已全部直接用新名。
+
+### 12.5 第 5 步的欠账清单（第 4 步施工中标出）
+
+第 4 步只迁令牌与字号，刻意不动控件与方案。以下欠账已在对应文件的注释里
+标出，此处汇总以免下轮靠 grep 找。
+
+| 位置 | 欠账 | 依据 |
+| :--- | :--- | :--- |
+| `SearchPane` `.search__input` / 两个按钮 | 仍是原生 `<input>` 与 `<button>`，换 `UiInput` / `UiButton` | 第 6 章 |
+| `GamePane` 对比表 | `border-left` 方案作废，改双重编码（数字承担状态色 + 整行 4~6% 淡染）。`--state-wash` 就是为它准备的，目前**仍无调用点** | 10.1 / 10.2 |
+| `TopBar` `.nav-tab--active::after` | 现为 `animation`（新元素出现，无插值起点）。改法是抽成常驻指示器用 `transform` 在页签间滑移，届时才能变可中断的 `transition` | 5.4 |
+| `TopBar` `.env` | `border-radius: 999px` 是全圆胶囊。**此处是状态指示灯而非按钮**，胶囊形恰好把它与方角控件区分开；若要统一，替代方案是去掉边框只留色点与文字，**不是**改成方角 | 4.4 / 速查 8 |
+| `GameCard` `layout="grid"` | 零调用点。已安装页改 master-detail 后网格随 `LibraryView` 退场。搜索结果若不做网格视图就连同 `.card--grid` 四段样式一起删 | — |
+| `styles/shim.css` | `.btn` 仍有 **21 处**调用点：`GamePane` 13、`SetupView` 5、`EnvBanner` 2、`ConfirmDialog` 1。全部换成 `UiButton` 后删除本文件 | 11.3 |
+| 原生 `<input type=checkbox>` | `DlcList` 是重点，条目数可上百，`UiCheckbox` 的性能需实测 | 6 |
+
+**第 5 步的工作量分布很不均**：`GamePane` 一个文件占了 `.btn` 的六成。
+建议仍按「一个文件一个 commit」推进，且从 `EnvBanner`（2 处）开始试水，
+确认 `UiButton` 在既有布局里不走形之后再动 `GamePane`。
+
+统计命令（PowerShell 下引号要用单引号包住 `/c:`，且**不要**用
+`findstr /c:'class="btn'` 那种写法——实测会挂住不返回）：
+
+```
+findstr /s /n btn frontend\src\views\panes\GamePane.vue
+findstr /s /n btn frontend\src\views\SetupView.vue
+```
+
+逐文件跑比一条通吃可靠。
 
 ---
 
