@@ -13,6 +13,7 @@
 
 import { computed } from 'vue'
 import type { DetectorResult } from '../api'
+import { UiButton } from './ui'
 
 const props = defineProps<{
   result: DetectorResult | null
@@ -78,22 +79,19 @@ const needSetPath = computed(() => props.result?.status === 'unknown')
     </div>
 
     <div class="banner__actions">
-      <button
+      <UiButton
         v-if="needSetPath"
-        type="button"
-        class="btn btn--primary"
+        variant="primary"
         @click="$emit('setPath')"
       >
         设置 Steam 路径
-      </button>
-      <button
-        type="button"
-        class="btn"
-        :disabled="loading"
-        @click="$emit('recheck')"
-      >
+      </UiButton>
+      <!-- 检测中用 loading 而非 disabled：两者都禁用点击，但 loading 的
+           cursor: progress 表达的是「正在做」，disabled 表达「不能做」。
+           此处按钮随时可用，只是这一刻正忙。 -->
+      <UiButton :loading="loading" @click="$emit('recheck')">
         重新检测
-      </button>
+      </UiButton>
     </div>
   </section>
 </template>

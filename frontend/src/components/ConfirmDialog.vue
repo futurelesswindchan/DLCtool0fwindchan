@@ -10,6 +10,7 @@
 
 import { watch, onUnmounted } from 'vue'
 import { confirmState, resolveConfirm } from '../composables/useConfirm'
+import { UiButton } from './ui'
 
 function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape') resolveConfirm(false)
@@ -53,16 +54,15 @@ function paragraphs(body?: string | readonly string[]): readonly string[] {
         </div>
 
         <div class="dialog__actions">
-          <button class="btn" @click="resolveConfirm(false)">
+          <UiButton @click="resolveConfirm(false)">
             {{ confirmState.cancelText || '取消' }}
-          </button>
-          <button
-            class="btn"
-            :class="confirmState.danger ? 'btn--danger' : 'btn--primary'"
+          </UiButton>
+          <UiButton
+            :variant="confirmState.danger ? 'danger' : 'primary'"
             @click="resolveConfirm(true)"
           >
             {{ confirmState.confirmText || '确定' }}
-          </button>
+          </UiButton>
         </div>
       </div>
     </div>
