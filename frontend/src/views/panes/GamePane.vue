@@ -428,7 +428,10 @@ async function resetToUninstalled() {
             :class="`trial--${t.status}`"
           >
             <span class="trial__name">{{ t.source }}</span>
-            <span class="trial__num">
+            <span
+              class="trial__num"
+              :class="{ 'trial__num--text': t.status !== 'ok' }"
+            >
               <template v-if="t.status === 'ok'">{{ t.dlcCount }} DLC</template>
               <template v-else-if="t.status === 'empty'">仅本体</template>
               <template v-else>—</template>
@@ -465,7 +468,10 @@ async function resetToUninstalled() {
               :class="`trial--${t.status}`"
             >
               <span class="trial__name">{{ t.source }}</span>
-              <span class="trial__num">
+              <span
+                class="trial__num"
+                :class="{ 'trial__num--text': t.status !== 'ok' }"
+              >
                 <template v-if="t.status === 'ok'">{{ t.dlcCount }} DLC</template>
                 <template v-else-if="t.status === 'empty'">仅本体</template>
                 <template v-else>?</template>
@@ -668,17 +674,20 @@ async function resetToUninstalled() {
 
 /* ─── 源试取对比表 ───
 
-   ⚠️ 欠账（第 5 步处理）：宪法 10.1 节已判定现有 border-left 方案作废。
-      作废理由不是配色而是几何打架——3px 直角色条贴在圆角卡片左侧，
-      色条上下两端是方的、卡片角是圆的，看起来像「贴上去的胶带」而非
-      卡片自己长出来的，怎么调色都救不回来。
-      10.2 节的替代方案是双重编码：数字放大加粗承担状态色 + 整行
-      4~6% 淡染（--state-wash 就是为它准备的，目前尚无调用点）。
+   双重编码（宪法 10.2）。原 border-left 方案已废：3px 直角色条贴在圆角
+   卡片左侧，色条两端是方的、卡片角是圆的，看起来像贴上去的胶带而非卡片
+   自己长出来的——那是几何打架，调色救不回来。
 
-   本步只把旧令牌名换成新名，不动方案本身——第 4 步的职责是迁进壳与
-   令牌改名，把对比表重构混进来会让本页 commit 同时承担两种性质的改动，
-   而两者验证方式不同（令牌看 check-tokens，重构要逐个验五种状态可辨）。
-   代价是第 5 步会删掉下面几行刚改的名字，可以接受。 */
+   替代方案两条编码叠加，都不占横向宽度：
+     ① 数字自己承担状态色（.trial__num）。对比表的核心动作是纵向扫一列
+        数字，状态长在数字上，一眼同时得到「多少」和「行不行」，
+        比左边框省一次眼动。
+     ② 整行 --state-wash 淡染。单看比色条弱，但覆盖面大，
+        形成的整体印象反而更强。
+
+   状态色经 --trial-hue 一个自定义属性下发，五种状态各自只需改这一个值，
+   数字色与行底色都从它派生。好处是新增状态时不会漏掉其中一处——
+   两处分别写死是那种「改了一半」缺陷的温床。 */
 
 .subtitle {
   margin: var(--space-4) 0 var(--space-2);
@@ -705,46 +714,52 @@ async function resetToUninstalled() {
   align-items: center;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border);
-  border-left-width: 3px;
   /* 同心圆角：外层 .block 是 12px card 档、内边距 16px，
      故此处取 ctrl 档（8px）而非同为 card 档 */
   border-radius: var(--radius-ctrl);
-  background: var(--color-surface);
+
+  /* 状态色的单一来源。默认取中性，各状态类只覆盖这一个值。
+     行底色由它与 surface 混出，浓度走 --state-wash（深色 6% / 浅色 4%，
+     浅底对淡染更敏感故取下限）。 */
+  --trial-hue: var(--state-neutral);
+  background: color-mix(in srgb, var(--trial-hue) var(--state-wash), var(--color-surface));
+
   font-size: var(--text-sm);
 }
 
-/* 左边框色承担状态区分。用颜色而非图标是因为它不占宽度，
-   且在密集列表里更易形成整体印象 */
-
-/* 由 --color-accent 改为 --state-ok（速查第 6 条：状态色不共享主色）。
-   这不是配色偏好——主色是「下一步该点这个」的引导，若某个源的「可用」
-   用主色标出，视觉上就等于推荐了它。而实测结论明确：Hubcap 并非恒优
-   （KRV 上它只给 2 DLC，快照源给 4），任何源相关逻辑都不得写死优先级。 */
+/* 状态色不共享 --color-accent（速查第 6 条）。这不是配色偏好——主色是
+   「下一步该点这个」的引导，若某个源的「可用」用主色标出，视觉上就等于
+   推荐了它。而实测结论明确：Hubcap 并非恒优（KRV 上它只给 2 DLC，
+   快照源给 4），任何源相关逻辑都不得写死优先级。 */
 .trial--ok {
-  border-left-color: var(--state-ok);
+  --trial-hue: var(--state-ok);
 }
 
 .trial--empty {
-  border-left-color: var(--state-warn);
+  --trial-hue: var(--state-warn);
 }
 
 /* unsupported 与 miss 都是「该源没有可用内容」，同色处理——
-   对用户而言两者的处置方式相同（换源），无需在颜色上再作区分 */
+   对用户而言两者的处置方式相同（换源），无需在颜色上再作区分。
+   降透明度是第三重编码，表达「这行不用细看」。 */
 .trial--unsupported,
 .trial--miss {
-  border-left-color: var(--color-text-dim);
+  --trial-hue: var(--state-neutral);
   opacity: 0.7;
 }
 
-/* 去掉了原先的 #c0392b 兜底值：令牌现已在两套主题下都有定义，
-   而那个兜底是暖红，与冷紫调不同源，一旦真的生效就会很显眼 */
 .trial--failed {
-  border-left-color: var(--state-danger);
+  --trial-hue: var(--state-danger);
 }
 
+/* skipped 是「还没发生」而非「结果不好」，故不给淡染、只用虚线描边——
+   有底色会让人以为已经试过了。原方案只虚线化左边框，现在色条已去掉，
+   虚线改为整圈：一个未闭合感的轮廓恰好表达「这里还空着」。 */
 .trial--skipped {
-  border-left-color: var(--color-text-muted);
-  border-left-style: dashed;
+  --trial-hue: var(--state-neutral);
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--color-border-str);
 }
 
 .trial__name {
@@ -753,11 +768,23 @@ async function resetToUninstalled() {
   overflow-wrap: anywhere;
 }
 
+/* 双重编码的第一条：数字自己承担状态。
+   放大到 --text-md 并取状态色，使纵向扫这一列时「多少」与「行不行」
+   同时到手。tabular-nums 是硬要求（速查第 9 条），
+   等宽数字才能让 19 与 200 的位数差一眼看出来。 */
 .trial__num {
   font-variant-numeric: tabular-nums;
+  font-size: var(--text-md);
   font-weight: var(--weight-semibold);
-  color: var(--color-text);
+  color: var(--trial-hue);
   text-align: right;
+}
+
+/* 「仅本体」「—」「?」这类占位文案不跟着放大：放大是为了让数字醒目，
+   占位符一起放大只是变吵。回落到行内基准字号，颜色仍随状态。 */
+.trial__num--text {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
 }
 
 .trial__msg {
