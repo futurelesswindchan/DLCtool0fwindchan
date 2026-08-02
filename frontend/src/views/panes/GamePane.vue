@@ -42,6 +42,7 @@ import { useToast } from '../../composables/useToast'
 import { useConfirm } from '../../composables/useConfirm'
 import { useDlcSelection } from '../../composables/useDlcSelection'
 import DlcList from '../../components/DlcList.vue'
+import { UiButton } from '../../components/ui'
 
 const route = useRoute()
 const router = useRouter()
@@ -436,14 +437,15 @@ async function resetToUninstalled() {
               {{ t.message }}
               <template v-if="t.cached">（缓存）</template>
             </span>
-            <button
+            <UiButton
               v-if="t.status === 'ok' || t.status === 'empty'"
-              class="btn btn--primary trial__btn"
+              variant="primary"
+              class="trial__btn"
               :disabled="downloading"
               @click="install(t.source)"
             >
               用这个入库
-            </button>
+            </UiButton>
             <span v-else class="trial__btn trial__btn--none">不可用</span>
           </li>
         </ul>
@@ -469,34 +471,38 @@ async function resetToUninstalled() {
                 <template v-else>?</template>
               </span>
               <span class="trial__msg">{{ t.message }}</span>
-              <button
+              <!-- quotaTrying 存的是源名而非布尔，故能精确指出是哪一行在忙，
+                   这里可以放心用 loading。旁边「用这个入库」用的 downloading
+                   是共享布尔，挂 loading 会让所有行一起显示进行中。 -->
+              <UiButton
                 v-if="t.status === 'skipped' || t.status === 'failed'"
-                class="btn trial__btn"
-                :disabled="quotaTrying === t.source"
+                class="trial__btn"
+                :loading="quotaTrying === t.source"
                 @click="tryQuotaSource(t.source)"
               >
                 {{ quotaTrying === t.source ? '获取中…' : '试这个源' }}
-              </button>
-              <button
+              </UiButton>
+              <UiButton
                 v-else-if="t.status === 'ok' || t.status === 'empty'"
-                class="btn btn--primary trial__btn"
+                variant="primary"
+                class="trial__btn"
                 :disabled="downloading"
                 @click="install(t.source)"
               >
                 用这个入库
-              </button>
+              </UiButton>
               <span v-else class="trial__btn trial__btn--none">不可用</span>
             </li>
           </ul>
         </template>
 
         <div class="actions">
-          <button class="btn" :disabled="looking" @click="lookup(true)">
+          <UiButton :loading="looking" @click="lookup(true)">
             全部重新试取
-          </button>
-          <button class="btn" @click="router.push({ name: 'search' })">
+          </UiButton>
+          <UiButton @click="router.push({ name: 'search' })">
             改用本地导入
-          </button>
+          </UiButton>
         </div>
       </template>
 
@@ -510,10 +516,10 @@ async function resetToUninstalled() {
           若已从其他渠道拿到清单包，可回到搜索页用底部的本地导入功能。
         </p>
         <div class="actions">
-          <button class="btn" @click="lookup()">重新查询</button>
-          <button class="btn" @click="router.push({ name: 'search' })">
+          <UiButton :loading="looking" @click="lookup()">重新查询</UiButton>
+          <UiButton @click="router.push({ name: 'search' })">
             去本地导入
-          </button>
+          </UiButton>
         </div>
       </template>
 
@@ -529,12 +535,12 @@ async function resetToUninstalled() {
       </div>
 
       <div class="actions">
-        <button class="btn" @click="selection.selectAll()">全选</button>
-        <button class="btn" @click="selection.selectNone()">全不选</button>
-        <button class="btn" :disabled="downloading" @click="reacquire()">
+        <UiButton @click="selection.selectAll()">全选</UiButton>
+        <UiButton @click="selection.selectNone()">全不选</UiButton>
+        <UiButton :loading="downloading" @click="reacquire()">
           重新获取清单
-        </button>
-        <button class="btn btn--danger" @click="uninstall()">彻底卸载</button>
+        </UiButton>
+        <UiButton variant="danger" @click="uninstall()">彻底卸载</UiButton>
       </div>
 
       <p class="hint hint--dim">
@@ -568,10 +574,10 @@ async function resetToUninstalled() {
         因此暂时无法调整 DLC 勾选。重新获取一次即可恢复编辑，之后就会一直保留。
       </p>
       <div class="actions">
-        <button class="btn btn--primary" :disabled="downloading" @click="reacquire()">
+        <UiButton variant="primary" :loading="downloading" @click="reacquire()">
           重新获取以编辑
-        </button>
-        <button class="btn btn--danger" @click="uninstall()">彻底卸载</button>
+        </UiButton>
+        <UiButton variant="danger" @click="uninstall()">彻底卸载</UiButton>
       </div>
       <p v-if="progressText" class="hint">{{ progressText }}</p>
     </section>

@@ -47,8 +47,18 @@
 @import './base/a11y.css' layer(base);
 @import './base/frameless.css' layer(base);
 
-/* ---- ui：过渡期 shim，待 UiButton 铺开后删除 ---- */
-@import './shim.css' layer(ui);
+/*
+  ---- ui ----
+
+  shim.css 已于第 5 步删除：全部调用点换成 <UiButton> 后它就没有存在理由了。
+
+  ui 层现在是空层，但 index.html 里的顺序声明保留不动。它是内联 <style>、
+  不经 PostCSS，故不会被 Vite 当空语句抹掉（这正是第 4 步把顺序声明挪到
+  HTML 的原因）。层顺序由那一行显式钉死，不依赖任何文件来注册，
+  所以中间空一层无害——domain 仍排在 base 之后。
+
+  第 6 步若有 ui 层的共用样式（如术语徽章），在此处补 @import 即可。
+*/
 
 /* ---- domain：业务组件共用样式，可覆盖 ui 层 ---- */
 @import './domain/settings.css' layer(domain);
