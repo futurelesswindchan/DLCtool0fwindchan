@@ -73,6 +73,7 @@ function openGame(appID: string) {
         type="search"
         placeholder="请搜索游戏本体的简体中文名或 AppID"
         autofocus
+        :disabled="search.searching"
         @keydown.enter="runSearch()"
       />
       <button
@@ -215,6 +216,12 @@ function openGame(appID: string) {
 .search__input:focus {
   border-color: var(--color-accent);
   outline: none;
+}
+
+/* 与两个按钮的禁用态同一档，让「整排都锁住了」读起来是一件事 */
+.search__input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .results {

@@ -80,9 +80,25 @@ const latest = computed(() => {
 
 <template>
   <div class="pane">
-    <!-- 真空态：库里什么都没有 -->
+    <!--
+      首次扫描态：还不知道库里有什么，故什么都不断言。
+
+      必须显式占一个分支。原先只有「真空态」与 v-else 两条，而真空态的判据
+      `!items.length && !loading` 正确排除了读取中——但被排除的那种处境不会
+      消失，它掉进了 v-else，于是首次进入时统计页先以全 0 渲染出来，读完再
+      翻成空态。实测表现为「从其他页切到已安装页，闪一下 0 个 DLC 的统计」。
+
+      即：给否定分支补排除条件不等于处理了那种处境，只是把它推给了 else。
+      三种处境就得有三条分支。
+
+      不显示骨架屏或转圈：扫描通常在几十毫秒内完成，加动效反而更闪。
+      留空这一瞬什么都不说，比说错要好。
+    -->
+    <div v-if="library.loading && !library.items.length" class="booting" />
+
+    <!-- 真空态：确认库里什么都没有 -->
     <UiEmptyState
-      v-if="!library.items.length && !library.loading"
+      v-else-if="!library.items.length"
       title="还没有入库任何游戏"
       description="到搜索页找一个游戏，或从本地导入已有的清单包。"
     >
@@ -214,6 +230,15 @@ const latest = computed(() => {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+}
+
+/*
+  首次扫描期间的占位。刻意什么都不画——扫描通常几十毫秒就完成，
+  画点什么反而制造一次可见的闪动。给个高度只为避免容器塌成 0 高
+  导致后续内容出现时整页跳一下。
+*/
+.booting {
+  min-height: 12rem;
 }
 
 .head {

@@ -116,6 +116,49 @@ const storedLoading = ref(installed.value)
 const reacquiring = ref(false)
 
 /**
+ * 当前该渲染哪一个状态。
+ *
+ * 四个状态互斥，故由**一个值**裁决，而不是让四组布尔条件各自去判断。
+ *
+ * 上一轮（08-03）修状态 C 误报时用的是「往每个判据上补排除条件」，那治好了
+ * 「状态 C 何时该出现」，却漏了另一半：状态 A 是独立的 `v-if`，与状态 B/C
+ * 那条 `v-if/v-else-if` 链互不知情。两条链都为真时**两个状态同时渲染**——
+ * 实测重新获取时可见源对比表下面跟着一段「本地没有这个游戏的清单内容」，
+ * 点「取消」后对比表收起，只剩那段错文案留在原地。
+ *
+ * 教训是判据分散在模板里就无法保证互斥：每加一个状态，都得指望作者记得去
+ * 改另外几处不相邻的条件。改成单一枚举后，「同时出现两个」在结构上不可能，
+ * 而非依赖作者的记性。
+ *
+ * 顺序即优先级，从上到下第一个成立者胜出：
+ *   1. pkg 在手 → 状态 B，无论其他标记如何
+ *   2. 正在读留存 → 读取态，必须先于状态 C（否则把「还不知道」说成「没有」）
+ *   3. 未入库，或已入库但用户主动要换源 → 状态 A（源对比表）
+ *   4. 已入库且确认无留存 → 状态 C
+ */
+type GameViewState = 'package' | 'loading' | 'sources' | 'noPackage'
+
+const viewState = computed<GameViewState>(() => {
+  if (pkg.value) return 'package'
+  if (storedLoading.value) return 'loading'
+  if (!installed.value || reacquiring.value) return 'sources'
+  return 'noPackage'
+})
+
+/**
+ * 状态 B 分支内使用的清单包，已收窄为非空。
+ *
+ * 存在理由是类型收窄：模板判据从 `v-if="pkg"` 换成 `viewState === 'package'`
+ * 后，TS 不再知道二者等价，`pkg.dlcs` 遂报可能为 null。
+ *
+ * 不写 `pkg!`：那是把「此处一定非空」这个理由从代码里抹掉，只留一个感叹号
+ * ——日后若 viewState 的判据改动，感叹号不会报错，而这里会。
+ */
+const activePkg = computed(() =>
+  viewState.value === 'package' ? pkg.value : null,
+)
+
+/**
  * 清单获取时间的人性化表述。
  *
  * 有意不说「已过期」——清单旧不等于无效，多数情况下几个月前的清单依然
@@ -142,14 +185,20 @@ const savedAtText = computed(() => {
  */
 const selection = useDlcSelection(pkg)
 
-onMounted(async () => {
-  await load()
-
+onMounted(() => {
+  // 必须先注册再 load()。原实现是 `await load()` 之后才注册，而未入库游戏
+  // 的 load 会走 lookup()——真下载并解析各源，首次实测可达 41 秒，而
+  // download:progress 恰恰是这段期间推送的。等它跑完才装监听器，等于首屏
+  // 那 41 秒里一条进度都收不到，progressText 始终为空。
+  //
+  // 「进度可见的等待不叫等待，叫围观」——最需要围观的正是最慢的第一次。
   EventsOn('download:progress', (payload: any) => {
     if (payload?.appID && payload.appID !== appID.value) return
     const src = payload?.source ?? ''
     progressText.value = src ? `正在尝试 ${src}…` : '正在获取…'
   })
+
+  void load()
 })
 
 // 切页面不清理会导致重复注册，同一事件收到多份
@@ -213,19 +262,35 @@ async function load() {
   pkgSource.value = ''
   reacquiring.value = false
 
-  // 同步置位，且必须在 await 之前——下面先取详情才轮到 loadStored，
-  // 那段窗口按网络状况可长达数秒。若等进了 loadStored 才置位，
-  // 状态 C 会在整个详情请求期间挂在屏幕上。
+  // 同步置位，且必须在任何 await 之前，否则中间存在
+  // `installed && !pkg && !storedLoading` 的可观测状态，命中状态 C。
   storedLoading.value = installed.value
 
+  // 详情与留存并发取，不再串联。
+  //
+  // 原实现是先 await 详情、再读留存，于是读取态要挂满整个详情请求——即便
+  // 留存清单就在本地、即便详情早已缓存。实测在库页来回切两个已入库游戏时
+  // 表现为「正在读取本地清单…」疯狂闪烁，因为每次切换都要重等一遍详情。
+  //
+  // 这两件事本无依赖关系，串起来只是因为写在同一个函数里的先后位置。
+  // 并发之后留存通常先回（读本地文件），状态 B 直接就位，读取态几乎不可见。
+  //
+  // 未入库分支仍走 lookup()，它本来就是慢操作，进度由 progressText 承担。
+  await Promise.all([
+    loadDetail(),
+    installed.value ? loadStored() : lookup(),
+  ])
+}
+
+/**
+ * 取商店详情。失败只提示，不阻断——详情是锦上添花，勾选功能不依赖它。
+ */
+async function loadDetail() {
   try {
     detail.value = await getGameDetail(appID.value)
   } catch (e) {
     toast.fromError(e, '获取游戏详情失败')
   }
-
-  if (installed.value) await loadStored()
-  else await lookup()
 }
 
 /**
@@ -470,7 +535,7 @@ async function resetToUninstalled() {
       的声明处。判据写成「没有清单包，且（未入库 或 正在重新获取）」，
       两个含义各自显式。
     -->
-    <section v-if="!pkg && !storedLoading && (!installed || reacquiring)" class="block">
+    <section v-if="viewState === 'sources'" class="block">
       <h2 class="block__title">清单源</h2>
 
       <template v-if="looking">
@@ -621,11 +686,11 @@ async function resetToUninstalled() {
     </section>
 
     <!-- 状态 B：已入库且有留存清单 -->
-    <template v-if="pkg">
+    <template v-else-if="activePkg">
       <div class="meta-bar">
         <span v-if="savedAtText">{{ savedAtText }}</span>
         <span v-if="pkgSource">来源 {{ pkgSource }}</span>
-        <span v-else-if="pkg">来源 本地导入</span>
+        <span v-else>来源 本地导入</span>
       </div>
 
       <div class="actions">
@@ -643,7 +708,7 @@ async function resetToUninstalled() {
       </p>
 
       <DlcList
-        :dlcs="pkg.dlcs"
+        :dlcs="activePkg.dlcs"
         :is-selected="selection.isSelected"
         :sync-state="selection.syncState.value"
         @toggle="selection.toggle"
@@ -657,13 +722,13 @@ async function resetToUninstalled() {
       读取中与「确认没有留存」是两件事，混在一起就会让用户看到一段错的解释
       并可能据此去点「重新获取」。
     -->
-    <section v-else-if="installed && storedLoading" class="block">
+    <section v-else-if="viewState === 'loading'" class="block">
       <h2 class="block__title">已入库</h2>
       <p class="hint">正在读取本地清单…</p>
     </section>
 
     <!-- 状态 C：已入库但确认没有留存清单 -->
-    <section v-else-if="installed" class="block">
+    <section v-else class="block">
       <h2 class="block__title">已入库</h2>
       <p class="hint">
         已部署清单文件：{{ libItem?.fileNames.join('、') }}

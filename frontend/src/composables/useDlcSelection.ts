@@ -10,6 +10,11 @@
  *
  * 不放进全局 store：勾选状态归属「当前所看的这一个游戏」，全局化反而
  *要额外处理切换游戏时的清理。
+ *
+ * ⚠️ 由此产生一条必须守住的不变式：**待落盘的改动必须记下它属于哪个清单
+ * 包**（`pendingPkg`）。状态可以随界面切换归零，但已经答应用户的落盘不能
+ * ——防抖窗口结束时用户可能早已切走，此时读 `pkgRef` 拿到的是另一个游戏。
+ * 三处出口（防抖到点、换包、组件卸载）各自都要能把改动交出去。
  */
 
 import { ref, computed, watch, onUnmounted, type Ref } from 'vue'
@@ -57,6 +62,20 @@ export function useDlcSelection(pkgRef: Ref<GamePackage | null>) {
 
   const isSelected = (appID: string) => selected.value.has(appID)
 
+  /**
+   * 待落盘改动所属的清单包。
+   *
+   * 记「属于哪个包」而非只记一个 dirty 布尔：防抖窗口内可能已经切走游戏，
+   * 届时必须分辨这笔改动是给谁的。用对象同一性比对，比存 appID 更直接
+   * ——落盘调用要的正是这个包本身。
+   *
+   * 非响应式：只在逻辑内部做归属判定，界面读的是 syncState。
+   *
+   * 声明必须在下方 watch 之前：虽然闭包引用不会立刻求值，靠的却是
+   * 「这两行之间 pkgRef 不会变」这个巧合，不是语言保证。
+   */
+  let pendingPkg: GamePackage | null = null
+
   // 清单包换成另一个游戏时重置勾选，否则会把上一个游戏的 AppID 带过去。
   //
   // XXX: 必须用 flush: 'sync'。默认的 pre 时机是异步的，调用方在赋值
@@ -65,19 +84,28 @@ export function useDlcSelection(pkgRef: Ref<GamePackage | null>) {
   watch(
     pkgRef,
     () => {
+      // 换包前先把上一个包的待落盘改动交出去，否则它必然丢失：防抖窗口
+      // 到点时 pkgRef 已经是新包（或 null），旧包的勾选也已被下面清空。
+      //
+      // 这条路径比 onUnmounted 那条更要紧。库页是 master-detail，
+      // PaneTransition 刻意复用实例（宪法 5.2），侧栏换游戏根本不触发
+      // 卸载——即勾一下就切走的最常见操作恰好走的是这里。
+      if (pendingPkg) void syncDetached(pendingPkg, [...selected.value])
+
       selected.value = new Set()
       syncState.value = 'idle'
     },
     { flush: 'sync' },
   )
 
-  const flush = useDebounceFn(async () => {
-    const pkg = pkgRef.value
-    if (!pkg) return
-
+  /**
+   * 落盘并把过程反馈到 syncState。仅用于「用户正在看着的那个包」。
+   */
+  async function syncActive(pkg: GamePackage, ids: string[]) {
+    pendingPkg = null
     syncState.value = 'syncing'
     try {
-      await installDLCs(pkg, [...selected.value])
+      await installDLCs(pkg, ids)
       syncState.value = 'done'
       // 2 秒后回到静默态，让「已同步」提示自然淡出而不长期占位
       window.setTimeout(() => {
@@ -87,9 +115,36 @@ export function useDlcSelection(pkgRef: Ref<GamePackage | null>) {
       syncState.value = 'idle'
       toast.fromError(e, '同步失败')
     }
+  }
+
+  /**
+   * 补交已经切走的包的改动，不碰 syncState。
+   *
+   * 为何不反馈状态：此刻 syncState 已经归属界面上的另一个游戏，往里写
+   * 「正在同步」会把 A 的进度显示在 B 的页面上——那是拿一个状态承载两个
+   * 游戏的处境。失败仍要 toast，因为 toast 是全局的，且落盘失败必须让
+   * 用户知道，否则界面显示的勾选与实际部署不一致。
+   */
+  async function syncDetached(pkg: GamePackage, ids: string[]) {
+    pendingPkg = null
+    try {
+      await installDLCs(pkg, ids)
+    } catch (e) {
+      toast.fromError(e, '同步失败')
+    }
+  }
+
+  const flush = useDebounceFn(async () => {
+    const pkg = pkgRef.value
+    // 归属校验：窗口内切过游戏的话，这笔改动已由下方 watch 补交完毕，
+    // 此处再跑一次会拿当前包配上当前勾选重复部署一遍。
+    if (!pkg || pkg !== pendingPkg) return
+
+    await syncActive(pkg, [...selected.value])
   }, DEBOUNCE_MS)
 
   function markDirty() {
+    pendingPkg = pkgRef.value
     syncState.value = 'pending'
     void flush()
   }
@@ -133,6 +188,9 @@ export function useDlcSelection(pkgRef: Ref<GamePackage | null>) {
    */
   function restore(appIDs: string[]) {
     selected.value = new Set(appIDs)
+    // 与 syncState 一并归零：还原是「读回已有状态」，不产生待落盘改动。
+    // 漏掉这行会让上一轮的归属标记搭便车，把刚还原的集合当成用户的新改动。
+    pendingPkg = null
     syncState.value = 'idle'
   }
 
@@ -180,10 +238,19 @@ export function useDlcSelection(pkgRef: Ref<GamePackage | null>) {
     markDirty()
   }
 
-  // 组件卸载时若仍有待落盘的改动，立即冲刷。否则用户在 800ms 窗口内
-  // 切走页面，最后一次勾选会静默丢失，界面与实际部署产生偏差。
+  /*
+    组件卸载时若仍有待落盘的改动，立即发出。否则用户在 800ms 窗口内切走
+    页面，最后一次勾选会静默丢失，界面与实际部署产生偏差。
+
+    XXX: 原实现是 `void flush()`，而 flush 是防抖包装后的函数——再调一次
+    等于「清掉旧计时器、重设一个新的」，即又等 800ms 而非立即。它没丢数据
+    纯属侥幸：setTimeout 不随组件销毁取消，闭包里的包引用还活着，所以那笔
+    改动最终仍会发出，只是比预期晚。既然要的是「立即」，就直接调落盘本体。
+
+    用 syncDetached：组件正在销毁，写 syncState 没有任何人会读到。
+  */
   onUnmounted(() => {
-    if (syncState.value === 'pending') void flush()
+    if (pendingPkg) void syncDetached(pendingPkg, [...selected.value])
   })
 
   return {
