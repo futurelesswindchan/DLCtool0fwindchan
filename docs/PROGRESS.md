@@ -1,8 +1,11 @@
-# 开发进度追踪
+# 开发进度追踪 · 第一卷
 
-> 每次开发结束时更新本文件，下次开发接力时快速定位当前进度。
+> ⚠️ **本卷已封存，不再追加。当前进度见 `PROGRESS-2.md`。**
 >
-> 最后更新：2026-08-03
+> 本卷记至 2026-08-03，超过 1000 行后分卷。**历史阶段记录仍以本卷为准**
+> ——往期实绩、已知残留清单、OST 源码研究摘要都在这里，新卷不重复。
+>
+> 最后更新：2026-08-03（封存于 08-04）
 
 ---
 
@@ -11,12 +14,12 @@
 08-02 实机测试推翻了「功能层面已无待办」这个判断，暴露四个问题。
 详细分析见 DECISIONS-2 的 08-02 三条，此处只列状态与落点。
 
-| # | 问题 | 性质 | 根因是否已定位 |
-| :-- | :--- | :--- | :--- |
-| 1 | 切换游戏详情闪一下状态 C | 前端时序 | ✅ **08-03 已修**，且实情比「闪一帧」严重 |
-| 2 | 切页丢失页面状态与进行中的工作 | 前端架构 | ✅ 已定位，待做 |
-| 3 | 库界面回不到库概览 | 前端可发现性 | ✅ **08-03 已修**（入口移位，未新增） |
-| 4 | 搜索频繁超时 | **本机 / 线路的偶发现象** | ✅ **已定性**，降级为文案议题并入 UI 收尾 |
+| #   | 问题                           | 性质                      | 根因是否已定位                            |
+| :-- | :----------------------------- | :------------------------ | :---------------------------------------- |
+| 1   | 切换游戏详情闪一下状态 C       | 前端时序                  | ✅ **08-03 已修**，且实情比「闪一帧」严重 |
+| 2   | 切页丢失页面状态与进行中的工作 | 前端架构                  | ✅ 已定位，待做                           |
+| 3   | 库界面回不到库概览             | 前端可发现性              | ✅ **08-03 已修**（入口移位，未新增）     |
+| 4   | 搜索频繁超时                   | **本机 / 线路的偶发现象** | ✅ **已定性**，降级为文案议题并入 UI 收尾 |
 
 **08-03 顺带发现并修掉的第五个问题**：状态 A（源对比表）的判据
 `!installed && !pkg` 中，`!installed` 同时承担「这游戏没入库」与「该摆出
@@ -181,12 +184,12 @@ footer。但事实上没被找到 = 等于没做。三个可能原因：在侧�
 
 `.btn` 调用点 **21 处全部归零**，`styles/shim.css` 已删除。分四个 commit：
 
-| commit | 内容 | 处数 |
-| :--- | :--- | :--- |
-| `43855b4` | `EnvBanner` + `ConfirmDialog`（试水） | 4 |
-| `194b1bf` | `SetupView` | 5 |
-| `560b301` | `GamePane`，并删 `shim.css` | 13 |
-| （对比表） | 双重编码，`--state-wash` 首个调用点 | — |
+| commit     | 内容                                  | 处数 |
+| :--------- | :------------------------------------ | :--- |
+| `43855b4`  | `EnvBanner` + `ConfirmDialog`（试水） | 4    |
+| `194b1bf`  | `SetupView`                           | 5    |
+| `560b301`  | `GamePane`，并删 `shim.css`           | 13   |
+| （对比表） | 双重编码，`--state-wash` 首个调用点   | —    |
 
 **`ui` 层删空后 `index.html` 的顺序声明保留不动**：它是内联 `<style>`、
 不经 PostCSS，层顺序由那一行显式钉死而非依赖文件注册，故中间空一层无害。
@@ -213,11 +216,11 @@ footer。但事实上没被找到 = 等于没做。三个可能原因：在侧�
 
 07-31 起功能层面已无待办，剩下的都是呈现层与文档：
 
-| #   | 事项                                       | 性质              |
-| :-- | :----------------------------------------- | :---------------- |
-| 1   | **前端视觉全面翻新**（当前主线）           | 六步中已完成 1、2、3 步 |
-| 2   | 教程补 M 站 API key 申请指引               | 未开工            |
-| 3   | 试下载首次 41 秒等待的体感优化（可选）     | 未开工            |
+| #   | 事项                                   | 性质                    |
+| :-- | :------------------------------------- | :---------------------- |
+| 1   | **前端视觉全面翻新**（当前主线）       | 六步中已完成 1、2、3 步 |
+| 2   | 教程补 M 站 API key 申请指引           | 未开工                  |
+| 3   | 试下载首次 41 秒等待的体感优化（可选） | 未开工                  |
 
 ### ✅ UI 施工第 3 步：三板斧骨架与路由嵌套改造（2026-08-01）
 
@@ -225,14 +228,14 @@ footer。但事实上没被找到 = 等于没做。三个可能原因：在侧�
 
 **新增 `components/layout/` 六件套**：
 
-| 组件 | 职责 |
-| :--- | :--- |
-| `AppShell` | 顶栏 + 全局横幅 + 三板斧承载区，从 `App.vue` 拆出 |
-| `Sidebar` | 侧栏容器，含折叠开关与 brand / default / footer 三插槽 |
-| `SidebarSection` | 分组，折叠态下隐藏标题但保留分隔线 |
-| `SidebarItem` | 可选中条目。**宪法 11.2 清单外补的一件** |
-| `ContentPane` | 内容区滚动 / 留白 / 限宽，三页统一定义一次 |
-| `PaneTransition` | 内容区切换过渡，自带 `ContentPane` 与 `RouterView` |
+| 组件             | 职责                                                   |
+| :--------------- | :----------------------------------------------------- |
+| `AppShell`       | 顶栏 + 全局横幅 + 三板斧承载区，从 `App.vue` 拆出      |
+| `Sidebar`        | 侧栏容器，含折叠开关与 brand / default / footer 三插槽 |
+| `SidebarSection` | 分组，折叠态下隐藏标题但保留分隔线                     |
+| `SidebarItem`    | 可选中条目。**宪法 11.2 清单外补的一件**               |
+| `ContentPane`    | 内容区滚动 / 留白 / 限宽，三页统一定义一次             |
+| `PaneTransition` | 内容区切换过渡，自带 `ContentPane` 与 `RouterView`     |
 
 **新增三壳两 Pane**：`views/shells/`（`HomeShell` / `LibraryShell` /
 `SettingsShell`）与 `views/panes/`（`ImportPane` / `LibraryOverviewPane`）。
@@ -278,14 +281,14 @@ build）；`go build ./...` + `-tags dev` + `go vet` + `go test -count=1` 全过
 另加两个 composable。宪法第 6 章「界面中不得出现任何未经完全接管的原生表单控件」
 自此有了落点。
 
-| 类别 | 组件 |
-| :--- | :--- |
+| 类别 | 组件                                                                      |
+| :--- | :------------------------------------------------------------------------ |
 | 动作 | `UiButton`（default / primary / danger / ghost，含 icon 与 loading 形态） |
-| 选择 | `UiCheckbox`（含 indeterminate）/ `UiRadio` / `UiSwitch` / `UiSegmented` |
-| 输入 | `UiInput`（含 mono 形态）/ `UiSelect` |
-| 反馈 | `UiProgress`（确定 / 不确定态）/ `UiEmptyState` / `UiScrollArea` |
-| 提示 | `UiTooltip` / `UiHelpBadge` |
-| 装饰 | `Ornament` |
+| 选择 | `UiCheckbox`（含 indeterminate）/ `UiRadio` / `UiSwitch` / `UiSegmented`  |
+| 输入 | `UiInput`（含 mono 形态）/ `UiSelect`                                     |
+| 反馈 | `UiProgress`（确定 / 不确定态）/ `UiEmptyState` / `UiScrollArea`          |
+| 提示 | `UiTooltip` / `UiHelpBadge`                                               |
+| 装饰 | `Ornament`                                                                |
 
 新增 `composables/useAnchoredLayer.ts`（浮层定位，约 90 行，不引 floating-ui）
 与 `composables/useStagger.ts`（错开入场，JS 只发序号、延迟在 CSS 里算）。
@@ -349,13 +352,13 @@ frameless 下浮层未被窗口边界裁切，宪法第 13 章该项风险可结
 
 **产出**：
 
-| 目录 | 内容 |
-| :--- | :--- |
-| `styles/index.css` | 唯一入口，只做按层 `@import` |
-| `styles/tokens/` | `color` / `typography` / `shape` / `elevation` / `motion` / `legacy` |
-| `styles/base/` | `reset` / `scrollbar` / `a11y` / `frameless` |
-| `styles/shim.css` | `.btn` 过渡期实现，待 `UiButton` 铺开后删除 |
-| `styles/utilities.css` | `.u-truncate` / `.u-tnum` / `.u-long-list` 三个 |
+| 目录                   | 内容                                                                 |
+| :--------------------- | :------------------------------------------------------------------- |
+| `styles/index.css`     | 唯一入口，只做按层 `@import`                                         |
+| `styles/tokens/`       | `color` / `typography` / `shape` / `elevation` / `motion` / `legacy` |
+| `styles/base/`         | `reset` / `scrollbar` / `a11y` / `frameless`                         |
+| `styles/shim.css`      | `.btn` 过渡期实现，待 `UiButton` 铺开后删除                          |
+| `styles/utilities.css` | `.u-truncate` / `.u-tnum` / `.u-long-list` 三个                      |
 
 **本步补齐了宪法留空的三处规格**（已回写文档）：状态色双主题取值、
 浅色阴影与内高光、既有九档 rem 的迁移映射表。
@@ -512,12 +515,12 @@ WebView 客户区内触达不到），接受。
 
 **三个元信息方法**（新增 `app_meta.go`，不入已逾 1170 行的 `app.go`）：
 
-| 方法 | 要点 |
-| :--- | :--- |
-| `GetAppVersion` | 经 `-ldflags -X main.appVersion=` 注入，默认 `dev` |
-| `OpenURL` | **仅放行 http 与 https** |
-| `CheckUpdate` | 查 `/releases/latest`，返回 `error` 而非 `OperationResult` |
-| `GetReleasePageURL` | 发布页地址，检查失败时的兜底跳转 |
+| 方法                | 要点                                                       |
+| :------------------ | :--------------------------------------------------------- |
+| `GetAppVersion`     | 经 `-ldflags -X main.appVersion=` 注入，默认 `dev`         |
+| `OpenURL`           | **仅放行 http 与 https**                                   |
+| `CheckUpdate`       | 查 `/releases/latest`，返回 `error` 而非 `OperationResult` |
+| `GetReleasePageURL` | 发布页地址，检查失败时的兜底跳转                           |
 
 `OpenURL` 的 scheme 限制不是过度防御：`BrowserOpenURL` 在 Windows 上最终交给
 `ShellExecute`，会执行 `file:` 指向的程序、按注册表处理任意自定义协议。当前前端
@@ -539,12 +542,12 @@ WebView 客户区内触达不到），接受。
 
 **新增四个源**：
 
-| 源 | 形态 | 分支数（实测 07-29） |
-| :--- | :--- | :--- |
-| `bingyu50/ManifestAutoUpdate` | MAU 形态 | 13131 |
-| `hansaes/ManifestAutoUpdate` | MAU 形态 | 6336 |
-| `tymolu233/ManifestAutoUpdate` | MAU 形态 | 3140 |
-| `SSMGAlt/ManifestHub2` | lua 形态 | 62288 |
+| 源                             | 形态     | 分支数（实测 07-29） |
+| :----------------------------- | :------- | :------------------- |
+| `bingyu50/ManifestAutoUpdate`  | MAU 形态 | 13131                |
+| `hansaes/ManifestAutoUpdate`   | MAU 形态 | 6336                 |
+| `tymolu233/ManifestAutoUpdate` | MAU 形态 | 3140                 |
+| `SSMGAlt/ManifestHub2`         | lua 形态 | 62288                |
 
 MAU 形态的三个 fork **零解析改动即可接入**——解析器当初为兼容
 `Key.vdf` / `config.vdf` 两种命名而写成「只认扩展名与内容结构，不认文件名」，
@@ -552,11 +555,11 @@ MAU 形态的三个 fork **零解析改动即可接入**——解析器当初为
 
 **排序依据是单游戏完整度而非分支数**。ARK(2399830) 实测对照：
 
-| 源 | DLC | setManifestid |
-| :--- | :--- | :--- |
-| Hubcap | 19 | 13 |
-| MAU | 4 | 1 |
-| ManifestHub 快照 | 1 | 3 |
+| 源               | DLC | setManifestid |
+| :--------------- | :-- | :------------ |
+| Hubcap           | 19  | 13            |
+| MAU              | 4   | 1             |
+| ManifestHub 快照 | 1   | 3             |
 
 快照源广度是 MAU 的 15 倍，单游戏覆盖反而更少。故 MAU 系仍居前，快照源
 置末位兜底冷门游戏。
@@ -638,14 +641,14 @@ DLC 生效的四步链路、外部清单为何同样在生效、清空记录只�
 
 ### 📌 已知残留（不阻塞发布）
 
-| 项目                       | 说明                                                         |
-| :------------------------- | :----------------------------------------------------------- |
-| 中文搜索命中率低           | `欧洲卡车模拟` 返回 0 条，`storesearch` 自身局限，非过滤所致 |
-| riftbreaker 仍漏一至两条   | 疑与 `Type` 字段引入前的旧缓存有关，影响极小                 |
-| `packages/` 丢失时的降级读 | 设计已定（读已部署 Lua 还原 AppID 集合），未实现，属功能退化 |
-| `gofmt -l` 列出全部文件    | 既有的 CRLF/LF 差异，不影响功能                              |
+| 项目                       | 说明                                                                                          |
+| :------------------------- | :-------------------------------------------------------------------------------------------- |
+| 中文搜索命中率低           | `欧洲卡车模拟` 返回 0 条，`storesearch` 自身局限，非过滤所致                                  |
+| riftbreaker 仍漏一至两条   | 疑与 `Type` 字段引入前的旧缓存有关，影响极小                                                  |
+| `packages/` 丢失时的降级读 | 设计已定（读已部署 Lua 还原 AppID 集合），未实现，属功能退化                                  |
+| `gofmt -l` 列出全部文件    | 既有的 CRLF/LF 差异，不影响功能                                                               |
 | 主游戏无密钥是否需补密钥   | MAU 路径有 `fallbackMainKey`，快照源路径没有。两处不一致，取舍依据未经实测，见 DECISIONS-2.md |
-| 新增四源未实机验证         | 仅经单元测试，未跑过真实下载。验证要点见下                   |
+| 新增四源未实机验证         | 仅经单元测试，未跑过真实下载。验证要点见下                                                    |
 
 **新源实机验证要点**（下次开工优先做）：
 
