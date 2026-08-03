@@ -313,7 +313,20 @@ async function loadStored() {
     savedAt.value = stored.savedAt ?? ''
     pkgSource.value = stored.source ?? ''
 
-    const record = libItem.value?.record ?? (await findHistory(appID.value))
+    // 勾选集合一律问后端，不走 library store 的缓存。
+    //
+    // 原实现是 `libItem.value?.record ?? await findHistory(...)`，想省一次
+    // 跨边界调用。但 library store 是缓存——只在 LibraryShell 挂载时与
+    // 入库/卸载后刷新，库页切游戏不刷、勾选落盘后也不刷。于是「取消勾选后
+    // 立刻切走、再切回来」读到的是上次刷新时的旧记录，被取消的那个 DLC
+    // 仍显示为勾选，而磁盘上的 lua 与 history.json 其实都是对的。
+    //
+    // 实测该缺陷只在取消方向可见：缓存存的是「上次刷新时的状态」，勾选方向
+    // 上旧值恰好等于正确值，症状被掩盖。又一次「一个方向碰巧对了」。
+    //
+    // 教训：缓存可以回答「这游戏在不在库里」，不能回答「用户选了哪些」。
+    // 前者变化时必然伴随一次刷新，后者不是。省一次本地调用换不来这个风险。
+    const record = await findHistory(appID.value)
     selection.restore(record?.installedIDs ?? [])
   } catch (e) {
     toast.fromError(e, '读取本地清单失败')

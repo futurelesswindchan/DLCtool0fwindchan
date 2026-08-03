@@ -22,6 +22,7 @@ import { useDebounceFn } from '@vueuse/core'
 import { installDLCs, type GamePackage, type DLCInfo } from '../api'
 import { useToast } from './useToast'
 import { useConfirm } from './useConfirm'
+import { useLibraryStore } from '../stores/library'
 
 /** 同步状态。done 态由界面在 2 秒后自行淡出。 */
 export type SyncState = 'idle' | 'pending' | 'syncing' | 'done'
@@ -47,6 +48,7 @@ const MAX_LISTED_DLCS = 8
 export function useDlcSelection(pkgRef: Ref<GamePackage | null>) {
   const toast = useToast()
   const confirm = useConfirm()
+  const library = useLibraryStore()
 
   const selected = ref(new Set<string>())
   const syncState = ref<SyncState>('idle')
@@ -106,6 +108,7 @@ export function useDlcSelection(pkgRef: Ref<GamePackage | null>) {
     syncState.value = 'syncing'
     try {
       await installDLCs(pkg, ids)
+      await refreshLibrary()
       syncState.value = 'done'
       // 2 秒后回到静默态，让「已同步」提示自然淡出而不长期占位
       window.setTimeout(() => {
@@ -129,8 +132,29 @@ export function useDlcSelection(pkgRef: Ref<GamePackage | null>) {
     pendingPkg = null
     try {
       await installDLCs(pkg, ids)
+      await refreshLibrary()
     } catch (e) {
       toast.fromError(e, '同步失败')
+    }
+  }
+
+  /**
+   * 落盘成功后刷新库缓存。
+   *
+   * 部署改变了 DLC 数与安装时间，而侧栏条目的「N 个 DLC」、库概览的统计、
+   * 状态 C 的计数全都读 library store。不刷新则它们停在上次刷新时的数值，
+   * 且没有任何报错——只是数字不对。
+   *
+   * 放在这里而非组件里：此处是唯一知道「落盘刚刚成功」的地方。组件侧只看到
+   * syncState 变化，而 syncDetached 压根不动 syncState。
+   *
+   * 失败只记不抛：缓存陈旧比落盘失败轻得多，不该盖掉后者的错误提示。
+   */
+  async function refreshLibrary() {
+    try {
+      await library.refresh()
+    } catch {
+      // 界面数字可能暂时偏旧，下次进入库页会自行修正
     }
   }
 
