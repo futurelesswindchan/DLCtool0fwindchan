@@ -84,6 +84,38 @@ const libItem = computed(() => library.find(appID.value))
 const installed = computed(() => !!libItem.value)
 
 /**
+ * 是否正在读取留存清单。
+ *
+ * 存在理由：状态 C 的判据是 `installed && !pkg`，而这个组合在「已入库游戏
+ * 的留存读取尚未返回」期间同样成立——切到已入库游戏时 `installed` 立刻为
+ * true（来自同步的 library.find），`pkg` 还是 null，于是状态 C 被真实渲染，
+ * 而它的文案写着「本地没有这个游戏的清单内容」。
+ *
+ * 那不是闪一帧的瑕疵，是在读取期间对用户断言了一件尚未查明的事——与后端
+ * 静默改写枚举值同形状：把「还不知道」伪装成「已确认没有」。
+ *
+ * 故三个状态的判据都要排除读取中，另给一个明确的读取态。
+ *
+ * 初值取 installed 而非 false：以 URL 直入已入库游戏时，首屏渲染发生在
+ * onMounted 的 load() 之前，那一帧同样会命中状态 C。
+ */
+const storedLoading = ref(installed.value)
+
+/**
+ * 用户是否主动发起了「重新获取」。
+ *
+ * 状态 A（源对比表）原先的判据是 `!installed && !pkg`，其中 `!installed`
+ * 同时承担了两个含义：「这游戏没入库」与「该把源对比表摆出来」。这两件事
+ * 在重新获取时会分道扬镳——reacquire() 把 pkg 置空但 installed 仍为 true，
+ * 于是表格无处可去，页面落回状态 C，而 reacquire 的注释写的却是
+ * 「把对比表摆出来让用户自己挑」。意图与渲染不符。
+ *
+ * 不用「report 非空」反推意图：那是拿数据猜语义，读代码的人看不出来，
+ * 且一旦将来有别的路径填了 report 就会误触发。意图只有发起处知道。
+ */
+const reacquiring = ref(false)
+
+/**
  * 清单获取时间的人性化表述。
  *
  * 有意不说「已过期」——清单旧不等于无效，多数情况下几个月前的清单依然
@@ -125,8 +157,32 @@ onUnmounted(() => EventsOff('download:progress'))
 
 /** 路由参数变化时重新加载（用户可能从已安装页直接跳到另一个游戏） */
 watch(appID, () => {
+  // 三行必须同步完成再让渲染发生：pkg 置空的同一刻，installed 已因
+  // library.find(appID) 变为 true。若 storedLoading 慢一步（例如只在
+  // load() 体内置位），中间就存在 `installed && !pkg && !storedLoading`
+  // 的可观测状态，恰好命中状态 C。
   pkg.value = null
+  storedLoading.value = installed.value
+  reacquiring.value = false
   void load()
+})
+
+/**
+ * 兜住「入库状态迟到」的情形。
+ *
+ * 以 URL 直接进入库内游戏时（重载、外部唤起），library.refresh() 往往还没
+ * 返回，此刻 installed 为 false，load() 会走未入库分支去试各源。等 store
+ * 回填后 installed 翻 true，而那次 load 早已结束——留存读取根本不会发生，
+ * 页面停在状态 C 并宣称「本地没有清单内容」。
+ *
+ * 只在「翻为 true 且尚无 pkg」时补读一次，不做全量重载：详情已经取到了，
+ * 没必要再发一次网络请求。
+ */
+watch(installed, (now, before) => {
+  if (now && !before && !pkg.value && !storedLoading.value) {
+    storedLoading.value = true
+    void loadStored()
+  }
 })
 
 /**
@@ -155,6 +211,12 @@ async function load() {
   progressText.value = ''
   savedAt.value = ''
   pkgSource.value = ''
+  reacquiring.value = false
+
+  // 同步置位，且必须在 await 之前——下面先取详情才轮到 loadStored，
+  // 那段窗口按网络状况可长达数秒。若等进了 loadStored 才置位，
+  // 状态 C 会在整个详情请求期间挂在屏幕上。
+  storedLoading.value = installed.value
 
   try {
     detail.value = await getGameDetail(appID.value)
@@ -177,6 +239,7 @@ async function load() {
  * 入库的游戏），提示用户重新获取即可。
  */
 async function loadStored() {
+  storedLoading.value = true
   try {
     const stored = await getPackage(appID.value)
     if (!stored?.package) return
@@ -189,6 +252,8 @@ async function loadStored() {
     selection.restore(record?.installedIDs ?? [])
   } catch (e) {
     toast.fromError(e, '读取本地清单失败')
+  } finally {
+    storedLoading.value = false
   }
 }
 
@@ -288,6 +353,10 @@ async function install(sourceName: string) {
     pkgSource.value = sourceName
     savedAt.value = ''
 
+    // 意图已达成，撤下标记。留着它不影响渲染（状态 B 的 v-if="pkg" 优先），
+    // 但会让「用户还想换源吗」这个问题的答案一直是过期的 true。
+    reacquiring.value = false
+
     toast.success(`已获取 ${pkg.value.gameName || appID.value} 的清单`)
   } catch (e) {
     toast.fromError(e, '获取清单失败')
@@ -307,6 +376,7 @@ async function install(sourceName: string) {
  */
 async function reacquire() {
   pkg.value = null
+  reacquiring.value = true
   await lookup(true)
 
   if (!report.value?.usableCount) {
@@ -392,8 +462,15 @@ async function resetToUninstalled() {
       </div>
     </header>
 
-    <!-- 状态 A：未入库 -->
-    <section v-if="!installed && !pkg" class="block">
+    <!--
+      状态 A：源对比表。
+
+      两种情形都要它：未入库的游戏，以及已入库用户主动点了「重新获取」。
+      后者原先落不到这里（`!installed` 为假），表格无处可去——见 reacquiring
+      的声明处。判据写成「没有清单包，且（未入库 或 正在重新获取）」，
+      两个含义各自显式。
+    -->
+    <section v-if="!pkg && !storedLoading && (!installed || reacquiring)" class="block">
       <h2 class="block__title">清单源</h2>
 
       <template v-if="looking">
@@ -509,6 +586,13 @@ async function resetToUninstalled() {
           <UiButton @click="router.push({ name: 'search' })">
             改用本地导入
           </UiButton>
+          <!--
+            重新获取的退路。已入库用户点开这张表后若不想换源了，没有它就只能
+            靠切走再切回——而「卸载」入口在状态 C，同样够不着。
+          -->
+          <UiButton v-if="reacquiring" @click="reacquiring = false">
+            取消，保持现状
+          </UiButton>
         </div>
       </template>
 
@@ -525,6 +609,10 @@ async function resetToUninstalled() {
           <UiButton :loading="looking" @click="lookup()">重新查询</UiButton>
           <UiButton @click="router.push({ name: 'search' })">
             去本地导入
+          </UiButton>
+          <!-- 同上：一个源都没有时更需要退路，否则卸载入口够不着 -->
+          <UiButton v-if="reacquiring" @click="reacquiring = false">
+            取消，保持现状
           </UiButton>
         </div>
       </template>
@@ -562,8 +650,20 @@ async function resetToUninstalled() {
       />
     </template>
 
-    <!-- 状态 C：已入库但本会话没有清单包 -->
-    <section v-else-if="installed && !pkg" class="block">
+    <!--
+      读取态：已入库、留存尚未读回。
+
+      必须排在状态 C 之前。这里只说「正在读」，不对有没有留存下任何结论——
+      读取中与「确认没有留存」是两件事，混在一起就会让用户看到一段错的解释
+      并可能据此去点「重新获取」。
+    -->
+    <section v-else-if="installed && storedLoading" class="block">
+      <h2 class="block__title">已入库</h2>
+      <p class="hint">正在读取本地清单…</p>
+    </section>
+
+    <!-- 状态 C：已入库但确认没有留存清单 -->
+    <section v-else-if="installed" class="block">
       <h2 class="block__title">已入库</h2>
       <p class="hint">
         已部署清单文件：{{ libItem?.fileNames.join('、') }}

@@ -62,6 +62,23 @@ function metaOf(item: (typeof library.items)[number]) {
       />
     </template>
 
+    <!--
+      库概览提到顶部成组，与 HomeShell 的「获取方式」同位置。
+      原先它在 footer，实测用户找不到——紧贴「折叠」开关、两者都是低视觉
+      重量的灰条，且要滚到底。宪法 3.5 第 3 条要求未选中时内容区不空白，
+      这个入口是那条规则的回程票，位置必须和另一页的同类角色一致。
+    -->
+    <SidebarSection title="总览">
+      <SidebarItem
+        :to="{ name: 'library' }"
+        label="库概览"
+        meta="总计与异常检查"
+        icon="📊"
+        :warning="library.hasAnomaly"
+        exact
+      />
+    </SidebarSection>
+
     <SidebarSection title="本工具管理" :count="managed.length">
       <SidebarItem
         v-for="item in managed"
@@ -94,14 +111,6 @@ function metaOf(item: (typeof library.items)[number]) {
       />
     </SidebarSection>
 
-    <template #footer>
-      <SidebarItem
-        :to="{ name: 'library' }"
-        label="库概览"
-        icon="📊"
-        exact
-      />
-    </template>
   </Sidebar>
 
   <PaneTransition />
