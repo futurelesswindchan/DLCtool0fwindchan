@@ -2,8 +2,12 @@
 /**
  * 在线搜索（首页默认 Pane）
  *
- * 搜索结果不进 store：属会话级临时数据，无其他页面需要读取，放在全局
- * 反而要额外考虑何时清理。
+ * 搜索状态与请求生命周期住在 `stores/search.ts`，本组件只触发与读取。
+ *
+ * ⚠️ 原注释写着「搜索结果不进 store：属会话级临时数据」，已被实机推翻。
+ * 那个判断只问了「有没有别的页面要读」，漏了「组件销毁时正在飞的请求
+ * 怎么办」——切页即丢关键词与结果，且在途 promise 落到已销毁实例上，
+ * 搜到的结果被静默丢弃。判断留在此处备忘，避免有人日后又搬回来。
  *
  * 本地导入已于第 3 步搬去 `ImportPane.vue`，并在侧栏获得与在线搜索平级的
  * 常驻入口（宪法 3.4）。它并非退路——该站网页端额度是 API 的 4~60 倍，
@@ -16,27 +20,17 @@
  *    须换为 `UiInput` 与 `UiButton`。本步只迁令牌与字号。
  */
 
-import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { searchGames, type GameSearchResult } from '../../api'
 import { useLibraryStore } from '../../stores/library'
-import { useToast } from '../../composables/useToast'
+import { useSearchStore } from '../../stores/search'
 import GameCard from '../../components/GameCard.vue'
 
 const router = useRouter()
 const library = useLibraryStore()
-const toast = useToast()
-
-const term = ref('')
-const results = ref<GameSearchResult[]>([])
-const searching = ref(false)
-const searched = ref(false)
-
-/** 关键词为空或正在搜索时，禁用搜索按钮。 */
-const canSearch = computed(() => !!term.value.trim() && !searching.value)
+const search = useSearchStore()
 
 /**
- * 发起搜索。由按钮点击或回车触发，不再随输入自动执行。
+ * 触发搜索。由按钮点击或回车调用，不随输入自动执行。
  *
  * 改为显式触发的理由是网络现实而非交互偏好：Steam 商店接口在国内经常
  * 以 `wsarecv: An existing connection was forcibly closed` 中断，而输入
@@ -48,20 +42,11 @@ const canSearch = computed(() => !!term.value.trim() && !searching.value)
  *
  * NOTE: 纯数字 AppID 的直查分支在后端 SearchGames 内部处理，前端只有这
  * 一个入口，无需为两种输入分别安排触发时机。
+ *
+ * 不 await：请求归 store 管，本组件即使被销毁也不影响它跑完。
  */
-async function runSearch() {
-  const q = term.value.trim()
-  if (!q || searching.value) return
-
-  searching.value = true
-  try {
-    results.value = await searchGames(q)
-    searched.value = true
-  } catch (e) {
-    toast.fromError(e, '搜索失败')
-  } finally {
-    searching.value = false
-  }
+function runSearch() {
+  void search.run()
 }
 
 /**
@@ -71,9 +56,7 @@ async function runSearch() {
  * 否则用户想回到初始状态只能刷新页面。
  */
 function clearSearch() {
-  term.value = ''
-  results.value = []
-  searched.value = false
+  search.clear()
 }
 
 function openGame(appID: string) {
@@ -85,7 +68,7 @@ function openGame(appID: string) {
   <div class="page">
     <div class="search">
       <input
-        v-model="term"
+        v-model="search.term"
         class="search__input"
         type="search"
         placeholder="请搜索游戏本体的简体中文名或 AppID"
@@ -95,16 +78,16 @@ function openGame(appID: string) {
       <button
         class="search__btn"
         type="button"
-        :disabled="!canSearch"
+        :disabled="!search.canSearch"
         @click="runSearch()"
       >
-        {{ searching ? '搜索中…' : '搜索' }}
+        {{ search.searching ? '搜索中…' : '搜索' }}
       </button>
       <button
-        v-if="term || searched"
+        v-if="search.term || search.status !== 'idle'"
         class="search__clear"
         type="button"
-        :disabled="searching"
+        :disabled="search.searching"
         title="清空"
         @click="clearSearch()"
       >
@@ -112,14 +95,31 @@ function openGame(appID: string) {
       </button>
     </div>
 
+    <!--
+      「切页不打断」只在搜索期间出现：这句话要解决的是用户此刻正犹豫
+      「能不能走开」，写在静态说明里等于没说——没人会在没疑问的时候
+      记住一条承诺。不用 toast 是因为它恰好相反，是在事情发生后才弹。
+    -->
+    <p v-if="search.searching" class="hint" role="status">
+      正在搜索，切到其他页面不会中断，回来还在这儿。
+    </p>
+
+    <!--
+      失败是一等状态而非只发个 toast。toast 是瞬时的，切页回来「刚才失败过」
+      就无处可查，用户看到的是初始空态——那等于把「没搜成」伪装成「没搜过」。
+    -->
+    <p v-else-if="search.status === 'failed'" class="error" role="alert">
+      {{ search.errorMessage }}
+    </p>
+
     <p class="tips">
       结果只列出游戏本体，DLC 与试玩版已自动排除——清单以整个游戏为单位提供，
       单独搜 DLC 名找不到东西。搜索走 Steam 官方接口，
       <strong>大陆网络通常需要开启加速工具</strong>（UU、Steam++ 之类均可）。
     </p>
 
-    <ul v-if="results.length" class="results">
-      <li v-for="r in results" :key="r.appID">
+    <ul v-if="search.results.length" class="results">
+      <li v-for="r in search.results" :key="r.appID">
         <GameCard
           layout="row"
           :app-i-d="r.appID"
@@ -131,7 +131,12 @@ function openGame(appID: string) {
       </li>
     </ul>
 
-    <p v-else-if="searched && !searching" class="empty">
+    <!--
+      判据用 store 的 isEmptyResult，它只在 status 为 done 时成立。
+      不写「结果为空」——searching 与 failed 时结果同样是空的，那两种
+      情形下说「没找到匹配的游戏」是在尚未查明时替用户下结论。
+    -->
+    <p v-else-if="search.isEmptyResult" class="empty">
       没找到匹配的游戏。可以试试直接输入 AppID，或从左侧的「本地导入」进入。
     </p>
 
@@ -225,6 +230,24 @@ function openGame(appID: string) {
 
 .results :deep(.card) {
   width: 100%;
+}
+
+/* 进行中的旁注，视觉重量要低于结果本身——它是陪伴而非主角 */
+.hint {
+  margin: 0;
+  color: var(--color-text-dim);
+  font-size: var(--text-sm);
+}
+
+/*
+  失败提示不用饱和主色：按宪法 4.1，主色只留给「下一步该点的那一个东西」，
+  而这里没有可点的东西，重试入口是上方那个搜索按钮。
+*/
+.error {
+  margin: 0;
+  color: var(--state-warn);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
 }
 
 .empty {
