@@ -90,21 +90,36 @@ DLC」等计数也读它）。
 
 实机复验通过：`history.json` 与 lua 均正确，界面显示正确。
 
+### 类型探查批次超时 12s → 5s
+
+搜索最坏路径 `storeHTTPTimeout`(15s) + `searchTypeProbeTimeout`(12s) = 27 秒，
+现降至 20 秒。依据不是「概率低」而是**失败的形态**：341 次采样里故障是块状的
+（29 块中 26 块长于 2 分钟），处在块内多等 7 秒同样探不出一条，不在块内则
+p95=642ms、两批也才 1.3 秒，这 7 秒从不被触及。**两种情形下长超时都不产生
+收益。**
+
+按「改超时要沿请求链把串联的都数一遍」过了三处，另两个不动：
+`storeHTTPTimeout` 是单请求上限且注释有实测依据，调小会**改变请求成败**；
+`lookupTimeout` 属 `repo_client` 打 codeload，不在本链上，且那批采样一次都
+没打过 codeload，无权拿来改它。
+
+本次改的只是「还等不等剩下那几条的判定」，不改变任何一次请求的成败——这是
+它可以放心调小的根本原因。后端 117 条 PASS 不变。
+
 ---
 
 ## 🔜 后续路线
 
 1. ✅ 搜索状态缓存与请求生命周期（08-03/04）
 2. ✅ 拖放防线、四状态枚举、并发取详情、库概览三分支（08-04）
-3. UI 第 5 步剩余：`SearchPane` 原生 input/button 换 `UiInput`/`UiButton`、
+3. ✅ `searchTypeProbeTimeout` 12s → 5s，最坏路径 27s → 20s（08-04）
+4. UI 第 5 步剩余：`SearchPane` 原生 input/button 换 `UiInput`/`UiButton`、
    `DlcList` 原生 checkbox 性能实测、`GameCard layout="grid"` 零调用点待删
-4. UI 第 5 步剩余：`TopBar` 下划线改常驻指示器（transform 滑移才可中断）、
+5. UI 第 5 步剩余：`TopBar` 下划线改常驻指示器（transform 滑移才可中断）、
    花纹投放、LOGO
-5. UI 第 6 步：术语帮助系统、键盘可达性、**搜索空态与错误文案**
+6. UI 第 6 步：术语帮助系统、键盘可达性、**搜索空态与错误文案**
    （`stores/search.ts` 的 `describeError` 已留 TODO，按 `tools/netprobe` 的
    `classify` 七分支细化，并说清「这不是盒子坏了」）
-6. `searchTypeProbeTimeout` 从 12s 砍到 5s——**当前最坏路径是 15+12=27 秒**，
-   原计划漏了这一项
 
 ## 📌 本卷新增的已知残留
 
