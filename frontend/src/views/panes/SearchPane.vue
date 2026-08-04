@@ -16,14 +16,19 @@
  *
  * 滚动、内边距与最大宽度由 `layout/ContentPane` 提供，本组件不再自己限宽。
  *
- * ⚠️ 遗留欠账（第 5 步处理）：搜索框与两个按钮仍是原生控件，
- *    须换为 `UiInput` 与 `UiButton`。本步只迁令牌与字号。
+ * 控件已于第 5 步全部换为原语（`UiInput` / `UiButton`），本页无原生表单控件。
+ *
+ * 搜索框字号随原语走 `--text-sm`(12px)，不再是原先刻意放大的 `--text-md`(15px)。
+ * 「主入口该更醒目」这个意图仍然成立，只是改由**位置、全宽、旁边唯一一个
+ * primary 按钮**承担——宪法 4.1 规定每屏饱和主色只给「下一步该点的那一个」，
+ * 那个色块本身就是最强的强调手段，不必再叠一层字号。
  */
 
 import { useRouter } from 'vue-router'
 import { useLibraryStore } from '../../stores/library'
 import { useSearchStore } from '../../stores/search'
 import GameCard from '../../components/GameCard.vue'
+import { UiButton, UiInput } from '../../components/ui'
 
 const router = useRouter()
 const library = useLibraryStore()
@@ -67,33 +72,33 @@ function openGame(appID: string) {
 <template>
   <div class="page">
     <div class="search">
-      <input
+      <UiInput
         v-model="search.term"
-        class="search__input"
+        class="search__field"
         type="search"
+        size="md"
         placeholder="请搜索游戏本体的简体中文名或 AppID"
         autofocus
         :disabled="search.searching"
-        @keydown.enter="runSearch()"
+        @enter="runSearch()"
       />
-      <button
+      <UiButton
         class="search__btn"
-        type="button"
+        variant="primary"
         :disabled="!search.canSearch"
+        :loading="search.searching"
         @click="runSearch()"
       >
         {{ search.searching ? '搜索中…' : '搜索' }}
-      </button>
-      <button
+      </UiButton>
+      <UiButton
         v-if="search.term || search.status !== 'idle'"
-        class="search__clear"
-        type="button"
         :disabled="search.searching"
         title="清空"
         @click="clearSearch()"
       >
         清空
-      </button>
+      </UiButton>
     </div>
 
     <!--
@@ -122,7 +127,6 @@ function openGame(appID: string) {
     <ul v-if="search.results.length" class="results">
       <li v-for="r in search.results" :key="r.appID">
         <GameCard
-          layout="row"
           :app-i-d="r.appID"
           :name="r.name"
           :cover="r.headerImage"
@@ -161,67 +165,29 @@ function openGame(appID: string) {
   align-items: stretch;
 }
 
-.search__btn,
-.search__clear {
-  flex: 0 0 auto;
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-ctrl);
-  background: var(--color-surface);
-  color: var(--color-text);
-  font-family: inherit;
-  /* 0.95rem(15.2px) -> --text-md(15)。搜索框是本页的主入口，
-     字号比正文大一档是刻意的，不能顺手降到 --text-base */
-  font-size: var(--text-md);
-  cursor: pointer;
-  white-space: nowrap;
-}
+/*
+  输入框在这一排里要吃掉剩余宽度。UiInput 自身是 `inline-flex` + `width: 100%`，
+  在 flex 容器中仍需显式给伸缩因子，否则 `width: 100%` 相对的是它自己的
+  内容宽度而非剩余空间。
 
-.search__btn {
-  border-color: var(--color-accent);
-  background: var(--color-accent);
-  color: var(--color-bg);
-  min-width: 6em;
-}
-
-.search__btn:disabled,
-.search__clear:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.search__btn:not(:disabled):hover,
-.search__clear:not(:disabled):hover {
-  filter: brightness(1.1);
+  scoped 样式能命中子组件根元素：Vue 会给单根子组件的根节点也带上父组件的
+  scope id。此处只调布局（外部关切），不碰 UiInput 内部的边框、字号、焦点环
+  ——那些属原语自己的领地，从调用方伸手进去改就是 shim 模式回归。
+*/
+.search__field {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 /*
-  NOTE: 这仍是原生 <input>，属宪法第 6 章要消灭的对象。
-  第 5 步换为 <UiInput size="md">，届时本段样式整体删除。
-  此处只做令牌迁移，不提前换控件——把控件替换混进令牌 commit
-  会让「每页一个 commit」失去回退价值。
+  按钮文案在「搜索 / 搜索中…」间切换，宽度会跟着跳。定一个下限把位置钉住。
+
+  NOTE: 加载态刻意由文案承担而非只靠 UiButton 的 loading 视觉——它就在
+  用户刚点击的位置，比别处的指示器更容易被注意到。loading 仍然传，
+  它额外给出 `cursor: progress` 与 `aria-busy`，两者不重复。
 */
-.search__input {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-ctrl);
-  background: var(--color-surface);
-  color: var(--color-text);
-  font-family: inherit;
-  font-size: var(--text-md);
-}
-
-.search__input:focus {
-  border-color: var(--color-accent);
-  outline: none;
-}
-
-/* 与两个按钮的禁用态同一档，让「整排都锁住了」读起来是一件事 */
-.search__input:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.search__btn {
+  min-width: 6em;
 }
 
 .results {

@@ -24,6 +24,15 @@ interface Props {
   /** 等宽形态。路径 / AppID / 密钥用 */
   mono?: boolean
   size?: 'sm' | 'md'
+  /**
+   * 挂载后自动聚焦。
+   *
+   * 必须做成 prop 而非依赖 attrs 透传：本组件的根元素是 `<div>` 外壳，
+   * 透传来的 `autofocus` 会落在那个 div 上——而 div 不可聚焦，该属性
+   * 静默失效，模板里写了却没有效果。凡「只对特定元素有意义的原生属性」，
+   * 在带外壳的原语上都得显式转发到内部元素。
+   */
+  autofocus?: boolean
 }
 
 withDefaults(defineProps<Props>(), { type: 'text', size: 'md' })
@@ -52,6 +61,7 @@ function onInput(e: Event) {
       :placeholder="placeholder"
       :disabled="disabled"
       :readonly="readonly"
+      :autofocus="autofocus"
       :aria-invalid="invalid || undefined"
       @input="onInput"
       @keydown.enter="emit('enter')"

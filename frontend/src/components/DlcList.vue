@@ -14,6 +14,7 @@
 
 import type { DLCInfo } from '../api'
 import type { SyncState } from '../composables/useDlcSelection'
+import { UiCheckbox } from './ui'
 
 defineProps<{
   dlcs: DLCInfo[]
@@ -70,15 +71,37 @@ const syncText: Record<SyncState, string> = {
 
     <ul class="dlc__list">
       <li v-for="d in dlcs" :key="d.appID" class="row">
-        <label class="row__label">
-          <input
-            type="checkbox"
-            :checked="isSelected(d.appID)"
-            :disabled="readonly"
-            @change.prevent="emit('toggle', d)"
-          />
+        <!--
+          整体换成 UiCheckbox 而非往里塞：原 .row__label 自己就是 <label>，
+          而 UiCheckbox 内部也是 <label>，嵌套 label 是非法 HTML
+          （点击行为在浏览器间不一致，读屏也会读错）。
+
+          勾选值仍由父组件的 isSelected 单向决定，本组件不留本地状态——
+          事件只上报「这一条被点了」，落盘与还原归 useDlcSelection。
+        -->
+        <UiCheckbox
+          v-if="!readonly"
+          class="row__check"
+          :model-value="isSelected(d.appID)"
+          @update:model-value="emit('toggle', d)"
+        >
           <span class="row__name">{{ d.name || d.appID }}</span>
-        </label>
+        </UiCheckbox>
+
+        <!--
+          只读态压根不渲染勾选框，而非渲染一个禁用的。
+
+          两个理由。其一是本组件底部那句文案自己说的「因此不提供勾选」——
+          摆一个灰掉的勾选框与那句话矛盾，它读起来像「满足某个条件就能勾」。
+
+          其二更要紧：`disabled` 会让 UiCheckbox 整体降到 50% 透明度（原语
+          对普通禁用项的正确行为），而只读态恰恰是「用户只想读这份列表」的
+          场景，两百行半透明就没法读了。原生 checkbox 此前只灰掉方框、名字
+          仍全亮，换原语时若照搬 disabled 就会悄悄吃掉可读性。
+        -->
+        <span v-else class="row__name row__name--plain">
+          {{ d.name || d.appID }}
+        </span>
 
         <span class="row__appid">{{ d.appID }}</span>
 
@@ -178,17 +201,26 @@ const syncText: Record<SyncState, string> = {
   background: var(--color-surface-2);
 }
 
-.row__label {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+/*
+  只给 UiCheckbox 定这一行的伸缩关系（布局属调用方关切），
+  其内部的方框尺寸、热区、焦点环一概不碰。
+
+  原 `.row__label:has(input:disabled)` 那条已随只读态改为不渲染勾选框而失效
+  ——没有 input 了，也就没有据其禁用态改光标这回事。
+*/
+.row__check {
   flex: 1 1 auto;
   min-width: 0;
-  cursor: pointer;
 }
 
-.row__label:has(input:disabled) {
-  cursor: default;
+/* 只读态的名字：没有勾选框可以借位，得自己吃掉剩余宽度。
+   字号与勾选态保持一致（--text-sm，随 UiCheckbox 的 .cb__label 走），
+   否则同一份列表在两种模式下字号会不同 */
+.row__name--plain {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-tight);
 }
 
 .row__name {

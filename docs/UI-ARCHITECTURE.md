@@ -13,7 +13,7 @@
 
 ---
 
-## 速查：不得违反的条目（60 条）
+## 速查：不得违反的条目（64 条）
 
 施工时若只看一节，看这一节。每条后附出处。
 
@@ -79,6 +79,10 @@
 | 58  | 事件监听的注册必须早于任何可能触发它的操作，含同函数里写在前面的 await                                             | DECISIONS-3 08-04        |
 | 59  | 类型报错不得用 `!` 消音——它指出的是「这个等价关系只存在于人脑里」                                                  | DECISIONS-3 08-04        |
 | 60  | 一个状态不得同时承载两个对象的处境（如 A 的同步进度显示在 B 的页面上）                                             | DECISIONS-3 08-04        |
+| 61  | 带外壳的原语必须显式转发「只对特定元素有意义」的原生属性（如 `autofocus`），不靠 attrs 透传——落在外壳上会静默失效  | DECISIONS-3 08-05        |
+| 62  | 原语插槽的文本容器必须带 `min-width: 0`，否则调用方写的 `ellipsis` 永不生效；按钮类一律 `white-space: nowrap`       | DECISIONS-3 08-05        |
+| 63  | 照搬 `disabled` 前先问「禁用的是操作还是整块信息」。自绘原语的禁用态常作用于整个 label，会连文案一起灰掉            | DECISIONS-3 08-05        |
+| 64  | 令牌的槽位定义就是它的适用范围，不按 px 就近选档（`--text-md` 是「区块标题」，不给输入框内容用）                    | 4.3 / DECISIONS-3 08-05  |
 
 ---
 
@@ -1629,16 +1633,29 @@ findstr /s /n rem;                frontend\src\*.vue
 > 完工后新增的两条判断已记入 `DECISIONS-2`（08-02）：
 > `loading` 与 `disabled` 的取舍看「能否指出是哪一个在忙」；
 > 状态色经单一自定义属性下发而非两处分别写死。
+>
+> **进度（2026-08-05 更新）**：`SearchPane` 与 `GameCard grid` 两项**已完工**，
+> `DlcList` 的 checkbox 代码已换、**性能实测待跑**。至此本表只剩 `TopBar`
+> 两项（下划线指示器、`.env` 胶囊已定性为不改）与花纹、LOGO。
+>
+> 施工中修掉三处**原语自身**的潜在缺陷，均非本页专属（详见 `DECISIONS-3` 08-05）：
+> `UiInput` 的 `autofocus` 须显式转发（外壳是 div，透传会静默失效）、
+> `UiCheckbox` 的 `.cb__label` 缺 `min-width: 0`（插槽内 ellipsis 永不生效）、
+> `UiButton` 缺 `white-space: nowrap`（窄窗口下标签折行且 `line-height: 1` 会叠字）。
+>
+> ⚠️ 同时发现**预览页自己的盲区**：原「输入类」四个 `UiInput` 全是默认 md 档，
+> 于是「两档差在哪」在本页看不出来——而这一页的存在理由正是「一眼看全」。
+> 已补 sm/md 并排、长文案截断、200 行压力档三格。
 
 | 位置                                     | 欠账                                                                                                                                                          | 依据         |
 | :--------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------ | :----------- |
-| `SearchPane` `.search__input` / 两个按钮 | 仍是原生 `<input>` 与 `<button>`，换 `UiInput` / `UiButton`                                                                                                   | 第 6 章      |
+| ~~`SearchPane` `.search__input` / 两个按钮~~ | ✅ **已完工（08-05）**。换 `UiInput size="md"` + 两个 `UiButton`。字号由 `--text-md`(15px) 降为原语的 `--text-sm`(12px)，「主入口更醒目」改由位置、全宽、旁边唯一一个 primary 按钮承担 | 第 6 章      |
 | `GamePane` 对比表                        | `border-left` 方案作废，改双重编码（数字承担状态色 + 整行 4~6% 淡染）。`--state-wash` 就是为它准备的，目前**仍无调用点**                                      | 10.1 / 10.2  |
 | `TopBar` `.nav-tab--active::after`       | 现为 `animation`（新元素出现，无插值起点）。改法是抽成常驻指示器用 `transform` 在页签间滑移，届时才能变可中断的 `transition`                                  | 5.4          |
 | `TopBar` `.env`                          | `border-radius: 999px` 是全圆胶囊。**此处是状态指示灯而非按钮**，胶囊形恰好把它与方角控件区分开；若要统一，替代方案是去掉边框只留色点与文字，**不是**改成方角 | 4.4 / 速查 8 |
-| `GameCard` `layout="grid"`               | 零调用点。已安装页改 master-detail 后网格随 `LibraryView` 退场。搜索结果若不做网格视图就连同 `.card--grid` 四段样式一起删                                     | —            |
+| ~~`GameCard` `layout="grid"`~~               | ✅ **已完工（08-05）**。四段样式连同 `layout` prop 本身一并删除，`.card--row` 的两条并入 `.card`。删 prop 的理由：一个两值枚举只被传过一个值，它就不是枚举                     | —            |
 | `styles/shim.css`                        | `.btn` 仍有 **21 处**调用点：`GamePane` 13、`SetupView` 5、`EnvBanner` 2、`ConfirmDialog` 1。全部换成 `UiButton` 后删除本文件                                 | 11.3         |
-| 原生 `<input type=checkbox>`             | `DlcList` 是重点，条目数可上百，`UiCheckbox` 的性能需实测                                                                                                     | 6            |
+| 原生 `<input type=checkbox>`             | ⚠️ **代码已换（08-05），性能实测待跑**。`DlcList` 唯一那处已换 `UiCheckbox`；每行元素数 6→12（多 4 个 SVG 节点），200 个 DLC 即整表 2400 元素 / 800 SVG。预览页新增「压力档 · UiCheckbox × 200」开关供复现，实测样本用 MHW(582010) | 6            |
 
 **第 5 步的工作量分布很不均**：`GamePane` 一个文件占了 `.btn` 的六成。
 建议仍按「一个文件一个 commit」推进，且从 `EnvBanner`（2 处）开始试水，

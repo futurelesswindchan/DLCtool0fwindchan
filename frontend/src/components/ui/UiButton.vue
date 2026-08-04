@@ -69,6 +69,10 @@ withDefaults(defineProps<Props>(), {
   font-family: inherit;
   font-weight: var(--weight-medium);
   line-height: 1;
+  /* 按钮文案一律不折行。作为 flex 项时默认可收缩到 min-content，窄窗口下
+     「彻底卸载」这类标签会折成竖排，而上面那条 line-height: 1 会让折行
+     几乎叠在一起。任何把按钮放进 flex 排的调用方都会撞上，故归原语管。 */
+  white-space: nowrap;
 
   cursor: pointer;
   user-select: none;

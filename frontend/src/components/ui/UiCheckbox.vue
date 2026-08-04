@@ -150,6 +150,10 @@ function onChange(e: Event) {
 }
 
 .cb__label {
+  /* flex 项的 min-width 默认是 auto，不加这条则本元素不会收缩到内容宽度
+     以下，调用方在插槽里写的 text-overflow: ellipsis 永远不生效——长文案
+     会把整行撑破。属原语该管的事：任何放长文本的调用方都会撞上。 */
+  min-width: 0;
   font-size: var(--text-sm);
   line-height: var(--leading-tight);
 }
