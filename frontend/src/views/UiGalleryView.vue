@@ -223,9 +223,19 @@ function toggleTheme() {
 
       取 200 行是照实际最坏样本定的，不是随手取的整数。
 
-      NOTE: 本段刻意不加 content-visibility。DlcList 的 .dlc__list 有那条
-      属性护着，若这里也加上，测的就是「被跳过渲染的行」，等于把要测的东西
-      屏蔽掉了——判据本身也要有判据（速查第 37 条）。
+      ⚠️ 本段原先刻意不加 content-visibility，理由写的是「若也加上，测的就是
+      被跳过渲染的行」。那个理由是反的，08-05 实机推翻：
+
+      DlcList 的 .dlc__list **永远**带 content-visibility: auto。压力档不加，
+      测的就是一个永不会发行的配置——而它在浏览器里直接白屏（DOM 完整，
+      纯渲染层失败），恰恰崩在现实从不触及的地方。
+
+      压力档的职责是**如实复刻发行配置下的最坏规模**，不是构造一个更狠的
+      假想场景。更狠的场景崩了，得到的结论只关于那个场景本身。
+
+      NOTE: 真正的权威测量是实机 MHW(582010) 详情页——200 个 DLC，滚动与
+      单条勾选均无掉帧，切到 Intel 集显同样无问题。UiCheckbox 的性能疑虑
+      已由那次实测结清，本段此后只作回归看守。
     -->
     <section class="gal__sec">
       <h2>压力档 · UiCheckbox × 200</h2>
@@ -336,8 +346,8 @@ function toggleTheme() {
   font-size: var(--text-sm);
 }
 
-/* 压力档列表。刻意复刻 DlcList 的行结构（勾选框吃剩余宽 + 右侧等宽 AppID），
-   否则测出来的不是那一页的实际形态 */
+/* 压力档列表。复刻 DlcList 的行结构（勾选框吃剩余宽 + 右侧等宽 AppID）
+   与容器属性，否则测出来的不是那一页的实际形态 */
 .gal__stress {
   margin: 0;
   padding: 0;
@@ -345,6 +355,13 @@ function toggleTheme() {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   overflow: hidden;
+  /* 与 .dlc__list 一致。缺了它，200 行会让所在区块涨到约 8000px，
+     而 .gal__sec 带 box-shadow——超大元素上的阴影光栅化是 Chromium
+     白屏的已知诱因，实测正是如此 */
+  content-visibility: auto;
+  /* 配合 content-visibility 给出预估高度，否则滚动条长度会随滚动跳变。
+     40px 是单行实测高度（28px 热区 + 上下 space-2） */
+  contain-intrinsic-size: auto 8000px;
 }
 
 .gal__stressrow {
