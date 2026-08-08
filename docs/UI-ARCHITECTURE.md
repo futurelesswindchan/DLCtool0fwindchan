@@ -1429,7 +1429,6 @@ findstr /s /n btn frontend\src\views\SetupView.vue
 
 每步照旧过 `npx vue-tsc --noEmit` + `npx vite build`。
 本轮为纯前端改动，预期不需要 `wails generate module`；
-若因故新增 DTO 字段，该步骤交主人执行。
 
 ---
 
