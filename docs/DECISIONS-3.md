@@ -339,7 +339,7 @@ store。不刷新则数字停在旧值且不报错。
 
 ### 附带记录：验证方式本身要可靠
 
-主人第二轮从「切回来显示已勾选」反推「history 含该 ID」，中间隔着这层缓存，
+第二轮从「切回来显示已勾选」反推「history 含该 ID」，中间隔着这层缓存，
 推断不成立。同一个现象在第一轮是直接查 `history.json` 得出的，两次证据强度
 不同。
 
@@ -619,11 +619,11 @@ min-content，窄窗口下「彻底卸载」这类标签会折成竖排，而它
 
 `progressText` 全部赋值处只有三个：
 
-| 行 | 来源 | 是否生效 |
-| :-- | :--- | :--- |
-| 198 | 事件回调 | ❌ 事件不存在 |
-| 419 | `install()` 里前端自己赋「正在从 X 入库…」 | ✅ |
-| 260 / 443 | 清空 | ✅ |
+| 行        | 来源                                       | 是否生效      |
+| :-------- | :----------------------------------------- | :------------ |
+| 198       | 事件回调                                   | ❌ 事件不存在 |
+| 419       | `install()` 里前端自己赋「正在从 X 入库…」 | ✅            |
+| 260 / 443 | 清空                                       | ✅            |
 
 当时看到的是第 419 行那句——属**另一条代码路径**（`install()` 而非
 `lookup()`），而且它是单条固定文案，压根不会「随源切换」。
@@ -711,10 +711,11 @@ progressText 承担」：`lookup()` 那 41 秒里 `progressText` 始终为空。
 宪法 7.4 节推荐的方案是「一份 SVG 资产吃两套主题」——用 `mask-image` 让 SVG
 只描述形，颜色与浓度全由 CSS 令牌给（`--pattern-ink` / `--pattern-alpha`）。
 
-08-08 完成 UI 第 5 步的资产与投放后，主人实机验收发现：`npm run dev` 在浏览器
+08-08 完成 UI 第 5 步的资产与投放后，实机验收发现：`npm run dev` 在浏览器
 中一切正常，但 `wails dev` / `wails build` 的 WebView2 下 mask 完全不生效。
 
 **症状**：
+
 - LogoMark（`mask-image` + `background-color: currentColor`）→ 黑色实心方块
 - Ornament（`mask-image` + `background-color: var(--pattern-ink)`）→ 灰色实心方块（透明度生效，但遮罩不参与）
 
@@ -769,7 +770,3 @@ justify-content: center; overflow: hidden; position: relative`），
 `position: relative` 同时给 Ornament 提供定位上下文，`overflow: hidden`
 确保角落纹样不外溢。`flex: 1` 让它占满 ContentPane 的剩余高度——这与
 库概览（有东西时）的 `head` + 统计占据相同空间，切页时高度连续、无跳变。
-
-
-
-

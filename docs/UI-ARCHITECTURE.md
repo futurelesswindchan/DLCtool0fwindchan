@@ -1707,7 +1707,6 @@ build         vite build
 `vue-tsc` 与 `vite build` 会全部通过，而界面上那处颜色是透明的。
 第 2 步实机时就踩到一次（`--seg-knob`），详见 `DECISIONS-2`。
 本轮为纯前端改动，预期不需要 `wails generate module`；
-若因故新增 DTO 字段，该步骤交主人执行。
 
 ---
 
