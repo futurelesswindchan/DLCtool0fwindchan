@@ -14,7 +14,8 @@
 
 import type { DLCInfo } from '../api'
 import type { SyncState } from '../composables/useDlcSelection'
-import { UiCheckbox } from './ui'
+import { UiCheckbox, UiHelpBadge } from './ui'
+import { glossary } from '../glossary'
 
 defineProps<{
   dlcs: DLCInfo[]
@@ -39,7 +40,10 @@ const syncText: Record<SyncState, string> = {
 <template>
   <section class="dlc">
     <header class="dlc__head">
-      <h2 class="dlc__title">DLC 列表（{{ dlcs.length }}）</h2>
+      <h2 class="dlc__title">
+        DLC 列表（{{ dlcs.length }}）
+        <UiHelpBadge :content="glossary['auto-save'].short" aria-label="了解「勾选即保存」" />
+      </h2>
       <Transition name="sync">
         <span v-if="syncState !== 'idle'" class="dlc__sync">
           {{

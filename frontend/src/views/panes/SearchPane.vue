@@ -120,8 +120,8 @@ function openGame(appID: string) {
 
     <p class="tips">
       结果只列出游戏本体，DLC 与试玩版已自动排除——清单以整个游戏为单位提供，
-      单独搜 DLC 名找不到东西。搜索走 Steam 官方接口，
-      <strong>大陆网络通常需要开启加速工具</strong>（UU、Steam++ 之类均可）。
+      单独搜 DLC 名找不到东西。搜索走 Steam 官方接口，<strong>偶发失败与本工具
+      无关，稍等再试通常就好。</strong>如需改善，开启网络加速工具可降低失败率。
     </p>
 
     <ul v-if="search.results.length" class="results">

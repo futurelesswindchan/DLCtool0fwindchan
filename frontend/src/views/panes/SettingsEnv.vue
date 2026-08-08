@@ -14,7 +14,8 @@ import { useEnvStore } from '../../stores/env'
 import { useToast } from '../../composables/useToast'
 import { selectDirectory } from '../../api'
 import EnvBanner from '../../components/EnvBanner.vue'
-import { UiButton } from '../../components/ui'
+import { UiButton, UiHelpBadge } from '../../components/ui'
+import { glossary } from '../../glossary'
 
 const env = useEnvStore()
 const toast = useToast()
@@ -41,7 +42,10 @@ async function onAutoDetect() {
 
 <template>
   <section class="pane">
-    <h2 class="set-block__title">环境</h2>
+    <h2 class="set-block__title">
+      环境
+      <UiHelpBadge :content="glossary.injector.short" aria-label="了解「注入器 / OST」" />
+    </h2>
 
     <EnvBanner
       :result="env.result"

@@ -127,13 +127,81 @@ export const useSearchStore = defineStore('search', () => {
 /**
  * 把异常转成面向用户的一句话。
  *
- * ApiError 带的是后端已经写好的用户文案，直接用；其余（绑定层、网络栈）
- * 的原文对用户无意义，给一句兜底。
+ * ApiError 带的是后端已经写好的用户文案，直接用；
+ * 其余（绑定层、网络栈）的原文对用户无意义，在此按错误类型分支——
+ * 复用 tools/netprobe 的 classify 七分支逻辑，
+ * 每一条都说明「是否与本工具有关」（宪法速查第 50 条）。
  *
- * TODO(路线第 10 项): 按错误类型分支细化，复用 tools/netprobe 的 classify
- * 七分支，并说清「这不是盒子坏了」。此处只保证失败有话可说。
+ * 七分支的粒度参考：
+ *   「等响应头超时」与「TCP 连不上」指向完全不同的修法——
+ *   前者换加速器节点可能解决，后者可能根本没开加速器。
+ *   统一兜底一句「网络波动」虽然不算错，但等于把排查成本转嫁给用户。
  */
 function describeError(e: unknown): string {
+  // 业务失败：后端已经写好了面向用户的文案，直接用
   if (e instanceof ApiError) return e.message
-  return '搜索没能完成，可能是网络波动。稍等一两分钟再试通常就好。'
+
+  // 其余是绑定层或网络栈抛出的原始错误。
+  // 统一转小写后匹配——Go 的 error 消息是英文，Wails 绑定原样传递。
+  const s = e instanceof Error ? e.message.toLowerCase() : ''
+
+  // 1. 等响应头超时：TCP 可能已连上，但对端迟迟不回第一个字节
+  if (s.includes('awaiting headers')) {
+    return (
+      '搜索请求已发出但 Steam 服务器迟迟未响应。' +
+      '这和本工具无关——通常是网络线路在某个节点卡住了。' +
+      '稍等一两分钟再试通常就好。'
+    )
+  }
+
+  // 2. TLS 握手超时：连上了但证书交换被打断
+  if (s.includes('tls handshake')) {
+    return (
+      '与 Steam 的安全连接握手超时。' +
+      '通常是网络中间设备打断了证书交换，和本工具无关。' +
+      '稍等再试通常就好。'
+    )
+  }
+
+  // 3. DNS 解析失败：网络完全不通或 DNS 被污染
+  if (s.includes('no such host')) {
+    return (
+      '无法解析 Steam 服务器地址。' +
+      '可能是 DNS 被污染或网络完全不通——' +
+      '请检查网络连接与加速工具是否覆盖了本程序。'
+    )
+  }
+
+  // 4. 连接被强制关闭：国内高峰期最典型的症状
+  if (s.includes('forcibly closed') || s.includes('wsarecv')) {
+    return (
+      '与 Steam 的连接被中途打断。' +
+      '这是国内访问 Steam 最常见的情况，和本工具无关。' +
+      '稍等再试通常就好。'
+    )
+  }
+
+  // 5. TCP 建连超时：路由不通或被丢包——通常意味着没开加速器
+  if (s.includes('connectex') || s.includes('i/o timeout')) {
+    return (
+      '无法连接到 Steam 服务器。' +
+      '通常是路由不通或被丢包——' +
+      '请确认加速工具已开启且覆盖了本程序。'
+    )
+  }
+
+  // 6. 对端提前关闭：还没读完响应体就被断开了
+  if (s.includes('eof')) {
+    return (
+      'Steam 服务器提前断开了连接。' +
+      '通常是网络波动导致，和本工具无关。' +
+      '稍等再试通常就好。'
+    )
+  }
+
+  // 7. 兜底：无法归类时给一句诚实但不过度归因的话
+  return (
+    '搜索没能完成，可能是网络波动。' +
+    '稍等一两分钟再试通常就好——这和本工具无关。'
+  )
 }

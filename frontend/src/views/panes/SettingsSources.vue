@@ -20,7 +20,8 @@ import { useConfigStore } from '../../stores/config'
 import { useToast } from '../../composables/useToast'
 import { useConfirm } from '../../composables/useConfirm'
 import { setRepoToken, getMSiteStats, type MSiteStats } from '../../api'
-import { UiButton, UiInput } from '../../components/ui'
+import { UiButton, UiInput, UiHelpBadge } from '../../components/ui'
+import { glossary } from '../../glossary'
 
 const config = useConfigStore()
 const toast = useToast()
@@ -104,7 +105,10 @@ function kindLabel(kind: string): string {
 
 <template>
   <section class="pane">
-    <h2 class="set-block__title">清单源</h2>
+    <h2 class="set-block__title">
+      清单源
+      <UiHelpBadge :content="glossary.source.short" aria-label="了解「源」" />
+    </h2>
 
     <ul class="sources">
       <li
@@ -120,7 +124,10 @@ function kindLabel(kind: string): string {
     </ul>
 
     <div class="msite">
-      <h3 class="msite__title">{{ M_SITE }} 凭据</h3>
+      <h3 class="msite__title">
+        {{ M_SITE }} 凭据
+        <UiHelpBadge :content="glossary.quota.short" aria-label="了解「API 额度」" />
+      </h3>
       <p class="set-hint">
         该源数据最完整，但需自备 API key。凭据默认仅 7 天有效，到期后此源会被静默跳过。
       </p>

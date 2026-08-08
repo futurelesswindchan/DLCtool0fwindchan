@@ -24,6 +24,8 @@ import {
 import { useLibraryStore } from '../../stores/library'
 import { useToast } from '../../composables/useToast'
 import DropZone from '../../components/DropZone.vue'
+import { UiHelpBadge } from '../../components/ui'
+import { glossary } from '../../glossary'
 
 const router = useRouter()
 const library = useLibraryStore()
@@ -68,7 +70,10 @@ async function importPackage(load: () => Promise<GamePackage>) {
 <template>
   <div class="pane">
     <header class="head">
-      <h1 class="head__title">本地导入</h1>
+      <h1 class="head__title">
+        本地导入
+        <UiHelpBadge :content="glossary['import-package'].short" aria-label="了解「清单包」" />
+      </h1>
       <p class="head__sub">
         已经从网页端下载好清单包时走这条路。网页端的每日额度远高于 API，
         重度使用时这里比在线搜索更划算。

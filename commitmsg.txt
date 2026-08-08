@@ -1,25 +1,29 @@
-feat(ui): 第5步收尾 - 品牌标识、花纹投放、常驻指示器
+feat: UI 第 6 步——术语帮助系统、键盘可达性、搜索错误文案细化
 
-新组件
-- LogoMark：内联 SVG 品牌标识，stroke="currentColor" 双主题
-- beans.svg / ear.svg / logo-rabbit.svg：设计资产（不再经 mask 加载）
+== 新增 ==
 
-改动
-- TopBar：页签下划线 animation → transition（常驻指示器，可中断）
-- TopBar + HomeShell：品牌位 emoji 🐰 → LogoMark
-- Ornament.vue：mask-image → 内联 SVG，src prop → pattern prop
-- HomeShell：侧栏品牌区加兔耳角落纹样（Ornament pattern="ear" corner="br"）
-- LibraryOverviewPane：库空态加咖啡豆微平铺 + 居中撑满全屏
-- UiEmptyState：.es 加 position: relative
-- UiGalleryView：加 LogoMark 与 Ornament 两节验证场（含可调浓度）
+* glossay.ts 术语词典（12 条词条，覆盖宪法 8.1 节六个优先术语）
+  结构 key→{term,short,long?}，通过 g() 快捷取值。
+  作为全部界面的术语单一事实来源——同一术语在多处解释得一模一样。
 
-文档
-- PROGRESS-2：08-08 完工记录，第5步收尾
-- DECISIONS-3：两条新决策（mask→内联 SVG，空态居中）
-- UI-ARCHITECTURE 7.4：补 mask→内联更新的注记
+== 改动 ==
 
-为什么放弃 mask-image
-WebView2 不支持 mask-image + 本地 SVG URL 的组合（npm run dev 浏览器正常，
-wails dev/build 下 mask 完全不生效），表现为 background-color 纯色填充矩形。
-LogoMark 与 Ornament 统一改用内联 SVG + stroke="currentColor"，
-颜色与透明度仍由 --pattern-ink / --pattern-alpha 令牌控制。
+* search.ts describeError 七分支细化
+  按 tools/netprobe 的 classify 逻辑分七类：
+  等响应头超时 / TLS 握手超时 / DNS 失败 / 强制关闭 / TCP 建连 / EOF / 兜底。
+  每条都说清「是否与本工具有关」（宪法速查第 50 条）。
+
+* SearchPane tips 文案改口径
+  「大陆网络通常需要开启加速工具」→「偶发失败与本工具无关，稍等再试通常就好」。
+  加速工具仍有提及但降为补充建议。
+
+* 键盘可达性审计（四件原语均通过）
+  UiRadio / UiSwitch / UiSegmented / UiInput 逐一确认 focus-visible +
+  ≥28px 热区 + 真语义 HTML。UiSegmented min-height 24px 略低但形态合理。
+
+* HelpBadge 投放至四处优先位置
+  - SettingsSources：清单源标题 + 凭据标题
+  - SettingsEnv：环境标题（注入器/OST 分工）
+  - ImportPane：本地导入标题（清单包概念）
+  - DlcList：DLC 列表标题（勾选即保存）
+  对比表状态（仅本体/不可用/未试取）的 badge 留待后续轮次投放。
