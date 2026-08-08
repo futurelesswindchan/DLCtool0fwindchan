@@ -5,11 +5,11 @@
 >
 > 本卷只记 2026-08-03 之后的进度。每次开发结束时更新。
 >
-> 最后更新：2026-08-05
+> 最后更新：2026-08-08
 
 ---
 
-## ⚠️ 当前阶段：切页丢状态已修，UI 第 5、6 步收尾中（分支 `feat/ui-v2`）
+## ✅ 当前阶段：UI 第 5 步已完工，第 6 步可启动（分支 `feat/ui-v2`）
 
 08-02 暴露的四个实机问题**全部结清**：
 
@@ -198,6 +198,135 @@ MHW(582010) 200 个 DLC：滚动与单条勾选均无明显掉帧；切到 Intel
 
 后端零处 `runtime.EventsEmit`。详情见上方 08-04 段落里的更正块与
 DECISIONS-3。**这直接解释了 `UiProgress` 为何至今零调用点。**
+
+## ✅ 08-08 完工内容（UI 第 5 步收尾）
+
+### 品牌标识位（宪法 7.7）
+
+两处品牌位的 emoji `🐰` 替换为 LogoMark 组件——内联 SVG，`stroke="currentColor"`，
+颜色随文字色走，双主题一份资产。
+
+⚠️ LogoMark 走了内联 SVG 而非宪法 7.4 推荐的 mask-image 方案，
+原因见 DECISIONS-3「WebView2 不支持 mask-image + 本地 SVG URL」，
+以及下方的 🩹 新增坑。
+
+### 顶栏页签常驻指示器
+
+`::after` 伪元素 + `@keyframes tab-in`（animation）→ 单一 `.nav-ind` 元素 +
+`transform: translateX()` + `transition`（可中断）。
+
+测量逻辑：`navEl` ref → `querySelector('.nav-tab--active')` → `offsetLeft` /
+`offsetWidth` → 写入内联 style。`ResizeObserver` 兜住窗口缩放与字体加载后
+的重测，`v-show` 保证首次加载指示器不飞入（直接出现在正确位置）。
+
+`#topbar__nav` 补 `position: relative`。`.nav-tab` 原先那条 `position: relative`
+已失去用途（`::after` 被删），一并清理。
+
+### 花纹资产与投放
+
+三张 SVG 资产（beans / ear / logo-rabbit）制作完成，图形词汇统一
+（栅格 24px · 线宽 1.5px · 圆头 · 无尖角）。投放两处：
+
+| 位置 | 花纹 | 效果 |
+| :--- | :--- | :--- |
+| 侧栏品牌区 | `ear.svg` corner br | 兔耳尖从右下角切出画面外，极淡 |
+| 库空态 | `beans.svg` tile | 咖啡豆+方糖微平铺满铺背景 |
+
+Ornament 组件重写：`mask-image` → 内联 SVG，`src` prop → `pattern` prop
+（`'beans' | 'ear'`）。颜色走 `--pattern-ink` 令牌（经 `color` 属性注入），
+浓度仍由 `--pattern-alpha` 控制。
+
+空态同时加了居中撑满：`.empty-full`（`flex: 1; align-items: center;
+justify-content: center`）让 `UiEmptyState` 垂直居中而非贴顶。
+
+### 预览页
+
+`#/dev/ui` 新增两节：
+- **LogoMark · 品牌标识位**：五档尺寸 + 三色境对照（正文色/次要色/主色）
+- **Ornament · 装饰花纹**：可调浓度滑条（0.01~0.14）+ 四种角色对照 +
+  真实落点预演（空状态 + 角落兔耳）
+
+浓度滑条用的原生 `<input type="range">` 是已知例外（十三个原语里没有 slider，
+预览页不进封测包），已在注释标注 `XXX`。
+
+### 🩹 新增坑 · WebView2 mask-image 整体不生效
+
+与本轮 Logo 黑方块 + Ornament 灰方块属同一病根：**WebView2 不支持 `mask-image`
+与本地 SVG URL 的组合**（`npm run dev` 在浏览器中正常）。
+
+LogoMark 与 Ornament 统一改走内联 SVG + `stroke="currentColor"`。
+参见 DECISIONS-3 08-08 条目。
+
+⚠️ 这对验证流程有实际影响——**视觉效果类改动必须包含 `wails dev` 实跑验收，
+仅看浏览器是不够的。** `npm run dev` 验证通过的 mask 效果，在 WebView2 中
+完全不呈现。
+
+---
+
+## ✅ 08-08 完工内容（UI 第 5 步剩余三项）
+
+**第 5 步至此整体完工。** UI 第 6 步（术语帮助系统、键盘可达性、搜索空态文案
+的 `describeError` 细化）与 `UiProgress` 去留（路线第 7 项）留给后续。
+
+### LOGO 替换（TopBar + HomeShell）
+
+两处品牌位原先的 emoji `🐰` 换成 `LogoMark` 组件（`components/ui/LogoMark.vue`）。
+走 mask-image + `currentColor`，字号即尺寸（内部 `width: 1em`），
+双主题自动成立。配色由调用方经 `color` 属性控制。
+
+### TopBar 页签常驻指示器
+
+原实现 `.nav-tab--active::after` 用 `animation: tab-in`（scaleX 0→1），
+不可中断——宪法 5.4 要求动效可中断。改为常驻 `.nav-ind` 元素，
+`transform: translateX() + width` + `transition`，页签切换时是同一物体的
+位移而非新元素的登场动画。`ResizeObserver` 兜窗口缩放与字体加载，
+`document.fonts.ready` 修正初始测量。
+
+### 花纹资产与投放
+
+三张 SVG 资产落地（`assets/icons/logo-rabbit.svg`、`assets/patterns/beans.svg`、
+`assets/patterns/ear.svg`）。投放两处：
+- **HomeShell 侧栏品牌区**：兔耳角落纹样（`Ornament role="corner" corner="br"`），
+  `overflow: hidden` 裁掉下半部分，只露耳尖
+- **LibraryOverviewPane 库空态**：咖啡豆微平铺 + 居中撑满（`.empty-full` 容器
+  `flex: 1; align-items: center; justify-content: center`）
+
+预览页 `#/dev/ui` 加两个验证节：LogoMark 五档尺寸 + 三色境对照，
+Ornament 浓度滑条 + 四种角色样品 + 真实落点预演（空状态背后放角纹）。
+
+### 🚨 WebView2 下 mask-image 不兼容（本轮最重要的发现）
+
+**结论：WebView2 完全不支持 `mask-image` + 本地 SVG URL。**
+
+现象：在浏览器 `npm run dev` 中一切正常，但在 `wails dev` / `wails build`
+中，`mask-image` 的遮罩完全不生效——元素表现为 `background-color` 的
+实色填充矩形（LogoMark 是黑色方块，Ornament 是灰色矩形）。
+
+排查过程：
+- LogoMark 先被主人发现黑方块（`currentColor`  → 黑），怀疑是 `currentColor`
+  继承问题
+- 改为内联 SVG（`stroke="currentColor"`）后 Logo 正常，但主人报告 Ornament
+  也出灰矩形——说明不是颜色问题，是 **`mask-image` 整体不生效**
+- 两者统一改为内联 SVG：LogoMark 内联路径，Ornament 内联 `<svg>` +
+  `<pattern>` 元素
+
+**工程影响**：宪法 7.4 节「一份资产吃两套主题」中推荐的 mask-image 方案
+**对 WebView2 不可用**，需改走内联 SVG + `currentColor`。
+独立 `.svg` 文件保留为设计源文件，运行时不再加载。
+
+详见 DECISIONS-3 新增的决策 18。
+
+### UI 速查更新
+
+速查从 67 条增至 68 条（新增第 68 条见 UI-ARCHITECTURE.md 底部变更记录）。
+
+---
+
+## 📏 已知残留（更新）
+
+| 项目 | 说明 |
+| :--- | :--- |
+| `ear.svg` / `beans.svg` / `logo-rabbit.svg` | 现为**设计源文件，运行时不再加载**。LogoMark 与 Ornament 均走内联 SVG。若日后改设计，改源文件后需同步更新组件内的内联路径。 |
 
 ### 全局核查
 

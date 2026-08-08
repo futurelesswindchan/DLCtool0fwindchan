@@ -15,26 +15,26 @@
  */
 
 interface Props {
-  title: string
+  title: string;
   /** 补充说明。可多段，按数组传 */
-  description?: string | readonly string[]
+  description?: string | readonly string[];
   /** error 态收起装饰，只留信息与动作 */
-  tone?: 'normal' | 'error'
+  tone?: "normal" | "error";
   /** 纵向留白。嵌在小容器里时用 compact */
-  size?: 'compact' | 'normal'
+  size?: "compact" | "normal";
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  tone: 'normal',
-  size: 'normal',
-})
+  tone: "normal",
+  size: "normal",
+});
 
 const paragraphs = (): readonly string[] => {
-  if (!props.description) return []
+  if (!props.description) return [];
   return Array.isArray(props.description)
     ? props.description
-    : [props.description as string]
-}
+    : [props.description as string];
+};
 </script>
 
 <template>
@@ -60,6 +60,7 @@ const paragraphs = (): readonly string[] => {
 
 <style scoped>
 .es {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;

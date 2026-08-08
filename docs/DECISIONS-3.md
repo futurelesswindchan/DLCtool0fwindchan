@@ -702,6 +702,74 @@ progressText 承担」：`lookup()` 那 41 秒里 `progressText` 始终为空。
 
 去掉一条线上必有的属性，不是让判据更严，是**换了个被测对象**。
 
+---
+
+## 2026-08-08: WebView2 不支持 mask-image + 本地 SVG URL，改走内联 SVG
+
+### 背景
+
+宪法 7.4 节推荐的方案是「一份 SVG 资产吃两套主题」——用 `mask-image` 让 SVG
+只描述形，颜色与浓度全由 CSS 令牌给（`--pattern-ink` / `--pattern-alpha`）。
+
+08-08 完成 UI 第 5 步的资产与投放后，主人实机验收发现：`npm run dev` 在浏览器
+中一切正常，但 `wails dev` / `wails build` 的 WebView2 下 mask 完全不生效。
+
+**症状**：
+- LogoMark（`mask-image` + `background-color: currentColor`）→ 黑色实心方块
+- Ornament（`mask-image` + `background-color: var(--pattern-ink)`）→ 灰色实心方块（透明度生效，但遮罩不参与）
+
+两者的共同点：`mask-image` 的 `url()` 指向 Vite import 返回的本地 SVG URL。
+不同点：一个用 `currentColor`、一个用 CSS 变量——所以不是颜色机制的问题，
+是 **mask-image 整个不生效**。
+
+### 结论
+
+**LogoMark** 改为内联 SVG：`stroke="currentColor"`，路径直接写在组件模板里。
+调用方经 `color` 属性控制颜色，`width`/`height` 控制尺寸（默认 `1em`）。
+
+**Ornament** 同样改为内联 SVG：组件内部根据 `pattern` prop（`'beans' | 'ear'`）
+渲染对应 SVG，咖啡豆用 `<svg>` + `<pattern>` 元素实现无缝平铺，兔耳用
+`viewBox="0 0 96 96"` 的独立 SVG。颜色仍走 `--pattern-ink` 令牌（经 `color`
+属性注入），浓度仍由 `--pattern-alpha` 控制透明度。
+
+**独立 `.svg` 文件保留为设计源文件**：日后若改图形数据，改源文件后需同步更新
+组件内的内联路径。这是 mask-image 方案的唯一残存价值——作为单一事实源。
+
+### API 变化
+
+- `LogoMark`：新组件，经 `components/ui` 统一出口
+- `Ornament`：`src` prop（`string` 类型的 SVG URL）→ `pattern` prop
+  （`'beans' | 'ear'` 字符串枚举）。调用方不再需要 `import beansUrl` 这类
+  资产导入
+
+### 一般化
+
+**凡是「浏览器有效而 WebView2 无效」的 CSS 特性，开发阶段的 `npm run dev`
+验证对它完全瞎**。这条不仅适用于 mask-image——任何只在 `wails dev` 下才暴露
+的渲染差异在 `npm run dev` 里都不可见。故对视觉效果类改动，验收必须包含
+`wails dev` 实跑，不能只看浏览器。
+
+---
+
+## 2026-08-08: 库空态居中撑满全屏，而非贴顶留大片空白
+
+### 背景
+
+`LibraryOverviewPane` 的真空态（库为空）原先是一个 `UiEmptyState` 直接放在
+模板里，默认靠 flex 容器的 `align-items` 顶部对齐。结果空态贴在上方，
+下方留出一大片空白——宪法 3.5「空态是引导位，不是留白位」只说了信息密度，
+没具体到垂直居中。
+
+### 结论
+
+真空态外裹一层 `.empty-full` 容器（`flex: 1; align-items: center;
+justify-content: center; overflow: hidden; position: relative`），
+`UiEmptyState` 居中，`Ornament pattern="beans" role="tile"` 铺满容器背景。
+
+`position: relative` 同时给 Ornament 提供定位上下文，`overflow: hidden`
+确保角落纹样不外溢。`flex: 1` 让它占满 ContentPane 的剩余高度——这与
+库概览（有东西时）的 `head` + 统计占据相同空间，切页时高度连续、无跳变。
+
 
 
 

@@ -10,12 +10,15 @@
  * 或链接时都要一并加入下方的 no-drag 选择器列表。
  */
 
-import { useRouter } from 'vue-router'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useEnvStore } from '../stores/env'
 import { useWindowControls } from '../composables/useWindowControls'
+import { LogoMark } from './ui'
 
 const env = useEnvStore()
 const router = useRouter()
+const route = useRoute()
 
 // 解构而非整体持有：模板里 maximised 直接写名字即可自动解包，
 // 若经 win.maximised 访问则需手写 .value，读起来像是漏了什么。
@@ -26,6 +29,81 @@ const tabs = [
   { name: 'library', label: '已安装' },
   { name: 'settings', label: '设置' },
 ] as const
+
+/**
+ * 常驻下划线指示器的位置与宽度。
+ *
+ * 为何是一条常驻元素而非每个页签各自的 `::after`：
+ * 各自的伪元素之间没有连续性，切页签时旧的消失、新的出现，只能做淡入淡出
+ * 这类「新元素登场」动效（原实现即如此，且被迫用 animation 而非 transition）。
+ * 抽成一条常驻元素后，切换变成同一个物体的位移，这才能用 transition，
+ * 也才能在动画中途被再次点击打断——宪法 5.4 要求动效可中断。
+ *
+ * 为何测量真实 DOM 而非按索引算：
+ * 页签宽度由文字长度决定（「搜索」两字与「已安装」三字不等宽），
+ * 且字体加载完成、窗口缩放都会改变布局。算不出来，只能量。
+ */
+const navEl = ref<HTMLElement | null>(null)
+const indicator = ref({ left: 0, width: 0 })
+/**
+ * 首次定位前不显示指示器。
+ *
+ * 否则它会从 left:0 width:0 滑到正确位置，让人以为界面加载时有个东西飞过。
+ * 首次是「出现」，之后才是「移动」。
+ */
+const indicatorReady = ref(false)
+
+/** 量出当前激活页签的位置，写进 indicator。找不到激活项时保持原位不动。 */
+function measureIndicator() {
+  const nav = navEl.value
+  if (!nav) return
+  const active = nav.querySelector<HTMLElement>('.nav-tab--active')
+  if (!active) return
+
+  indicator.value = {
+    // offsetLeft 相对 nav（nav 是定位父级），无需两次 getBoundingClientRect 相减
+    left: active.offsetLeft,
+    width: active.offsetWidth,
+  }
+  indicatorReady.value = true
+}
+
+/**
+ * 路由变化后重新定位。
+ *
+ * 必须等 nextTick：active-class 由 RouterLink 在 DOM 更新时才写上，
+ * watch 回调触发的那一刻量到的还是上一个激活项。
+ */
+watch(
+  () => route.name,
+  () => nextTick(measureIndicator),
+)
+
+/**
+ * 窗口尺寸变化时重量。
+ *
+ * ⚠️ 用 ResizeObserver 而非 window resize 事件：顶栏宽度不只随窗口变，
+ *    环境指示灯的文案在状态切换时会变长变短（「OST 就绪」→「Steam 路径未设置」），
+ *    那会挤压 nav 的位置而完全不触发 window resize。
+ */
+let ro: ResizeObserver | null = null
+
+onMounted(() => {
+  measureIndicator()
+  // 字体加载完成会改变页签宽度，量到的旧值会偏。document.fonts 不是所有
+  // 环境都有（WebView2 有，但类型上是可选的），故做存在判断。
+  document.fonts?.ready.then(measureIndicator)
+
+  if (navEl.value) {
+    ro = new ResizeObserver(measureIndicator)
+    ro.observe(navEl.value)
+  }
+})
+
+onBeforeUnmount(() => {
+  ro?.disconnect()
+  ro = null
+})
 
 const indicatorText: Record<string, string> = {
   ready: 'OST 就绪',
@@ -55,11 +133,11 @@ function onTitleBarDblClick(e: MouseEvent) {
 <template>
   <header class="topbar" @dblclick="onTitleBarDblClick">
     <div class="topbar__brand">
-      <span class="topbar__logo" aria-hidden="true">🐰</span>
+      <LogoMark class="topbar__logo" />
       <span class="topbar__name">风兔盒</span>
     </div>
 
-    <nav class="topbar__nav">
+    <nav ref="navEl" class="topbar__nav">
       <RouterLink
         v-for="t in tabs"
         :key="t.name"
@@ -69,6 +147,20 @@ function onTitleBarDblClick(e: MouseEvent) {
       >
         {{ t.label }}
       </RouterLink>
+
+      <!--
+        常驻指示器。放在页签之后而非之前：两者都在同一定位上下文里，
+        后者天然叠在上层，无需给谁写 z-index。
+      -->
+      <span
+        v-show="indicatorReady"
+        class="nav-ind"
+        :style="{
+          transform: `translateX(${indicator.left}px)`,
+          width: `${indicator.width}px`,
+        }"
+        aria-hidden="true"
+      />
     </nav>
 
     <button
@@ -157,6 +249,14 @@ function onTitleBarDblClick(e: MouseEvent) {
   font-weight: var(--weight-semibold);
 }
 
+/*
+  ⚠️ 经 font-size 驱动尺寸，而非写 width/height。
+
+  LogoMark 内部是 `width: 1em; height: 1em`，故给字号即给尺寸。
+  这里刻意不写 width/height：那两条会与组件内 scoped 的同名声明**同优先级**
+  （双方都是「类 + 属性选择器」），胜负取决于产物里两段样式谁在后面，
+  是构建顺序决定的，不是咱们决定的。改字号则完全无冲突。
+*/
 .topbar__logo {
   /* 1.1rem(17.6px) -> --text-lg(19)。它是品牌位，按语义归页面标题档 */
   font-size: var(--text-lg);
@@ -164,6 +264,11 @@ function onTitleBarDblClick(e: MouseEvent) {
 }
 
 .topbar__nav {
+  /*
+    必须。指示器 .nav-ind 用 absolute 定位，而 script 里量的是页签相对 nav 的
+    offsetLeft——两者基准必须是同一个元素，否则下划线会偏到别处去。
+  */
+  position: relative;
   display: flex;
   gap: var(--space-1);
 }
@@ -174,7 +279,6 @@ function onTitleBarDblClick(e: MouseEvent) {
   4px 配在 8/12 内边距上会显得几乎没圆角，与同屏其他按钮不同源。
 */
 .nav-tab {
-  position: relative;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-ctrl);
   color: var(--color-text-muted);
@@ -193,29 +297,27 @@ function onTitleBarDblClick(e: MouseEvent) {
   color: var(--color-text);
 }
 
-/* 当前项下划线。用 transform 缩放而非改宽度，避免触发重排 */
-.nav-tab--active::after {
-  content: '';
+/*
+  常驻下划线指示器。位置与宽度由 script 测量后经内联 style 给。
+
+  这里没有 animation、也没有 @keyframes——切页签是同一个物体的位移，
+  有明确的起点与终点，故能用 transition（宪法 5.4：动效须可中断）。
+  连点两个页签时它会从当前位置就地转向，不会先走完再重新出发。
+
+  ⚠️ 只对 transform 与 width 做过渡，不要图省事写 `transition: all`：
+     那会把 background 的主题切换也纳入过渡，换主题时下划线颜色慢半拍。
+*/
+.nav-ind {
   position: absolute;
-  left: var(--space-3);
-  right: var(--space-3);
   bottom: 2px;
+  /* left 恒为 0，位移全交给 transform——改 left 会触发重排，transform 不会 */
+  left: 0;
   height: 2px;
   border-radius: 1px;
   background: var(--color-accent);
-  /*
-    ⚠️ 这是 animation 而非 transition，属宪法 5.4 节的例外情形：
-    下划线是「新出现的元素」而非「从旧位置移到新位置」，没有可插值的起点。
-
-    第 5 步的改法是把下划线抽成一条常驻的指示器、用 transform 在页签间滑移，
-    那时它才能变成可中断的 transition。届时本段连同 @keyframes 一起删。
-  */
-  animation: tab-in var(--dur-fast) var(--ease-decelerate);
-}
-
-@keyframes tab-in {
-  from { transform: scaleX(0); }
-  to { transform: scaleX(1); }
+  pointer-events: none;
+  transition: transform var(--dur-fast) var(--ease-decelerate),
+    width var(--dur-fast) var(--ease-decelerate);
 }
 
 .env {

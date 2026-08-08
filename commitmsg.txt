@@ -1,0 +1,25 @@
+feat(ui): 第5步收尾 - 品牌标识、花纹投放、常驻指示器
+
+新组件
+- LogoMark：内联 SVG 品牌标识，stroke="currentColor" 双主题
+- beans.svg / ear.svg / logo-rabbit.svg：设计资产（不再经 mask 加载）
+
+改动
+- TopBar：页签下划线 animation → transition（常驻指示器，可中断）
+- TopBar + HomeShell：品牌位 emoji 🐰 → LogoMark
+- Ornament.vue：mask-image → 内联 SVG，src prop → pattern prop
+- HomeShell：侧栏品牌区加兔耳角落纹样（Ornament pattern="ear" corner="br"）
+- LibraryOverviewPane：库空态加咖啡豆微平铺 + 居中撑满全屏
+- UiEmptyState：.es 加 position: relative
+- UiGalleryView：加 LogoMark 与 Ornament 两节验证场（含可调浓度）
+
+文档
+- PROGRESS-2：08-08 完工记录，第5步收尾
+- DECISIONS-3：两条新决策（mask→内联 SVG，空态居中）
+- UI-ARCHITECTURE 7.4：补 mask→内联更新的注记
+
+为什么放弃 mask-image
+WebView2 不支持 mask-image + 本地 SVG URL 的组合（npm run dev 浏览器正常，
+wails dev/build 下 mask 完全不生效），表现为 background-color 纯色填充矩形。
+LogoMark 与 Ornament 统一改用内联 SVG + stroke="currentColor"，
+颜色与透明度仍由 --pattern-ink / --pattern-alpha 令牌控制。

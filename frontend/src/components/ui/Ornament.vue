@@ -2,18 +2,14 @@
 /**
  * 装饰花纹
  *
- * 一份 SVG 资产吃两套主题：用 mask-image 让 SVG 只描述「形」，
- * 颜色与浓度全由令牌给（--pattern-ink / --pattern-alpha）。
- * 换主题、调浓淡都不用碰资产文件——**双主题不会走样，
- * 因为它们本来就是同一个文件**（宪法 7.4 节）。
+ * ⚠️ 为什么是内联 SVG 而不是 mask-image：
+ *    WebView2 对 mask-image + 本地 SVG URL 的组合不生效（与 LogoMark 同病）。
+ *    LogoMark 切换方案时已确认根因——mask URL 在整个 WebView2 环境加载失败。
+ *    故本组件同样弃用 mask，改为内联 SVG + stroke="currentColor"，
+ *    颜色由 --pattern-ink 令牌经 color 属性给。
  *
- * ⚠️ 资产路径由调用方经 src 传入，组件不内置任何 import。
- *    原因：花纹资产第 5 步才投放，组件内 import 不存在的文件会让构建直接失败。
- *    调用方写 `import beans from '@/assets/patterns/beans.svg'` 再传进来。
- *
- * ⚠️ 禁止在花纹中使用 SVG filter、blur、渐变网格（宪法 7.4 节）——
- *    这些会让合成器逐帧重算，在长列表上直接掉帧。
- *    花纹是纯静态的填色形状，一步都不能多。
+ * 一份 SVG 资产吃两套主题：SVG 路径本身不含颜色，currentColor 由外部
+ * CSS 变量决定。换主题、调浓淡都不用碰图形数据。
  *
  * ⚠️ 每屏最多一处装饰主体（宪法 7.1 节）。侧栏有了角落纹样，
  *    内容区就不再放。这条无法由组件强制，只能在 review 时看。
@@ -24,20 +20,20 @@
 import { computed } from 'vue'
 
 interface Props {
-  /** SVG 资产 URL，由调用方 import 后传入 */
-  src: string
+  /** 图案选择 */
+  pattern: 'beans' | 'ear'
   /**
-   * 角色决定尺寸与定位策略（宪法 7.2 节四种角色）：
-   *   tile    无缝微平铺，48~64px
+   * 角色决定尺寸与定位策略（宪法 7.2 节）：
+   *   tile    无缝微平铺，铺满容器
    *   corner  角落纹样，从边角切出画面外，只露一部分
-   *   divider 分隔纹，替代 1px 直线
+   *   divider 分隔纹，替代 1px 直线（暂未实现）
    */
   role?: 'tile' | 'corner' | 'divider'
-  /** 平铺尺寸或纹样尺寸 */
+  /** corner 模式下 SVG 的显示尺寸 */
   size?: string
   /**
    * 浓度覆盖。留空用令牌默认值。
-   * 上限 8%（分隔纹除外，它本身就该看得见）——
+   * 上限 8%（分隔纹除外）——
    * 判定标准：截图缩到 25% 还能看出「这里有花纹」，就是太浓了。
    */
   alpha?: number
@@ -50,22 +46,80 @@ const props = withDefaults(defineProps<Props>(), {
   corner: 'br',
 })
 
-const style = computed(() => ({
-  maskImage: `url(${props.src})`,
-  WebkitMaskImage: `url(${props.src})`,
-  maskSize: props.size,
-  WebkitMaskSize: props.size,
-  opacity: props.alpha,
-}))
+const style = computed(() => {
+  const s: Record<string, string> = {}
+  if (props.alpha != null) s.opacity = String(props.alpha)
+  if (props.size) {
+    s.width = props.size
+    s.height = props.size
+  }
+  return s
+})
 </script>
 
 <template>
+  <!--
+    外壳 span：只承载颜色与定位。SVG 描边走 currentColor，颜色由 span 的
+    color 属性注入——它拿的是 --pattern-ink（浅/深双套，令牌已定义）。
+  -->
   <span
     class="orn"
     :class="[`orn--${role}`, role === 'corner' && `orn--${corner}`]"
     :style="style"
     aria-hidden="true"
-  />
+  >
+    <!-- ─── 咖啡豆微平铺 ─── -->
+    <svg
+      v-if="pattern === 'beans'"
+      class="orn__svg orn__svg--tile"
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <defs>
+        <!--
+          patternUnits="userSpaceOnUse"：用 viewBox 坐标而非百分比，
+          与原始 beans.svg 的 48×48 栅格直接对应，无需换算。
+          ⚠️ id 取 pattern="beans"，不设随机后缀——单页复用不是问题，
+              因为 SVG <pattern> 的 id 只在引用它的 <rect> 所在 SVG 子树里可见，
+              不污染全局。
+        -->
+        <pattern id="orn-beans" width="48" height="48" patternUnits="userSpaceOnUse">
+          <g transform="rotate(-20 13 13)">
+            <ellipse cx="13" cy="13" rx="4.2" ry="6"/>
+            <path d="M13 7.6 C11.6 10 14.4 12 13 14.4 C11.8 16.4 13 17.6 13 18.4"/>
+          </g>
+          <g transform="rotate(28 34 33)">
+            <ellipse cx="34" cy="33" rx="4.2" ry="6"/>
+            <path d="M34 27.6 C32.6 30 35.4 32 34 34.4 C32.8 36.4 34 37.6 34 38.4"/>
+          </g>
+          <rect x="34.5" y="9.5" width="7" height="7" rx="2"/>
+          <rect x="8.5" y="33.5" width="5" height="5" rx="2"/>
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#orn-beans)" />
+    </svg>
+
+    <!-- ─── 兔耳角落纹样 ─── -->
+    <svg
+      v-else-if="pattern === 'ear'"
+      class="orn__svg orn__svg--corner"
+      viewBox="0 0 96 96"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="6"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M30 78 C22 66 20 46 26 32 C29 25 34 22 38 26 C43 31 44 52 41 66 C39.5 73 36 78 33 79 Z"/>
+      <path d="M62 76 C56 64 55 44 60 31 C63 24 68 22 71 27 C75 33 74 53 70 65 C68 71 65 76 63 77 Z"/>
+    </svg>
+  </span>
 </template>
 
 <style scoped>
@@ -74,31 +128,37 @@ const style = computed(() => ({
   /* 必须。否则装饰会挡住底下的点击，而它完全不承载信息 */
   pointer-events: none;
 
-  /* 颜色由令牌给，SVG 本身不含颜色 */
-  background-color: var(--pattern-ink);
+  /* 颜色由令牌给，SVG 描边走 currentColor，故在此注入 color */
+  color: var(--pattern-ink);
+  /* 透明度同样走令牌，但调用方可经 :alpha 覆盖 */
   opacity: var(--pattern-alpha);
-
-  mask-repeat: no-repeat;
-  -webkit-mask-repeat: no-repeat;
 }
 
-/* 微平铺：铺满容器。元素要小且稀疏，密了立刻变「壁纸」 */
+.orn__svg {
+  display: block;
+}
+
+/* 微平铺：铺满容器 */
 .orn--tile {
   inset: 0;
-  mask-repeat: repeat;
-  -webkit-mask-repeat: repeat;
-  mask-size: 56px;
-  -webkit-mask-size: 56px;
 }
 
-/* 角落纹样：单个较大图形从边角切出画面外。
+.orn__svg--tile {
+  width: 100%;
+  height: 100%;
+}
+
+/* 角落纹样：从边角切出画面外。
    露出局部比完整摆中间高级得多——它暗示画面之外还有东西。
    故刻意用负偏移让图形被容器裁掉一部分。 */
 .orn--corner {
   width: 140px;
   height: 140px;
-  mask-position: center;
-  -webkit-mask-position: center;
+}
+
+.orn__svg--corner {
+  width: 100%;
+  height: 100%;
 }
 
 .orn--tl {
@@ -126,10 +186,6 @@ const style = computed(() => ({
   width: 100%;
   height: 8px;
   opacity: 0.08;
-  mask-repeat: repeat-x;
-  -webkit-mask-repeat: repeat-x;
-  mask-position: center;
-  -webkit-mask-position: center;
 }
 
 /* 静态花纹永不动画（宪法 7.6 节）。

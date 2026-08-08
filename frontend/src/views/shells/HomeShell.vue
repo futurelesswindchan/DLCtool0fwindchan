@@ -13,6 +13,7 @@
 
 import { useEnvStore } from '../../stores/env'
 import { useLibraryStore } from '../../stores/library'
+import { LogoMark, Ornament } from '../../components/ui'
 import Sidebar from '../../components/layout/Sidebar.vue'
 import SidebarSection from '../../components/layout/SidebarSection.vue'
 import SidebarItem from '../../components/layout/SidebarItem.vue'
@@ -26,8 +27,8 @@ const library = useLibraryStore()
   <Sidebar>
     <template #brand>
       <div class="brand">
-        <!-- LOGO 占位。第 5 步换真资产（宪法 7.7） -->
-        <span class="brand__mark" aria-hidden="true">🐰</span>
+        <Ornament pattern="ear" role="corner" corner="br" />
+        <LogoMark class="brand__mark" />
         <div class="brand__text">
           <span class="brand__name">风兔盒</span>
           <span class="brand__tag">找清单、放对位置</span>
@@ -76,7 +77,14 @@ const library = useLibraryStore()
 </template>
 
 <style scoped>
+/*
+  侧栏品牌区。overflow: hidden 让角落纹样从右下切出画面外，
+  不是歪在角上的一个完整图形——「露局部比完整摆中间高级」。
+  position: relative 为 Ornament 的 absolute 定位提供基准。
+*/
 .brand {
+  position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
   gap: var(--space-2);

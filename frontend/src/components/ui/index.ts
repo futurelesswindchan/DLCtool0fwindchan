@@ -25,5 +25,6 @@ export { default as UiHelpBadge } from './UiHelpBadge.vue'
 export { default as UiEmptyState } from './UiEmptyState.vue'
 export { default as UiScrollArea } from './UiScrollArea.vue'
 export { default as Ornament } from './Ornament.vue'
+export { default as LogoMark } from './LogoMark.vue'
 
 export type { SelectOption, SegmentedOption } from './types'

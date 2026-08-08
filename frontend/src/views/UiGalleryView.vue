@@ -27,6 +27,8 @@ import {
   UiHelpBadge,
   UiEmptyState,
   UiScrollArea,
+  Ornament,
+  LogoMark,
   type SelectOption,
 } from '../components/ui'
 
@@ -69,6 +71,20 @@ const themes = [
   { label: '浅色', value: 'light' },
   { label: '跟随系统', value: 'auto' },
 ]
+
+/**
+ * 花纹浓度对照。
+ *
+ * 令牌默认深色 0.035 / 浅色 0.05，宪法 7.5 绝对上限 0.08。
+ * 这里给到 0.14 是**刻意超出上限**的——不越过上限就看不出上限定在哪，
+ * 而「太浓」这个判断只能靠看见它才成立。
+ *
+ * ⚠️ 拖出 0.08 后的观感不是验收依据，只是标尺。
+ */
+const alpha = ref(0.05)
+
+/** LOGO 尺寸档。48 看结构，12 是宪法 7.3 的辨识度下限 */
+const logoSizes = [48, 28, 20, 16, 12] as const
 
 /** 切主题不走 store，直接改 data-theme——本页是独立验证场，不该有副作用 */
 function toggleTheme() {
@@ -215,6 +231,108 @@ function toggleTheme() {
     </section>
 
     <!--
+      标识位（宪法 7.7）。与花纹分节而非合并：标识是身份，装饰是氛围，两者不混。
+
+      ⚠️ 三种色境并排是必需的，不是凑格子。LogoMark 走 mask + currentColor，
+         「颜色随外部走」这件事只有在多个色境下同时成立才算验证过——
+         单看一格永远分不清是继承生效了，还是恰好等于那个默认色。
+    -->
+    <section class="gal__sec">
+      <h2>LogoMark · 品牌标识位</h2>
+
+      <div class="gal__row">
+        <div v-for="s in logoSizes" :key="s" class="gal__logocell">
+          <LogoMark :style="{ width: `${s}px`, height: `${s}px` }" />
+          <span class="gal__note u-tnum">{{ s }}px</span>
+        </div>
+      </div>
+
+      <!-- 色境对照。第三格用饱和主色：标识可以吃主色，它是身份不是操作，
+           不占宪法 4.1「每屏主色只给下一步该点的那一个」的额度。 -->
+      <div class="gal__row">
+        <div class="gal__logobox">
+          <LogoMark class="gal__logoinline" />
+          <span>正文色</span>
+        </div>
+        <div class="gal__logobox gal__logobox--dim">
+          <LogoMark class="gal__logoinline" />
+          <span>次要色</span>
+        </div>
+        <div class="gal__logobox gal__logobox--accent">
+          <LogoMark class="gal__logoinline" />
+          <span>主色</span>
+        </div>
+      </div>
+
+      <!-- 真实落点：顶栏与侧栏品牌区现为 emoji 🐰，此格是替换后的样子 -->
+      <div class="gal__brandpreview">
+        <LogoMark class="gal__brandmark" />
+        <div class="gal__brandtext">
+          <span class="gal__brandname">风兔盒</span>
+          <span class="gal__brandtag">找清单、放对位置</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="gal__sec">
+      <h2>Ornament · 装饰花纹</h2>
+
+      <div class="gal__row">
+        <label class="gal__alpha">
+          浓度
+          <input v-model.number="alpha" type="range" min="0.01" max="0.14" step="0.005" />
+          <span class="u-tnum">{{ alpha.toFixed(3) }}</span>
+        </label>
+        <span class="gal__note">
+          令牌默认 0.035（深）/ 0.05（浅），宪法上限 0.08
+        </span>
+      </div>
+
+      <div class="gal__row">
+        <div class="gal__ornbox">
+          <Ornament pattern="beans" role="tile" :alpha="alpha" />
+          <span class="gal__ornlabel">tile · 56px（默认档）</span>
+        </div>
+        <div class="gal__ornbox">
+          <Ornament pattern="beans" role="tile" size="80px" :alpha="alpha" />
+          <span class="gal__ornlabel">tile · 80px</span>
+        </div>
+        <div class="gal__ornbox">
+          <Ornament pattern="ear" role="corner" corner="br" :alpha="alpha" />
+          <span class="gal__ornlabel">corner · 兔耳 br</span>
+        </div>
+        <div class="gal__ornbox">
+          <Ornament pattern="ear" role="corner" corner="tl" :alpha="alpha" />
+          <span class="gal__ornlabel">corner · 兔耳 tl</span>
+        </div>
+      </div>
+
+      <!--
+        ⚠️ 这一格才是验收依据，上面四格不是。
+
+        上面四格是空方框，只能证明「组件跑得起来、图形长这样」。而花纹的
+        真问题是**它会不会抢正文的戏**，那必须有正文在场才看得出来。
+
+        与压力档同一条判据：判据须复刻真实落点，不构造更容易通过的场景。
+      -->
+      <div class="gal__ornreal">
+        <Ornament pattern="ear" role="corner" corner="br" :alpha="alpha" />
+        <UiEmptyState
+          title="社区还没收录这个游戏"
+          :description="[
+            '这不是你操作错了——已试过的源都没有这个 AppID 的清单。',
+            '可以换个源再试，或者从本地导入已有的 lua 文件。',
+          ]"
+        >
+          <template #action>
+            <UiButton variant="primary">本地导入</UiButton>
+            <UiButton>重试全部源</UiButton>
+          </template>
+        </UiEmptyState>
+      </div>
+    </section>
+
+    <!--
       压力档：UiCheckbox 在 DlcList 那种规模下的实测场。
 
       为什么需要它：换掉原生 checkbox 后每行元素数由 6 涨到 12，其中 4 个是
@@ -344,6 +462,119 @@ function toggleTheme() {
 .gal__note {
   color: var(--color-text-dim);
   font-size: var(--text-sm);
+}
+
+/* ── 标识位 ──────────────────────────────────────────────
+   LogoMark 走 mask + background: currentColor，故这里给 color
+   就能改它的颜色。这不是 shim 模式回归：颜色是该组件**声明的输入**
+   （它不自带颜色，只吃继承色），而 shim 指的是从外部覆写组件的内部决定。 */
+
+.gal__logocell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  /* 各档并排时基线不齐会看不出等比，故统一对齐盒高 */
+  justify-content: flex-end;
+  min-height: 68px;
+  color: var(--color-text);
+}
+
+.gal__logobox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-ctrl);
+  font-size: var(--text-sm);
+}
+
+.gal__logobox--dim {
+  color: var(--color-text-dim);
+}
+
+.gal__logobox--accent {
+  color: var(--color-accent);
+}
+
+.gal__logoinline {
+  width: 20px;
+  height: 20px;
+}
+
+/* 真实落点预演：复刻 TopBar / HomeShell 品牌区的横向结构 */
+.gal__brandpreview {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-bg);
+}
+
+.gal__brandmark {
+  width: 32px;
+  height: 32px;
+  color: var(--color-accent);
+}
+
+.gal__brandtext {
+  display: flex;
+  flex-direction: column;
+}
+
+.gal__brandname {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+
+.gal__brandtag {
+  color: var(--color-text-dim);
+  font-size: var(--text-sm);
+}
+
+/* ── 装饰花纹 ────────────────────────────────────────────
+   XXX: 浓度滑条用的是原生 <input type="range">，违反速查第 13 条。
+   十三个原语里没有 slider，而本页不进封测包（路由仅 DEV 注册），故先欠着。
+   ⚠️ 但这会让「ui/ 之外原生表单控件归零」的扫描出现一处假阳性——
+   下次做那条归零判据时，本处是已知例外，不要当漏改去修。 */
+
+.gal__alpha {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.gal__ornbox {
+  position: relative;
+  width: 180px;
+  height: 110px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-2);
+}
+
+.gal__ornlabel {
+  position: absolute;
+  bottom: var(--space-2);
+  left: var(--space-2);
+  color: var(--color-text-dim);
+  font-size: var(--text-sm);
+}
+
+/* 验收格。给 surface-2 而非 surface：空状态在真实页面里落在内容区底色上，
+   与本页 .gal__sec 的 surface 不同——底色差一档，花纹观感就不是那一回事 */
+.gal__ornreal {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-2);
 }
 
 /* 压力档列表。复刻 DlcList 的行结构（勾选框吃剩余宽 + 右侧等宽 AppID）

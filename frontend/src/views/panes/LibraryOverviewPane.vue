@@ -19,7 +19,7 @@ import { useRouter } from 'vue-router'
 import { useLibraryStore } from '../../stores/library'
 import { useToast } from '../../composables/useToast'
 import { useConfirm } from '../../composables/useConfirm'
-import { UiButton, UiEmptyState } from '../../components/ui'
+import { UiButton, UiEmptyState, Ornament } from '../../components/ui'
 
 const router = useRouter()
 const library = useLibraryStore()
@@ -96,20 +96,21 @@ const latest = computed(() => {
     -->
     <div v-if="library.loading && !library.items.length" class="booting" />
 
-    <!-- 真空态：确认库里什么都没有 -->
-    <UiEmptyState
-      v-else-if="!library.items.length"
-      title="还没有入库任何游戏"
-      description="到搜索页找一个游戏，或从本地导入已有的清单包。"
-    >
-      <template #action>
-        <!-- UiButton 是纯 button，不接 to。导航由外层给回调，
-             原语不 import router（宪法 11.1） -->
-        <UiButton variant="primary" @click="router.push({ name: 'search' })">
-          去搜索
-        </UiButton>
-      </template>
-    </UiEmptyState>
+    <!-- 真空态：居中撑满全屏。外层 div 给 Ornament 提供定位上下文，
+        同时 flex 居中让空态落在视线正中央 -->
+    <div v-else-if="!library.items.length" class="empty-full">
+      <Ornament pattern="beans" role="tile" />
+      <UiEmptyState
+        title="还没有入库任何游戏"
+        description="到搜索页找一个游戏，或从本地导入已有的清单包。"
+      >
+        <template #action>
+          <UiButton variant="primary" @click="router.push({ name: 'search' })">
+            去搜索
+          </UiButton>
+        </template>
+      </UiEmptyState>
+    </div>
 
     <template v-else>
       <header class="head">
@@ -370,5 +371,20 @@ const latest = computed(() => {
 
 .hint--dim {
   color: var(--color-text-dim);
+}
+
+/*
+  空态居中容器。position: relative 为 Ornament 提供定位上下文，
+  overflow: hidden 确保高出容器的部分被裁掉（配 corner 角色时必需）。
+  flex: 1 让它在父级弹性容器中占满剩余高度。
+*/
+.empty-full {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 100%;
+  overflow: hidden;
 }
 </style>
