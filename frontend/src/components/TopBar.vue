@@ -443,11 +443,14 @@ function onTitleBarDblClick(e: MouseEvent) {
 /*
   尺寸取 46×46 而非 Windows 原生的 46×32：本标题栏整条高 46px，按钮占满
   全高才不会在其上下留出无法点击的死区。宽度 46 使热区接近正方形。
+  height: 100% 保证撑满 wctl 容器（已被 align-self:stretch 拉到 46px），
+  否则按钮只有 SVG 图标自身的高度（10px）。
 */
 .wctl__btn {
   display: grid;
   place-items: center;
   width: 46px;
+  height: 100%;
   border: none;
   background: transparent;
   color: var(--color-text-muted);

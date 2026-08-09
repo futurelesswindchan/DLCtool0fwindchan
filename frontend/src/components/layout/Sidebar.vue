@@ -127,12 +127,14 @@ const ui = useUiStore();
 }
 
 /*
-  折叠态图标。left 取 12px 让 16px 图标中心落在距左 20px，
-  与条目图标、折叠开关箭头同列——三者在折叠态是一条竖线上的三个点。
+  折叠态图标。left 取 20px 让 16px 图标中心落在距左 28px，
+  与条目图标（padding-inline: 20px，16px 图标中心 x=28）、
+  折叠开关箭头（padding-left: 22px，12px 箭头中心 x=28）同列。
+  原先 left: var(--space-3)=12px 使中心在 x=20，偏左 8px。
 */
 .sidebar__brand-icon {
   position: absolute;
-  left: var(--space-3);
+  left: 20px;
   top: 50%;
   width: 16px;
   height: 16px;
@@ -169,12 +171,20 @@ const ui = useUiStore();
   white-space: nowrap;
 }
 
+/*
+  主体滚动区。content-visibility 交给内部长列表自己声明——
+  挂在滚动容器上会让滚动条高度反复跳动。
+
+  横向内边距为 0：条目自身的 padding-inline:20px 足以提供呼吸空间，
+  加一层 body padding 会让折叠态下图标中心偏离 28px 对齐线。
+  （原先 var(--space-2)=8px 使图标中心跑到 36px，比品牌图标偏右 8px。）
+*/
 .sidebar__body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: var(--space-2) var(--space-2) var(--space-3);
+  padding: var(--space-2) 0 var(--space-3);
 }
 
 .sidebar__footer {
