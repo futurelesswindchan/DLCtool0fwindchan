@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 微平铺：咖啡豆 + 方糖（宪法 7.3 定案搭配）。
+       mask-image 只读 alpha，stroke 色无意义。viewBox 48 容纳两豆一糖。
+       两点注意 — 元素要小且稀疏，密了立刻变壁纸（宪法 7.1）。 -->
+  <!-- 咖啡豆 左上。椭圆 + S 形沟线 -->
+  <g transform="rotate(-20 13 13)">
+    <ellipse cx="13" cy="13" rx="4.2" ry="6"/>
+    <path d="M13 7.6 C11.6 10 14.4 12 13 14.4 C11.8 16.4 13 17.6 13 18.4"/>
+  </g>
+  <!-- 咖啡豆 右下。旋向相反，避免平铺后方向条纹 -->
+  <g transform="rotate(28 34 33)">
+    <ellipse cx="34" cy="33" rx="4.2" ry="6"/>
+    <path d="M34 27.6 C32.6 30 35.4 32 34 34.4 C32.8 36.4 34 37.6 34 38.4"/>
+  </g>
+  <!-- 方糖 右上 -->
+  <rect x="34.5" y="9.5" width="7" height="7" rx="2"/>
+  <!-- 方糖 左下 -->
+  <rect x="8.5" y="33.5" width="5" height="5" rx="2"/>
+</svg>

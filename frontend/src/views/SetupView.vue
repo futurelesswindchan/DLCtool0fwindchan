@@ -1,0 +1,262 @@
+<script setup lang="ts">
+/**
+ * 引导页
+ *
+ * 注入器未安装是流失率最高的环节，故给出明确的三步引导而非一句错误提示。
+ *
+ * 本工具不负责安装或修复注入器（三条铁律之一），因此这里只做说明与检测，
+ * 实际的下载与放置由用户自行完成。文案需说清「要把什么放到哪里」，
+ * 而不是含糊地说「请安装 OpenSteamTool」。
+ */
+
+import { computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { useEnvStore } from '../stores/env'
+import { useToast } from '../composables/useToast'
+import { selectDirectory } from '../api'
+import { UiButton } from '../components/ui'
+
+const router = useRouter()
+const env = useEnvStore()
+const toast = useToast()
+
+/** 第一步是否已完成：Steam 路径已确定 */
+const step1Done = computed(() => !!env.steamPath)
+
+/** 第二步是否已完成：三个 DLL 均在位 */
+const step2Done = computed(() => env.ready)
+
+async function onPickSteamPath() {
+  const dir = await selectDirectory()
+  if (!dir) return
+  try {
+    toast.success(await env.setSteamPath(dir))
+  } catch (e) {
+    toast.fromError(e, '设置 Steam 路径失败')
+  }
+}
+
+async function onAutoDetect() {
+  try {
+    toast.success(`已识别到 ${await env.autoDetect()}`)
+  } catch (e) {
+    toast.fromError(e, '自动识别失败')
+  }
+}
+
+async function onRecheck() {
+  await env.refresh()
+  if (env.ready) toast.success('注入器已就绪，可以开始入库了')
+  else toast.warn('仍未检测到注入器，请确认文件已放入 Steam 根目录')
+}
+</script>
+
+<template>
+  <div class="page">
+    <header class="intro">
+      <h1 class="intro__title">开始之前，需要三步准备</h1>
+      <p class="intro__desc">
+        风兔盒负责把清单文件放到正确位置，实际让 Steam 认账的是注入器
+        OpenSteamTool。二者分工明确，因此注入器需要由你自行安装一次，
+        之后就不用再管了。
+      </p>
+    </header>
+
+    <ol class="steps">
+      <!-- 步骤一：Steam 路径 -->
+      <li class="step" :class="{ 'step--done': step1Done }">
+        <span class="step__no">{{ step1Done ? '✓' : '1' }}</span>
+        <div class="step__body">
+          <h2 class="step__title">确定 Steam 安装位置</h2>
+          <p class="step__desc">
+            通常能自动识别。若你的 Steam 安装在非默认位置，请手动选择。
+          </p>
+          <p v-if="env.steamPath" class="step__path">
+            <code>{{ env.steamPath }}</code>
+          </p>
+          <div class="step__actions">
+            <UiButton @click="onAutoDetect">自动识别</UiButton>
+            <UiButton @click="onPickSteamPath">手动选择</UiButton>
+          </div>
+        </div>
+      </li>
+
+      <!-- 步骤二：放入注入器 -->
+      <li class="step" :class="{ 'step--done': step2Done }">
+        <span class="step__no">{{ step2Done ? '✓' : '2' }}</span>
+        <div class="step__body">
+          <h2 class="step__title">把注入器文件放进 Steam 根目录</h2>
+          <p class="step__desc">
+            从 OpenSteamTool 的发布页取得压缩包，把其中的三个 DLL 放到 Steam
+            根目录下（与 <code>steam.exe</code> 同一层）。
+            <code>.lib</code> 与 <code>.exp</code> 之类的文件不需要。
+          </p>
+
+          <ul v-if="env.missingFiles.length" class="step__missing">
+            <li v-for="f in env.missingFiles" :key="f">
+              缺少 <code>{{ f }}</code>
+            </li>
+          </ul>
+
+          <p class="step__warn">
+            同时只能启用一个入库工具。若此前用过 SteamTools，请先停用——两者
+            共用同名的 <code>dwmapi.dll</code>，混用会互相覆盖。
+          </p>
+        </div>
+      </li>
+
+      <!-- 步骤三：重启 Steam -->
+      <li class="step">
+        <span class="step__no">3</span>
+        <div class="step__body">
+          <h2 class="step__title">重启 Steam</h2>
+          <p class="step__desc">
+            注入器需要随 Steam 启动才会生效。之后每次入库都会自动同步，
+            无需再重启。
+          </p>
+          <p class="step__desc">
+            准备就绪后的流程是：搜索游戏 → 入库 → 勾选想要的 DLC。勾选约 1 秒后
+            自动写入，Steam 库会在几秒内出现对应条目；部分 DLC 还需在 Steam 里
+            另行下载内容。
+          </p>
+        </div>
+      </li>
+    </ol>
+
+    <div class="foot">
+      <UiButton variant="primary" :loading="env.loading" @click="onRecheck">
+        {{ env.loading ? '检测中…' : '重新检测' }}
+      </UiButton>
+      <!-- 原为 v-if/v-else 两个按钮，行为完全相同、只有文案不同。
+           合并成一个：切换时只更新文本节点，不销毁重建元素，
+           故按下态与焦点环不会在 env.ready 变化那一刻被打断。 -->
+      <UiButton @click="router.push({ name: 'search' })">
+        {{ env.ready ? '开始使用 →' : '先看看界面' }}
+      </UiButton>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.intro__title {
+  margin: 0 0 var(--space-2);
+  /* 1.15rem(18.4px) -> --text-lg(19)。引导页的页面标题 */
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+}
+
+.intro__desc {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.step {
+  display: flex;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-left-width: 3px;
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--elev-1);
+  transition: border-color var(--dur-fast) var(--ease-standard);
+}
+
+.step--done {
+  border-left-color: var(--state-ok);
+}
+
+.step__no {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--color-surface-2);
+  font-size: var(--text-sm);
+  /* 700 收到 600：字重只用三档（4.3 节） */
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.step--done .step__no {
+  color: var(--state-ok);
+}
+
+.step__body {
+  min-width: 0;
+}
+
+.step__title {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+}
+
+.step__desc {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+/* 步骤三有连续两段说明，而 .step__desc 是 margin: 0，两段会贴在一起糊成
+   一坨。只给「紧跟另一段之后」的那段补间距——直接给 .step__desc 加
+   margin-bottom 会连带把首段与标题的距离撑开，那是两个不同的关系。 */
+.step__desc + .step__desc {
+  margin-top: var(--space-2);
+}
+
+.step__path {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+  word-break: break-all;
+}
+
+.step__missing {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+  color: var(--state-warn);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.step__warn {
+  margin: var(--space-2) 0 0;
+  color: var(--state-warn);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.step__actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.foot {
+  display: flex;
+  gap: var(--space-2);
+}
+</style>

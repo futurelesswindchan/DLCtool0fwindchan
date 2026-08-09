@@ -32,6 +32,13 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	// 内嵌 IANA 时区数据库。
+	//
+	// 该站返回的时间戳不带时区，实际为美东时间（lua 注释头标注 EDT）。
+	// 美东有夏令时，夏季 UTC-4、冬季 UTC-5，写死固定偏移会在换季后错 1 小时。
+	// Windows 无系统 zoneinfo，故必须内嵌，代价约 450KB。
+	_ "time/tzdata"
 )
 
 const (
@@ -247,10 +254,31 @@ func (r *RepoClient) MSiteAccountStats() (*MSiteStats, error) {
 	return stats, nil
 }
 
+// msiteLocation 是该站服务端所在的时区。
+//
+// 该站返回的时间戳不带时区标识，实测其 lua 注释头写作 EDT，据凭据生成
+// 时刻反推亦与美东时间吻合。故按 America/New_York 解析。
+//
+// 不写死 UTC-4 或 UTC-5：美东行夏令时，夏季为 EDT(UTC-4)、冬季为 EST(UTC-5)，
+// 任一固定偏移都会在换季后产生 1 小时误差。用 IANA 时区名可自动处理。
+//
+// 加载失败时退回 UTC。这只会让到期时刻偏早数小时，提醒略微提前，
+// 不至于让整个额度面板不可用。
+var msiteLocation = func() *time.Location {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		return time.UTC
+	}
+	return loc
+}()
+
 // parseMSiteTime 解析该站返回的时间字符串。
 //
 // 实测格式为 2026-08-03T14:58:19.528769，无时区标识也无 Z 后缀，
-// 故不能直接用 time.RFC3339 解析。按 UTC 处理。
+// 故不能直接用 time.RFC3339 解析。按美东时间处理，见 msiteLocation。
+//
+// 返回的 time.Time 带正确的时区信息，调用方可直接 Format 或与 time.Now
+// 比较，无需再做偏移换算。
 func parseMSiteTime(s string) (time.Time, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -261,7 +289,7 @@ func parseMSiteTime(s string) (time.Time, error) {
 		"2006-01-02T15:04:05",
 		time.RFC3339,
 	} {
-		if t, err := time.ParseInLocation(layout, s, time.UTC); err == nil {
+		if t, err := time.ParseInLocation(layout, s, msiteLocation); err == nil {
 			return t, nil
 		}
 	}

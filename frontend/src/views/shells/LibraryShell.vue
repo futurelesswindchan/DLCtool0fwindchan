@@ -1,0 +1,152 @@
+<script setup lang="ts">
+/**
+ * 已安装壳：master-detail
+ *
+ * 最大收益不是视觉，而是「换游戏」不再需要往返（宪法 3.3）——
+ * 切游戏只换右半边，侧栏列表与滚动位置保持不动。
+ *
+ * 同时让「卸载后留在原页」那条既有决策落得更自然：根本没有「原页」可离开，
+ * 复位天然发生在内容区。
+ *
+ * 侧栏三条约束（宪法 3.5）：
+ *   1. 必须可筛选——装上百个游戏时纯列表不可用
+ *   2. 必须分组——「本工具管理」与「外部清单」，后者不提供 DLC 编辑
+ *   3. 未选中时内容区不得空白——显示库概览，空态是引导位不是留白位
+ */
+
+import { onMounted, computed, ref } from 'vue'
+import { useLibraryStore } from '../../stores/library'
+import { useUiStore } from '../../stores/ui'
+import Sidebar from '../../components/layout/Sidebar.vue'
+import SidebarSection from '../../components/layout/SidebarSection.vue'
+import SidebarItem from '../../components/layout/SidebarItem.vue'
+import PaneTransition from '../../components/layout/PaneTransition.vue'
+import { UiInput } from '../../components/ui'
+
+const library = useLibraryStore()
+const ui = useUiStore()
+
+onMounted(() => library.refresh())
+
+const filter = ref('')
+
+/** 大小写与空白均不敏感——用户从 Steam 复制游戏名常带尾随空格。 */
+const matched = computed(() => {
+  const q = filter.value.trim().toLowerCase()
+  if (!q) return library.items
+  return library.items.filter(
+    (i) =>
+      i.gameName.toLowerCase().includes(q) || i.mainAppID.includes(q),
+  )
+})
+
+/** 本工具管理：有账本记录，可点进去编辑 DLC */
+const managed = computed(() => matched.value.filter((i) => i.record))
+
+/** 外部清单或账本丢失：只读，只提供删除 */
+const external = computed(() => matched.value.filter((i) => !i.record))
+
+function metaOf(item: (typeof library.items)[number]) {
+  const r = item.record
+  if (!r) return item.fileNames.join('、')
+  return `${r.dlcCount} 个 DLC`
+}
+</script>
+
+<template>
+  <Sidebar brand-icon="filter">
+    <template #brand>
+      <UiInput
+        v-model="filter"
+        type="search"
+        placeholder="筛选游戏名或 AppID"
+        size="sm"
+      />
+    </template>
+
+    <!--
+      库概览提到顶部成组，与 HomeShell 的「获取方式」同位置。
+      原先它在 footer，实测用户找不到——紧贴「折叠」开关、两者都是低视觉
+      重量的灰条，且要滚到底。宪法 3.5 第 3 条要求未选中时内容区不空白，
+      这个入口是那条规则的回程票，位置必须和另一页的同类角色一致。
+    -->
+    <SidebarSection title="总览">
+      <SidebarItem
+        :to="{ name: 'library' }"
+        label="库概览"
+        meta="总计与异常检查"
+        icon="chart"
+        :warning="library.hasAnomaly"
+        exact
+      />
+    </SidebarSection>
+
+    <SidebarSection title="本工具管理" :count="managed.length">
+      <SidebarItem
+        v-for="item in managed"
+        :key="item.mainAppID"
+        :to="{ name: 'library-game', params: { appID: item.mainAppID } }"
+        :label="item.gameName"
+        :meta="metaOf(item)"
+        :avatar="item.gameName"
+        :warning="item.conflicted"
+      />
+      <!--
+        空态提示。它不是 SidebarItem，故折叠态处理要自己写一份——
+        56px 窄条会把这句话压成竖排两列。
+      -->
+      <p
+        v-if="!managed.length"
+        class="none"
+        :class="{ 'none--collapsed': ui.sidebarCollapsed }"
+      >
+        {{ filter ? '没有匹配的游戏' : '还没有入库任何游戏' }}
+      </p>
+    </SidebarSection>
+
+    <!--
+      外部清单单列一组。它们同样在生效中（注入器加载目录内全部文件的并集），
+      所以不能不显示；但不提供 DLC 编辑，故条目不可点进详情。
+
+      不再逐条挂 warning：那个标记恒为真，而「这些是外部清单」已由分组标题
+      说明了。恒真的标记不携带信息——每条都有的黄点等于没有黄点，
+      反而会稀释真正需要注意的那些（如 conflicted）。
+    -->
+    <SidebarSection
+      v-if="external.length"
+      title="外部清单"
+      :count="external.length"
+    >
+      <SidebarItem
+        v-for="item in external"
+        :key="item.mainAppID"
+        :label="item.gameName"
+        :meta="metaOf(item)"
+        :avatar="item.gameName"
+      />
+    </SidebarSection>
+
+  </Sidebar>
+
+  <PaneTransition />
+</template>
+
+<style scoped>
+.none {
+  margin: var(--space-2);
+  color: var(--color-text-dim);
+  font-size: var(--text-xs);
+  transition: opacity var(--dur-base) var(--ease-standard);
+}
+
+/*
+  折叠态：透隐并禁止折行。不写 nowrap 的话，透明度归零前那几帧
+  会看见八个字被 56px 挤成竖排两列。
+*/
+.none--collapsed {
+  opacity: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  pointer-events: none;
+}
+</style>

@@ -24,13 +24,13 @@
     "maxHeight": 0,
     "unsafeUseFullscreenApi": false,
     "fullscreen": false,
-    "frameless": false,
+    "frameless": true,
     "skipTaskbar": false,
     "zoom": 100,
     "alwaysOnTop": false,
     "menu": null,
     "hideWindowOnClose": false,
-    "backgroundColour": "#1e1e1e",
+    "backgroundColour": "#f4f2f8",
     "assets": {
       "handler": "embed",
       "dir": ""

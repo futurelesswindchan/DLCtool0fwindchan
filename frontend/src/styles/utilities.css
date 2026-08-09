@@ -1,0 +1,70 @@
+/**
+ * 工具类
+ *
+ * 刻意极少。这里不是 Tailwind——每加一个工具类，就多一条绕过组件封装的
+ * 捷径，最终得到一堆无法整体调整的散装样式。
+ *
+ * 收录标准：跨越至少三个不相关组件，且无法由原语内部承担。
+ *
+ * 本层声明在最后，故这些类总是生效。
+ */
+
+/* 单行截断。侧栏游戏名、源名、路径都要用 */
+.u-truncate {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 等宽数字。对比表的核心动作是纵向扫一列数字，字宽浮动会毁掉这件事。
+
+   NOTE: 所有承载数字的元素都该带上它，不只是对比表——
+   DLC 计数、AppID、耗时秒数同理。 */
+.u-tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 错开入场。配合 composables/useStagger 使用：
+   JS 只经 --stagger-i 发序号，延迟在此计算，故时长口径仍然唯一。
+
+   用 animation 而非 transition 是正确的——入场是一次性的，
+   没有「中途被打断需反向回退」的语义（宪法 11.6 节第三条）。
+
+   backwards 填充模式不可省：没有它，元素在 delay 期间会先以最终状态
+   闪现一帧，然后才跳回起点开始动画。 */
+.u-stagger {
+  animation: u-stagger-in var(--dur-base) var(--ease-decelerate) backwards;
+  animation-delay: calc(var(--stagger-i, 0) * var(--stagger));
+}
+
+@keyframes u-stagger-in {
+  from {
+    opacity: 0;
+    /* 轻微下落，方向表达「从上方落进来」（宪法 5.4 节第一条） */
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 减少动态效果时不做位移，只是直接呈现——
+   必须真正禁用位移类动效，不只是缩短时长（宪法 5.6 节）。
+   base 层的全局规则已把时长压到 0.01ms，但那只是变快；
+   这里显式取消 animation，连那一帧位移都不发生。 */
+@media (prefers-reduced-motion: reduce) {
+  .u-stagger {
+    animation: none;
+  }
+}
+
+/* 长列表容器。让浏览器跳过视口外元素的渲染，一行 CSS 替代虚拟滚动库。
+
+   contain-intrinsic-size 提供占位高度估值，缺了它滚动条长度会跳变。
+   取值按单项实际高度调整，不必精确。 */
+.u-long-list {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 48px;
+}
+

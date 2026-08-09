@@ -58,7 +58,8 @@ type RepoSource struct {
 //
 // 字段说明：
 //   - SteamPath:   Steam 安装目录。为空表示尚未识别，启动时会尝试从注册表自动获取
-//   - Theme:       界面主题，取值 "dark" 或 "light"
+//   - Theme:       界面主题，取值 "dark" / "light" / "system"。
+//     "system" 由前端查询系统偏好后落为具体档位，后端只负责如实存取
 //   - LastZipDir:  上次选择清单包的目录，用于让文件对话框记住位置
 //   - RepoSources: 在线仓库源列表
 //   - AutoDetect:  启动时是否自动检测注入器环境
@@ -75,10 +76,20 @@ type AppConfig struct {
 // 用于首次运行、配置文件缺失或解析失败时的回退。
 // SteamPath 故意留空——调用方应在拿到默认配置后
 // 尝试通过注册表自动识别，识别失败再由用户手动指定。
+// defaultTheme 是首次运行与取值非法时的回退主题。
+//
+// 取浅色而非深色：生产力工具默认深色几乎是行业惯例（VS、IDEA、PS、终端），
+// 但本工具的目标用户含「完全不懂 Steam 目录结构」的人，
+// 而深色界面对这类用户有额外的压迫感——它暗示「这是给专业人士的东西」。
+// 浅色更接近「一个普通的小工具」，这与本项目「把复杂性吃掉」的定位一致。
+//
+// 深色仍是同等打磨的一等主题，只是不占默认位。
+const defaultTheme = "light"
+
 func defaultConfig() *AppConfig {
 	return &AppConfig{
 		SteamPath:   "",
-		Theme:       "dark",
+		Theme:       defaultTheme,
 		LastZipDir:  "",
 		RepoSources: []RepoSource{},
 		AutoDetect:  true,
@@ -239,15 +250,58 @@ func (cm *ConfigManager) load() {
 // JSON 反序列化时缺失的字段会是零值（空字符串、nil slice），
 // 若不归一化，前端可能收到 null 而在遍历时报错。
 func (cm *ConfigManager) normalize(cfg *AppConfig) {
-	if cfg.Theme != "dark" && cfg.Theme != "light" {
-		cfg.Theme = "dark"
+	// "system" 必须在此放行。前端的 Theme 类型自始含三档，而本处只认两档，
+	// 于是「跟随系统」会被静默改回 dark——表现为界面先闪成浅色（前端已按
+	// 系统偏好应用），再跳回深色（save 后 refresh 拉回被纠正的值）。
+	// 症状看起来像前端 bug，根因其实在这三行。
+	if cfg.Theme != "dark" && cfg.Theme != "light" && cfg.Theme != "system" {
+		cfg.Theme = defaultTheme
 	}
 	// 空列表一律回填内置源。v2.0 不提供自定义源的界面入口，故「一个源都
 	// 没有」只可能来自旧版配置或人工误删，此时保持空会让在线功能彻底失效，
 	// 而用户从界面上无从修复。
 	if len(cfg.RepoSources) == 0 {
 		cfg.RepoSources = defaultRepoSources()
+		return
 	}
+	cfg.RepoSources = mergeNewBuiltinSources(cfg.RepoSources)
+}
+
+// mergeNewBuiltinSources 把已有配置中缺失的内置源补进列表末尾。
+//
+// 为何需要：源列表一经写入 config.json 便不再刷新，新版本增加的内置源
+// 对老用户不可见——而 v2.0 无自定义源的界面入口，用户也无从手动添加。
+// 表现为「升级后新源没生效」，且从界面上看不出原因。
+//
+// 合并按 Name 匹配，且**只增不改**：已存在的条目原样保留，不覆盖其
+// Enabled 与 Token。用户手动停用某个源、或已填入的 API 凭据，都不能因为
+// 一次版本升级而被重置。
+//
+// 新源追加在末尾而非按内置顺序插入，故老用户的既有源仍享有优先权。
+// 这一取舍偏向「升级不改变现有行为」：新源作为额外兜底加入，而非顶替
+// 用户已经在用的路径。
+//
+// 参数：
+//   - existing: 来自配置文件的源列表，不会被就地修改
+//
+// 返回值：
+//   - []RepoSource: 合并后的新切片。无新源可补时内容与 existing 等同
+func mergeNewBuiltinSources(existing []RepoSource) []RepoSource {
+	known := make(map[string]struct{}, len(existing))
+	for _, src := range existing {
+		known[src.Name] = struct{}{}
+	}
+
+	merged := make([]RepoSource, len(existing))
+	copy(merged, existing)
+
+	for _, builtin := range defaultRepoSources() {
+		if _, ok := known[builtin.Name]; ok {
+			continue
+		}
+		merged = append(merged, builtin)
+	}
+	return merged
 }
 
 // logf 在 logger 可用时记录一条信息级日志。

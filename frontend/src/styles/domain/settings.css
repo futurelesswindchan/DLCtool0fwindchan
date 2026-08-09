@@ -1,0 +1,114 @@
+/**
+ * 设置页共用样式（domain 层）
+ *
+ * 第 4 步把 627 行的 `SettingsView` 拆成四个 Pane，而 `.block__title`、
+ * `.hint`、`.kv`、`.linkbtn` 这几组四个 Pane 都要用。若各自 scoped 一份，
+ * 就会出现「改了一个忘了另三个」——而那正是本轮翻新要消灭的东西
+ * （「精致不是加东西加出来的，是把不一致减光了剩下的」）。
+ *
+ * 这是 `domain` 层的第一份内容。该层自第 1 步声明以来一直是空的，
+ * 也正因为空，第 1 步那次 `@layer` 被 Vite 吃掉才没有立刻暴露——
+ * 层没注册，而没有文件用它，于是没有任何症状。
+ *
+ * 为何入 domain 层而非 base：
+ *   这些类名带业务含义（`.kv` 是设置页的键值表、`.source` 是清单源行），
+ *   不是全站通用重置。domain 层在 ui 层之后，故这里的普通类名可以覆盖
+ *   `ui/` 原语的样式，不必写 `!important`（宪法 11.3）。
+ *
+ * ⚠️ 本文件不得出现 `rem` 字号字面量与 `legacy.css` 的旧令牌名。
+ */
+
+/* ── 区块 ── */
+
+.set-block__title {
+  margin: 0 0 var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  /* 0.92rem(14.7px) -> --text-md(15)。区块标题 */
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+}
+
+/* ── 提示文案 ── */
+
+.set-hint {
+  margin: 0 0 var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.set-hint--dim {
+  color: var(--color-text-dim);
+}
+
+/* 有新版本时用强调色。这是设置页唯一需要用户注意的信息，
+   故也是本页允许出现主色的唯一位置（宪法 4.1 点缀色硬规则） */
+.set-hint--accent {
+  color: var(--color-accent);
+}
+
+.set-hint--warn {
+  color: var(--state-warn);
+}
+
+/* ── 键值表 ── */
+
+.set-kv {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: var(--space-2) var(--space-3);
+  margin: var(--space-4) 0 0;
+  /* 0.83rem(13.3px) -> --text-base(13)。这是设置页的正文 */
+  font-size: var(--text-base);
+}
+
+.set-kv dt {
+  color: var(--color-text-muted);
+}
+
+.set-kv dd {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  /* flex 项默认 min-width:auto，不写这条长路径会把 130px 那列挤没 */
+  min-width: 0;
+}
+
+.set-kv code {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  /* 路径与哈希没有空格可断行，不加这条会撑破布局 */
+  word-break: break-all;
+}
+
+.set-kv__btns {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* ── 行内文字按钮 ── */
+
+/*
+  不用 <a href> 是因为 WebView 里的真链接会把整个界面导航走，而 target
+  与 rel 组合在 WebView2 中行为并不一致。统一走后端的 OpenURL 更可控。
+
+  它是真 <button>，故焦点环由 base/a11y.css 的全局 :focus-visible 兜住。
+*/
+.set-linkbtn {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  transition: color var(--dur-instant) var(--ease-standard);
+}
+
+.set-linkbtn:hover {
+  color: var(--color-accent);
+}

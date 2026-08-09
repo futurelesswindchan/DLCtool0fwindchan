@@ -248,7 +248,7 @@ func (c *DataCollector) SetManifest(depotID string, manifestID string, fileSize 
 // BuildGamePackage 将收集到的原始数据组装为最终的 GamePackage 结构。
 //
 // 组装规则：
-//   - 第一个带 key 的 addappid 调用 → MainAppID（主游戏）
+//   - 第一个 addappid 调用 → MainAppID（主游戏），带 key 则一并记入 MainKey
 //   - 后续带 key 且有对应 manifest 的 → 有效 Depot
 //   - 无 key 的 addappid 调用 → DLC 注册（排除主应用 ID）
 //   - DLC 名称从 nameMap 中查找，找不到则使用 "DLC <AppID>" 作为默认值
@@ -272,11 +272,19 @@ func (c *DataCollector) BuildGamePackage(meta *CommentMetadata, nameMap map[stri
 	mainAppFound := false
 
 	for _, call := range c.calls {
-		if call.HasKey && !mainAppFound {
-			// 第一个带 key 的调用 → 主应用。
-			// 密钥必须一并保留：OST 解密主 App 内容依赖它，早期版本
-			// 只取 AppID 而丢弃 Key，导致已安装本体的游戏在 Steam
-			// 校验清单时崩溃。
+		if !mainAppFound {
+			// 第一个 addappid 调用即主应用，无论是否带 key。
+			//
+			// 依据是「主游戏必须最先注册」这一 lua 脚本的语义要求
+			// （见 deployer_ost.go 的脚本生成逻辑），OST 侧同样依赖此顺序。
+			//
+			// 不采用「第一个带 key 的调用」作为判据：GitHub 快照源
+			// （SSMGAlt/ManifestHub2 等）的主游戏写作 addappid(2399830)
+			// 而不带密钥，该判据会把紧随其后的 Depot 误判为主游戏。
+			//
+			// 带 key 时密钥必须一并保留：OST 解密主 App 内容依赖它，
+			// 早期版本只取 AppID 而丢弃 Key，导致已安装本体的游戏在
+			// Steam 校验清单时崩溃。
 			gp.MainAppID = call.AppID
 			gp.MainKey = call.Key
 			mainAppFound = true
@@ -422,12 +430,22 @@ func (a *App) parseLuaFile(luaPath string) (*GamePackage, error) {
 	}))
 
 	// 注册 setManifestid 回调
-	// 调用形式：setManifestid(depotID, "manifestID", fileSize)
+	// 支持两种调用形式：
+	//   setManifestid(depotID, "manifestID", fileSize)  ← Hubcap 等完整源
+	//   setManifestid(depotID, "manifestID")            ← GitHub 快照源（无 fileSize）
+	//
+	// 第三参数缺失时 fileSize 记 0。部署器照常输出三参数形式（第三位为 0），
+	// OST 不依赖该值——它只用 GID 去上游换取 manifest request code。
+	// 界面亦不将 fileSize 当下载体积展示（见 DECISIONS.md）。
 	L.SetGlobal("setManifestid", L.NewFunction(func(L *lua.LState) int {
 		depotID := L.CheckNumber(1)
 		depotIDStr := strconv.FormatInt(int64(depotID), 10)
 		manifestID := L.CheckString(2)
-		fileSize := int64(L.CheckNumber(3))
+
+		var fileSize int64
+		if L.GetTop() >= 3 {
+			fileSize = int64(L.CheckNumber(3))
+		}
 
 		collector.SetManifest(depotIDStr, manifestID, fileSize)
 		return 0

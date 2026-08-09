@@ -1,0 +1,29 @@
+/**
+ * 无障碍与动效偏好
+ */
+
+/* 尊重系统的「减少动态效果」设置。部分用户会因前庭功能障碍而对动画
+   产生不适，这不是可选的润色项。
+
+   ⚠️ 本规则处于 base 层，而组件 scoped 样式未入层、优先级更高，
+      故 !important 在此是必要的，不是偷懒。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* 键盘导航可见的焦点环；鼠标点击时不显示，避免视觉噪音。
+
+   NOTE: 自绘控件必须自行实现 :focus-visible（宪法 6.3 节）。
+   原生控件被 appearance: none 接管后，浏览器默认焦点样式一并消失，
+   若不补回来，键盘用户就彻底失去了位置感——而这件事在鼠标测试中
+   永远暴露不出来。 */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
