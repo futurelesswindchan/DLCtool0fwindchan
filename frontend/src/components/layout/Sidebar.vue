@@ -175,16 +175,17 @@ const ui = useUiStore();
   主体滚动区。content-visibility 交给内部长列表自己声明——
   挂在滚动容器上会让滚动条高度反复跳动。
 
-  横向内边距为 0：条目自身的 padding-inline:20px 足以提供呼吸空间，
-  加一层 body padding 会让折叠态下图标中心偏离 28px 对齐线。
-  （原先 var(--space-2)=8px 使图标中心跑到 36px，比品牌图标偏右 8px。）
+  横向内边距保留 var(--space-2)=8px：
+  条目自身 padding-inline 已调整为 12px，使图标中心落在
+  body 8px + item 12px + 半图标 8px = 28px，与品牌图标对齐同列。
+  同时保证选中竖条（left:0 相对 item）不会贴到侧栏左边缘。
 */
 .sidebar__body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: var(--space-2) 0 var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-3);
 }
 
 .sidebar__footer {

@@ -171,9 +171,10 @@ const exactActiveClass = () => {
   /* 可点区不低于 28px（宪法 15 章）。
      44px 匹配带 meta 的两行条目高度，保证折叠/展开态 Y 轴一致。 */
   min-height: 44px;
-  /* 横向 20px：让 16px 图标中心落在 x=28，正好是 56px 窄条的视觉重心。
+  /* 横向 12px：sidebar__body 有 8px 横向内边距，故图标中心在
+     8(body) + 12(item) + 8(半图标) = 28px，即 56px 窄条的视觉重心。
      两态相同值，折叠时图标一动不动（见 .item--collapsed）。 */
-  padding: var(--space-2) 20px;
+  padding: var(--space-2) 12px;
   border: none;
   /* 同心圆角：侧栏内边距 8px，故条目取 inner 档而非 ctrl 档 */
   border-radius: var(--radius-inner);
@@ -201,12 +202,11 @@ const exactActiveClass = () => {
   240px 容器的中点，再跟着容器一路漂到左边。
   「居中」在宽度变化期间是个移动靶，不能用它定位。
 
-  20px 让 16px 图标中心落在 x=28，即 56px 窄条的视觉重心，
-  展开态 240px 下同样不显偏。
+  12px 配合 sidebar__body 的 8px 横向内边距，让图标中心落在 x=28。
 */
 .item--collapsed {
   /* 与展开态同值，此处显式写出以表明「刻意不变」而非漏写 */
-  padding-inline: 20px;
+  padding-inline: 12px;
 }
 
 .item:hover {

@@ -125,11 +125,12 @@ onUnmounted(() => document.removeEventListener("click", onDocClick));
 /* 就地展开面板。作为 block 插入，会把下方内容推开——
    这是有意的：它比浮层更诚实，用户能看清它属于哪个术语。 */
 .hb__panel {
+  position: relative;
   display: block;
   margin-top: var(--space-2);
   padding: var(--space-2) var(--space-3);
 
-  border-left: 2px solid var(--color-accent);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-chip);
   background: var(--color-surface-2);
 
@@ -139,5 +140,22 @@ onUnmounted(() => document.removeEventListener("click", onDocClick));
 
   /* 术语解释常要被复制去搜索，必须允许选中 */
   user-select: text;
+  overflow: hidden;
+}
+
+/*
+  书脊色条。与 Toast / EnvBanner 同一手法——
+  用 ::before 伪元素替代 border-left 加宽，可以独立设圆角。
+  面板 border-radius: chip(4px) 很小，上下各缩 3px 离开圆弧区即可。
+*/
+.hb__panel::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 3px;
+  bottom: 3px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--color-accent);
 }
 </style>

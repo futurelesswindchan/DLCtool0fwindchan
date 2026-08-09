@@ -98,33 +98,40 @@ const needSetPath = computed(() => props.result?.status === 'unknown')
 
 <style scoped>
 .banner {
+  position: relative;
   display: flex;
   gap: var(--space-4);
   align-items: flex-start;
   padding: var(--space-4);
   border: 1px solid var(--color-border);
-  border-left-width: 3px;
   border-radius: var(--radius-card);
   background: var(--color-surface);
   box-shadow: var(--elev-1);
+  overflow: hidden;
 }
 
-/* 仅用左边框色区分状态，不改整块背景——满屏色块会压过内容。 */
-.banner--ready {
-  border-left-color: var(--state-ok);
+/*
+  书脊色条。EnvBanner 四角均有 radius-card(12px) 圆弧，
+  直接加宽 border-left 会在左上/左下角露出截断的直角——
+  用 ::before 伪元素独立设圆角，上下各缩 6px 离开圆弧区。
+  border-radius 右侧两端圆（2px），左侧贴边不圆，视觉上嵌入感更强。
+*/
+.banner::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--spine-color, var(--color-text-dim));
 }
 
-.banner--missing {
-  border-left-color: var(--state-danger);
-}
-
-.banner--unknown {
-  border-left-color: var(--state-warn);
-}
-
-.banner--pending {
-  border-left-color: var(--color-text-dim);
-}
+/* 仅用书脊色区分状态，不改整块背景——满屏色块会压过内容。 */
+.banner--ready   { --spine-color: var(--state-ok); }
+.banner--missing { --spine-color: var(--state-danger); }
+.banner--unknown { --spine-color: var(--state-warn); }
+.banner--pending { --spine-color: var(--color-text-dim); }
 
 .banner__icon {
   flex-shrink: 0;
