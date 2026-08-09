@@ -5,7 +5,7 @@
 >
 > 本卷只记 2026-08-03 之后的进度。每次开发结束时更新。
 >
-> 最后更新：2026-08-08（第 6 步完工）
+> 最后更新：2026-08-08（第 7 步完工）
 
 ---
 
@@ -431,12 +431,93 @@ UiSegmented `min-height: 24px` 略低 4px，但水平排列的 `<button>` 组宽
 10. ✅ UI 第 6 步（08-08 晚）：术语帮助系统（glossary.ts + 四处 HelpBadge 投放）、
     键盘可达性审计（四件原语全通过）、搜索空态与错误文案（describeError 七分支
     细化 + tips 改口径）
-11. **决定 `UiProgress` 的去向**（跨前后端）：它是十三个原语里唯一零调用点的
+11. ✅ UI 第 7 步（08-08 深夜）：侧栏折叠体验全面修缮 + 图标系统 + TopBar 重设计
+    + 原生 tooltip 全面换血（见下方完工记录）
+12. **决定 `UiProgress` 的去向**（跨前后端）：它是十三个原语里唯一零调用点的
     一个，目标落点是宪法 5.5 的「试下载占位行 + 逐条就地替换」，而那需要后端
     按源推送事件——后端至今零处 `EventsEmit`。三条路：①后端加推送，
     `UiProgress` 与 `download:progress` 一起激活 ②不做推送，删掉那个死监听，
     `UiProgress` 保留待用 ③先只做「已试 N/7 个源」这种前端可自算的粗粒度进度
-    > > > > > > > Stashed changes
+
+---
+
+## ✅ 08-08 完工内容（UI 第 7 步——侧栏折叠 + 图标系统 + TopBar + 原生 tooltip 退场）
+
+### 侧栏折叠体验
+
+**icon 折叠时不再跳右再左移。** 根因是 `justify-content: center` 立即生效
+而 width 要 240ms 才收完——icon 先跳到 240px 容器中点再漂向左边。
+「居中」在宽度变化期间是个移动靶。修法：两态统一 `padding-inline: 20px`
+（条目）/ 22px（折叠开关），图标中心固定在 x=28（56px 窄条的视觉重心），
+折叠时一动不动。折叠开关展开时不再「顶一下」：`white-space: nowrap`
+从折叠态专属改为始终生效，高度两态不变。
+
+**brand 区与分组标题折叠不丢高度。** 改 `v-if` 为 CSS 透隐
+（`opacity` + `max-width` + `overflow: hidden`），高度由 `--sidebar-brand-h: 60px`
+写死。三页折叠前后条目起始位置终于对齐。
+
+### 图标系统
+
+**新建 `UiIcon.vue`**（12 个内联 SVG），统一图形词汇
+（栅格 24px · 线宽 1.5px · 圆头 · `stroke="currentColor"`）。
+9 个功能图标 + 3 个品牌位图标（star/filter/gear）。
+全部 emoji（📥🔍⚙️ 等）替换完成。图标名收成 `IconName` 联合类型，
+拼错编译期报错而非静默空 svg。
+
+**游戏条目首字头像**（`SidebarItem` 的 `avatar` prop）。
+折叠态下每个游戏有独立辨识物。用 `Array.from` 取首字以避免 UTF-16 代理对截断。
+外部清单去掉恒真 `warning`：分组标题已说明。
+
+**brand 区折叠态图标。** `Sidebar` 新增 `brandIcon` prop，
+三页各配 star（Home）/ filter（Library）/ gear（Settings），
+绝对定位叠放、展开透隐、折叠渐显，与下方条目图标对齐同一竖列。
+
+### TopBar 状态重设计（候选 B）
+
+**就绪态只显示一个 8px 色点**，无边框无内边距。
+状态正常 = 不需要行动 = 最小视觉重量。
+异常态保留色点 + 文字 + 边框 + hover 背景。
+视觉重量随「需不需要行动」走——一个点不起眼正是好事。
+
+**状态收归 TopBar 唯一权威。** 删除侧栏 footer 状态条目
+（原先只在异常时出现、只有 Home 页有，且与 TopBar 指示灯重叠）。
+
+### 原生 tooltip 全面退场
+
+全项目原生 `title` 属性归零（9 处全部替换为 `UiTooltip`）：
+
+| 位置 | 原载体 | 新方案 |
+|:---|:---|:---|
+| `SidebarItem` | `title` → 条目信息 | `UiTooltip`（label · meta + 警示提醒） |
+| 折叠开关 | `title` | `UiTooltip` |
+| TopBar 窗控三键 | `title` | `UiTooltip` |
+| `DlcList` depot 标记 | `title` → 术语解释 | glossary 新词条 + `UiTooltip` |
+| `GameCard` 警示角标 | `title` | `UiTooltip`（绝对定位挪到锚点层） |
+
+`DlcList` 那两条术语解释（「含独立内容分支…」「纯许可证…」）原先绕过了
+单一事实来源，现已归入 glossary（`depot-branch` / `depot-license`）。
+
+### 文件变更
+
+```
+新建  frontend/src/components/ui/UiIcon.vue        (12 个 SVG 图标)
+修改  frontend/src/components/ui/types.ts           (IconName 类型)
+修改  frontend/src/components/ui/index.ts           (导出 UiIcon + IconName)
+修改  frontend/src/components/layout/Sidebar.vue    (brandIcon + 折叠修复 + 折叠开关 tooltip)
+修改  frontend/src/components/layout/SidebarItem.vue (icon 改写 + avatar + tooltip + 折叠修复)
+修改  frontend/src/components/layout/SidebarSection.vue (标题折叠优化)
+修改  frontend/src/components/TopBar.vue            (状态 B + 窗控 tooltip)
+修改  frontend/src/components/DlcList.vue           (depot tooltip 换 glossary)
+修改  frontend/src/components/GameCard.vue          (警示 tooltip)
+修改  frontend/src/views/shells/HomeShell.vue       (brand 改 slogan + brandIcon + footer 删除)
+修改  frontend/src/views/shells/LibraryShell.vue    (brandIcon + avatar + 空态折叠优化 + 外部清单去 warning)
+修改  frontend/src/views/shells/SettingsShell.vue   (brandIcon + emoji 换图标)
+修改  frontend/src/views/UiGalleryView.vue          (UiIcon 预览节)
+修改  frontend/src/styles/tokens/shape.css          (--sidebar-brand-h)
+修改  frontend/src/glossary.ts                      (新增 depot-branch / depot-license)
+```
+
+前端 verify 绿。
 
 ## 📌 本卷新增的已知残留
 
@@ -444,40 +525,47 @@ UiSegmented `min-height: 24px` 略低 4px，但水平排列的 `<button>` 组宽
 | :--------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 详情页长操作切页             | `install()` / `lookup()` 的 `downloading` / `looking` 仍是组件内 ref。实例复用下本来就活着，故未搬进 store；真卸载路径经实测靠「先缓存再部署」天然安全（复用试下载产物入库，日志确认零新请求） |
 | `library.refresh()` 调用频次 | 每次勾选落盘后都刷一次全库（GetHistory + ScanDeployed）。装上百个游戏时可能偏重，尚未实测                                                                                                      |
+| `UiTooltip` 百实例性能       | Library 页装 100 个游戏时有 100 个 `UiTooltip` 实例（100 份 JS 对象，无 DOM 节点或事件监听开销）。参照 08-06 实测 200 个 `UiCheckbox` 无掉帧应无感，但未在 100 实例场景下实跑验证。<br><br>若日后发现卡顿，优先方案：仅 `sidebarCollapsed` 或文字真被截断时才挂 tooltip（按 `scrollWidth > clientWidth` 判），而非每条都挂。 |
 
 > 第一卷的已知残留清单仍然有效，本表只列本卷新增项。
 
 ---
 
-## 🔜 下轮待办（08-08 列出）
+## 🔜 下轮待办（08-08 更新）
 
-以下由于第 6 步验收后列出。**本轮只记入文档，正式动手在下一轮新对话。**
+以下于第 7 步完工后更新。0.2/0.3/0.4/1.1/3.1/3.2 已于本轮结清。
 
-### 零、全局样式相关
+### 零、全局样式
 
-| #   | 项目                       | 说明                                                                                                                                                                                                                                                                        |
-| :-- | :------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0.1 | 单左侧边框加厚圆角设计     | 存在于设置页选项、Toast 栏、HelpBadge 展开面板等地。UI 架构书已定性为「几何打架」——3px 直角色条贴在圆角卡片左侧，色条两端是方的、卡片角是圆的，像贴上去的胶带。改为书脊圆角样式（`position: absolute; border-radius: 4px`），并**抽离为独立 UI 组件**，参数支持大小与颜色。 |
-| 0.2 | 侧栏 emoji icon            | 目前使用 emoji（📥🔍⚙️ 等），在不同系统上渲染不同且不可控。两条路：①全部换 Font Awesome ②全去掉，仅折叠态保留 icon。待议论决定。                                                                                                                                            |
-| 0.3 | 侧栏展开时内容跳动         | 收起→展开时，侧栏内 emoji icon 与文字因为宽度变化，从多行显示慢慢展开为单行。这种跳动非常诡异——必须改掉。                                                                                                                                                                   |
-| 0.4 | 侧栏收缩/展开 Y 轴高度固定 | 不管搜索还是展开，每个选项所占的 Y 轴高度应当固定不变，这样操作逻辑才有一致性。                                                                                                                                                                                             |
+| #   | 项目                   | 说明                                                                                                                                                                                                                                                                        | 状态 |
+|:---|:---|:---|:---|
+| 0.1 | 单左侧边框加厚圆角设计 | 存在于设置页选项、Toast 栏、HelpBadge 展开面板等地。UI 架构书已定性为「几何打架」——3px 直角色条贴在圆角卡片左侧，色条两端是方的、卡片角是圆的，像贴上去的胶带。改为书脊圆角样式（`position: absolute; border-radius: 4px`），并**抽离为独立 UI 组件**，参数支持大小与颜色。 | 待做 |
+| 0.2 | 侧栏 emoji icon        | ~~全部换 Font Awesome 或全去掉。~~ 已由 `UiIcon` 替代（第 7 步）。 | ✅ |
+| 0.3 | 侧栏展开时内容跳动     | ~~收起→展开时 emoji 与文字多行→单行跳动。~~ 已修：改 `v-if` 为 CSS 透隐 + `min-height` 写死（第 7 步）。 | ✅ |
+| 0.4 | 侧栏 Y 轴高度固定      | ~~折叠/展开高度不一致。~~ 已修：文字始终在 DOM + `min-height: 44px`（第 7 步）。 | ✅ |
 
-### 一、Home 页面相关
+### 一、Home 页面
 
-| #   | 项目                   | 说明                                                                                                                                                                                                             |
-| :-- | :--------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1.1 | 侧栏顶部与 TopBar 冲突 | Home 页侧栏顶部有 LOGO + 昵称 + slogan，紧挨着的 TopBar 左侧也有 LOGO + 昵称——严重重复与冲突感。需议论决定修改方式。                                                                                             |
-| 1.2 | 搜索栏下方大面积留白   | 选中在线搜索后，右侧只有搜索栏 + 提示文字，中下部大量留白。考虑加入**公告区**：上 70% 写版本更新公告（版本号、日期、更新条款，放 TS 变量不硬编码），下 30% 放防倒卖提示（原作者 + GitHub 链接 + 免费开源提醒）。 |
+| #   | 项目                   | 说明                                                                                                                                                                                                             | 状态 |
+|:---|:---|:---|:---|
+| 1.1 | 侧栏顶部与 TopBar 冲突 | ~~LOGO + 昵称重复。~~ 已修：删品牌区 LOGO/昵称，改 slogan + 署名；TopBar 保留（第 7 步）。 | ✅ |
+| 1.2 | 搜索栏下方大面积留白   | 选中在线搜索后右侧大量留白。考虑加入**公告区**：上 70% 版本更新公告，下 30% 防倒卖提示。 | 待做 |
 
-### 二、Library 页相关
+### 二、Library 页
 
-| #   | 项目               | 说明                                                                                                   |
-| :-- | :----------------- | :----------------------------------------------------------------------------------------------------- |
-| 2.1 | 库空态未占满详情页 | 当前 empty 组件未占满父组件（ContentPane）的全部高度，下半部大面积留白。需让空态占满父组件大部分空间。 |
+| #   | 项目               | 说明                                                                                                   | 状态 |
+|:---|:---|:---|:---|
+| 2.1 | 库空态未占满详情页 | 当前 empty 组件未占满父组件（ContentPane）的全部高度，下半部大面积留白。需让空态占满父组件大部分空间。 | 待做 |
 
-### 三、HelpBadge 相关
+### 三、HelpBadge
 
-| #   | 项目           | 说明                                                                                                                                    |
-| :-- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------- |
-| 3.1 | 点击引导性不足 | 当前图标是 `?` 在圆圈里——用户潜意识里只「悬停」它而不会「点击」它。需在图标设计或 aria-label 上加强引导。                               |
-| 3.2 | 悬浮提示 BUG   | 悬浮在 HelpBadge 上时显示的**不是 aria-label，而是正式的 glossary 文案**。需定位是 Tooltip 锚点绑定问题还是 content prop 传递时序问题。 |
+| #   | 项目           | 说明                                                                                                                                                     | 状态 |
+|:---|:---|:---|:---|
+| 3.1 | 点击引导性不足 | ~~`?` 只悬停不点击。~~ 已修：tooltip 改显 ariaLabel 短提示 + `cursor: pointer`（第 7 步）。 | ✅ |
+| 3.2 | 悬浮提示 BUG   | ~~hover 显示 glossary 而非 aria-label。~~ 已修：tooltip 绑定切换为 ariaLabel（第 7 步）。 | ✅ |
+
+### 四、TopBar（新增）
+
+| #   | 项目           | 说明                                                                                                                                                     | 状态 |
+|:---|:---|:---|:---|
+| 4.1 | 样式后续调整 | 当前状态指示（候选 B）已落地，就绪态单点 + 异常态完整条。尚未精细调整字号/间距/颜色等细节。 | 待做 |
