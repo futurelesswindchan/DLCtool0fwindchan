@@ -233,11 +233,11 @@ const latest = computed(() => {
   flex-direction: column;
   gap: var(--space-5);
   /*
-    height: 100% 是 .empty-full 能 flex: 1 撑满的前提。
-    ContentPane 的 .pane__inner 没有固定高度，子组件必须自己声明
-    100% 才能让 flex 子项有参照。
+    flex:1 让本组件在 ContentPane 的 flex-column 链路中占满剩余高度——
+    .pane__inner（flex:1 + flex-column）→ 本 .pane（flex:1）→ .empty-full（flex:1）
+    三层 flex 接力，不依赖脆弱的 min-height:100% 百分比链。
   */
-  min-height: 100%;
+  flex: 1;
 }
 
 /*
