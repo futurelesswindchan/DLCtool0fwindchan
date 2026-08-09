@@ -22,6 +22,18 @@
  *
  * NOTE: 也不影响 `<input type="file">` 的点击选择路径——那条路走的是
  * 系统文件对话框，与拖放事件无关。
+ *
+ * ── 链接拖拽防线 ──
+ *
+ * WebView2 对 `<a href>` 元素长按后拖拽会触发原生的 link drag，弹出灰色
+ * 半透明 URL 预览浮层（第一行为链接文字，第二行为完整 href）。发行版同样
+ * 复现。RouterLink 渲染成真实 `<a>` 元素，侧栏条目与顶栏页签均受影响。
+ *
+ * `draggable="false"` 对带 href 的 `<a>` 无效——浏览器规范里链接元素
+ * 的可拖拽性由 href 决定，属性不能覆盖。唯一有效手段是在 dragstart
+ * 捕获阶段调用 preventDefault。
+ *
+ * 故在此追加 dragstart 捕获监听，一次拦截所有元素，不逐一处理各路由组件。
  */
 
 /**
@@ -32,12 +44,16 @@
  *     drop 根本不会派发到页面上
  *   - 只挡 dragover 不挡 drop，则文件仍会被当导航打开
  *
- * 用捕获阶段（capture: true）：这样即便将来某处组件写了 stopPropagation，
- * 防线依然先于它执行。安全兜底不该依赖别处的实现细节。
+ * dragstart 同样走捕获阶段，理由同上：安全兜底不该依赖别处的实现细节，
+ * 即便将来某处写了 stopPropagation，防线依然先于它执行。
  */
 export function installFileDropGuard() {
   window.addEventListener('dragover', preventUnlessAllowed, { capture: true })
   window.addEventListener('drop', preventUnlessAllowed, { capture: true })
+  // 拦截链接元素的拖拽起始，防止 WebView2 弹出原生 URL 预览浮层。
+  // 不过滤 target 类型——整个界面里任何元素被拖拽都没有意义，
+  // 唯一合法的拖放入口是 DropZone（走文件拖入路径，不是 dragstart）。
+  window.addEventListener('dragstart', preventUnlessAllowed, { capture: true })
 }
 
 /**
