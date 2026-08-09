@@ -273,8 +273,12 @@ func (c *DataCollector) BuildGamePackage(meta *CommentMetadata, nameMap map[stri
 
 	for _, call := range c.calls {
 		if call.HasKey && !mainAppFound {
-			// 第一个带 key 的调用 → 主应用
+			// 第一个带 key 的调用 → 主应用。
+			// 密钥必须一并保留：OST 解密主 App 内容依赖它，早期版本
+			// 只取 AppID 而丢弃 Key，导致已安装本体的游戏在 Steam
+			// 校验清单时崩溃。
 			gp.MainAppID = call.AppID
+			gp.MainKey = call.Key
 			mainAppFound = true
 			continue
 		}
@@ -313,11 +317,22 @@ func (c *DataCollector) BuildGamePackage(meta *CommentMetadata, nameMap map[stri
 				}
 			}
 
+			// 带独立 Depot 的 DLC 会有自己的 setManifestid。
+			// 必须随 DLC 一起带出，否则生成脚本时无法钉住版本。
+			manifestID := ""
+			var fileSize int64
+			if m, ok := c.manifests[call.AppID]; ok {
+				manifestID = m.ManifestID
+				fileSize = m.FileSize
+			}
+
 			gp.DLCs = append(gp.DLCs, DLCInfo{
 				AppID:         call.AppID,
 				Name:          name,
 				HasKey:        hasKey,
 				DecryptionKey: decryptionKey,
+				ManifestID:    manifestID,
+				FileSize:      fileSize,
 			})
 			processedDLCs[call.AppID] = true
 		}
