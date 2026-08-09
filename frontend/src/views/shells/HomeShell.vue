@@ -7,31 +7,36 @@
  * 本地导入对重度用户是主路径而非退路，而现状它躺在搜索页底部折叠区，
  * 视觉上就是个退路。
  *
- * 运行状态摘要放在侧栏底部：它需要长期可见，且点击能去到修复它的地方,
- * 属「入口」不属「结论」，不违反宪法 3.1。
+ * 环境状态**不在**此处：它已收归 TopBar 唯一权威。
+ * 原先侧栏底部也有一份，但那一份只在异常时出现（就绪时留空），
+ * 而一个只在出事时才存在的东西无法让用户建立「去哪看状态」的预期；
+ * 且它只有本页有，Library 与 Settings 两页没有，而状态是全局的。
+ * TopBar 的指示灯三态全覆盖、跨页常驻、同样可点跳转，故留它一个。
  */
 
-import { useEnvStore } from '../../stores/env'
 import { useLibraryStore } from '../../stores/library'
-import { LogoMark, Ornament } from '../../components/ui'
+import { Ornament } from '../../components/ui'
 import Sidebar from '../../components/layout/Sidebar.vue'
 import SidebarSection from '../../components/layout/SidebarSection.vue'
 import SidebarItem from '../../components/layout/SidebarItem.vue'
 import PaneTransition from '../../components/layout/PaneTransition.vue'
 
-const env = useEnvStore()
 const library = useLibraryStore()
 </script>
 
 <template>
-  <Sidebar>
+  <Sidebar brand-icon="star">
     <template #brand>
+      <!--
+        LOGO 与「风兔盒」已由 TopBar 承担，此处不再重复（下轮待办 1.1）。
+        留下的是 slogan 与署名——它们在 TopBar 放不下，且属品牌标识，
+        不是装饰性俏皮话，故常驻于此。
+      -->
       <div class="brand">
         <Ornament pattern="ear" role="corner" corner="br" />
-        <LogoMark class="brand__mark" />
         <div class="brand__text">
-          <span class="brand__name">风兔盒</span>
-          <span class="brand__tag">找清单、放对位置</span>
+          <span class="brand__slogan">请问您今天要来点 DLC 吗？</span>
+          <span class="brand__by">POWERED BY futureless windchan</span>
         </div>
       </div>
     </template>
@@ -41,14 +46,14 @@ const library = useLibraryStore()
         :to="{ name: 'search' }"
         label="在线搜索"
         meta="从社区源查找"
-        icon="🔍"
+        icon="search"
         exact
       />
       <SidebarItem
         :to="{ name: 'import' }"
         label="本地导入"
         meta="已有清单包"
-        icon="📦"
+        icon="package"
       />
     </SidebarSection>
 
@@ -56,21 +61,11 @@ const library = useLibraryStore()
       <SidebarItem
         :to="{ name: 'library' }"
         label="查看全部"
-        icon="📚"
+        icon="library"
         :warning="library.hasAnomaly"
       />
     </SidebarSection>
 
-    <template #footer>
-      <SidebarItem
-        v-if="env.indicator !== 'ready'"
-        :to="{ name: env.indicator === 'missing' ? 'setup' : 'settings' }"
-        :label="env.indicator === 'missing' ? '未检测到 OST' : 'Steam 路径未设置'"
-        meta="点此处理"
-        icon="⚠"
-        warning
-      />
-    </template>
   </Sidebar>
 
   <PaneTransition />
@@ -90,25 +85,27 @@ const library = useLibraryStore()
   gap: var(--space-2);
 }
 
-.brand__mark {
-  font-size: var(--text-lg);
-  line-height: 1;
-}
-
 .brand__text {
   display: flex;
   flex-direction: column;
+  gap: 2px;
   min-width: 0;
 }
 
-.brand__name {
-  font-size: var(--text-base);
-  font-weight: var(--weight-semibold);
+/* slogan 是品牌资产，给正文色与稍重的字重——它是这块区域的主角 */
+.brand__slogan {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   color: var(--color-text);
 }
 
-.brand__tag {
-  font-size: var(--text-xs);
+/*
+  署名。字距放开一点让全大写读起来像标记而非句子，
+  与 SidebarSection 标题同一手法。
+*/
+.brand__by {
+  font-size: 10px;
+  letter-spacing: 0.04em;
   color: var(--color-text-dim);
 }
 </style>

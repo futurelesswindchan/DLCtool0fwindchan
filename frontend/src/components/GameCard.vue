@@ -15,6 +15,8 @@
  * `--grid .card__badge`），不必现在替一个没人用的形态占位。
  */
 
+import { UiTooltip } from './ui'
+
 interface Props {
   appID: string
   name: string
@@ -45,7 +47,9 @@ const coverUrl = () =>
   <button class="card" type="button">
     <div class="card__cover">
       <img :src="coverUrl()" :alt="name" loading="lazy" />
-      <span v-if="warning" class="card__warn" title="存在需处理的清单冲突">⚠</span>
+      <UiTooltip v-if="warning" content="存在需处理的清单冲突" class="card__warn-anchor">
+        <span class="card__warn">⚠</span>
+      </UiTooltip>
     </div>
 
     <div class="card__info">
@@ -104,10 +108,18 @@ const coverUrl = () =>
   display: block;
 }
 
-.card__warn {
+/*
+  绝对定位挪到锚点上：警示角标现在包在 UiTooltip 里，
+  而 UiTooltip 的锚点是 inline-flex 外壳——定位若留在内层 span 上，
+  它会相对锚点定位而非封面，角标就跑到左上角去了。
+*/
+.card__warn-anchor {
   position: absolute;
   top: 4px;
   right: 4px;
+}
+
+.card__warn {
   padding: 0 5px;
   border-radius: var(--radius-chip);
   background: var(--state-warn);

@@ -11,18 +11,40 @@
 
 /** UiSelect 的选项 */
 export interface SelectOption {
-  label: string
-  value: string | number
+  label: string;
+  value: string | number;
   /**
    * 次要说明，显示在标签右侧。
    * 用于「源名 + 形态标注」这类场景，如「MAU · github-branch」。
    */
-  hint?: string
-  disabled?: boolean
+  hint?: string;
+  disabled?: boolean;
 }
 
 /** UiSegmented 的选项。刻意不支持 hint——分段控件一挤就读不清 */
 export interface SegmentedOption {
-  label: string
-  value: string | number
+  label: string;
+  value: string | number;
 }
+
+/**
+ * UiIcon 支持的图标名。
+ *
+ * 收成联合类型而非放开 string：拼错图标名会渲染出一个空 svg，
+ * 而空 svg 不报错也不留痕——只有类型能在编译期抓住它。
+ *
+ * 加图标要两处同改：本类型 + UiIcon.vue 的模板分支。
+ */
+export type IconName =
+  | "search"
+  | "package"
+  | "library"
+  | "chart"
+  | "plug"
+  | "globe"
+  | "palette"
+  | "info"
+  | "warn"
+  | "star"
+  | "filter"
+  | "gear";

@@ -15,9 +15,21 @@
  *   footer  底部常驻区，不参与滚动
  */
 
-import { useUiStore } from '../../stores/ui'
+import { useUiStore } from "../../stores/ui";
+import { UiIcon, UiTooltip } from "../ui";
+import type { IconName } from "../ui";
 
-const ui = useUiStore()
+defineProps<{
+  /**
+   * 折叠态下品牌区显示的图标。
+   *
+   * 展开态的 brand 内容（slogan / 筛选框 / 标题）在 56px 里都放不下，
+   * 但那块位置不能空着——它是本页的标识位，空着会让折叠态看起来缺了一截。
+   */
+  brandIcon?: IconName;
+}>();
+
+const ui = useUiStore();
 </script>
 
 <template>
@@ -26,8 +38,21 @@ const ui = useUiStore()
     :class="{ 'sidebar--collapsed': ui.sidebarCollapsed }"
     :aria-label="'侧边导航'"
   >
-    <div v-if="!ui.sidebarCollapsed && $slots.brand" class="sidebar__brand">
-      <slot name="brand" />
+    <!--
+      品牌区在折叠态下**保留高度但内容透隐**，不用 v-if 销毁。
+      三页 brand 内容不同（Logo+文字 / 筛选框 / 标题），若整块移除，
+      折叠时三页各丢不同高度，下方条目的起始位置对不上。
+    -->
+    <div v-if="$slots.brand" class="sidebar__brand">
+      <div class="sidebar__brand-inner">
+        <slot name="brand" />
+      </div>
+
+      <!--
+        折叠态图标。与 brand 内容叠放（absolute）而非并列——
+        并列会让两者在过渡期间互相挤压，叠放则各自只做透明度变化。
+      -->
+      <UiIcon v-if="brandIcon" :name="brandIcon" class="sidebar__brand-icon" />
     </div>
 
     <!--
@@ -46,18 +71,22 @@ const ui = useUiStore()
       折叠开关常驻底部。放底部而非顶部：顶部紧邻顶栏的品牌位，
       两个视觉重心挨着会打架；且底部是「不常用但要找得到」的惯例位置。
     -->
-    <button
-      class="sidebar__toggle"
-      :title="ui.sidebarCollapsed ? '展开侧栏' : '折叠侧栏'"
-      :aria-label="ui.sidebarCollapsed ? '展开侧栏' : '折叠侧栏'"
-      :aria-expanded="!ui.sidebarCollapsed"
-      @click="ui.toggleSidebar()"
+    <UiTooltip
+      :content="ui.sidebarCollapsed ? '展开侧栏' : '折叠侧栏'"
+      class="sidebar__toggle-anchor"
     >
-      <svg viewBox="0 0 16 16" aria-hidden="true">
-        <path :d="ui.sidebarCollapsed ? 'M6 4l4 4-4 4' : 'M10 4L6 8l4 4'" />
-      </svg>
-      <span v-if="!ui.sidebarCollapsed" class="sidebar__toggle-text">折叠</span>
-    </button>
+      <button
+        class="sidebar__toggle"
+        :aria-label="ui.sidebarCollapsed ? '展开侧栏' : '折叠侧栏'"
+        :aria-expanded="!ui.sidebarCollapsed"
+        @click="ui.toggleSidebar()"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path :d="ui.sidebarCollapsed ? 'M6 4l4 4-4 4' : 'M10 4L6 8l4 4'" />
+        </svg>
+        <span class="sidebar__toggle-text">折叠</span>
+      </button>
+    </UiTooltip>
   </aside>
 </template>
 
@@ -68,7 +97,7 @@ const ui = useUiStore()
   flex: 0 0 auto;
   width: var(--sidebar-w);
   min-height: 0;
-  border-right: 1px solid var(--color-border);
+  border-right: 2px solid var(--color-border);
   background: var(--color-surface);
   /*
     宽度过渡是宪法 14 章允许的唯一重排例外之一（与侧栏高度同类）。
@@ -81,10 +110,63 @@ const ui = useUiStore()
   width: var(--sidebar-w-collapsed);
 }
 
+/*
+  高度写死而非由内容撑开：折叠态要保留同样的高度，而三页 brand 内容不同。
+  padding 与 border 在两态都在场，故分隔线位置不动。
+*/
 .sidebar__brand {
+  position: relative;
   flex: 0 0 auto;
-  padding: var(--space-4) var(--space-3) var(--space-3);
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--sidebar-brand-h);
+  padding: 0 var(--space-3);
   border-bottom: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+/*
+  折叠态图标。left 取 12px 让 16px 图标中心落在距左 20px，
+  与条目图标、折叠开关箭头同列——三者在折叠态是一条竖线上的三个点。
+*/
+.sidebar__brand-icon {
+  position: absolute;
+  left: var(--space-3);
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  color: var(--color-text-dim);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-base) var(--ease-standard);
+}
+
+.sidebar--collapsed .sidebar__brand-icon {
+  opacity: 1;
+}
+
+.sidebar__brand-inner {
+  width: 100%;
+  min-width: 0;
+  /* 与侧栏 width 同频，折叠时内容渐隐而非瞬间消失 */
+  transition: opacity var(--dur-base) var(--ease-standard);
+}
+
+/*
+  折叠态：内容透隐且不可交互，但高度由外层保住。
+  nowrap 兜住一件事——透隐期间内容仍在布局中，56px 窄条会把文字压成竖排，
+  透明度到 0 之前那几帧会看见挤压过程。
+*/
+.sidebar--collapsed .sidebar__brand {
+  padding-inline: 0;
+}
+
+.sidebar--collapsed .sidebar__brand-inner {
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 .sidebar__body {
@@ -108,7 +190,8 @@ const ui = useUiStore()
   flex: 0 0 auto;
   /* 可点区不低于 28px（宪法 15 章第 3 条） */
   min-height: 28px;
-  padding: var(--space-2) var(--space-3);
+  /* 横向 22px 让 12px 箭头中心落在 x=28，与条目图标对中 */
+  padding: var(--space-2) 22px;
   border: none;
   border-top: 1px solid var(--color-border);
   background: transparent;
@@ -116,13 +199,54 @@ const ui = useUiStore()
   font-family: inherit;
   font-size: var(--text-xs);
   cursor: pointer;
-  transition: color var(--dur-instant) var(--ease-standard),
+  /* 「折叠」二字透隐期间仍在布局中，56px 窄条会挤压它，故裁掉溢出 */
+  overflow: hidden;
+  transition:
+    color var(--dur-instant) var(--ease-standard),
     background var(--dur-instant) var(--ease-standard);
 }
 
+/*
+  折叠开关与条目同病同治：原先 justify-content: center + padding-inline: 0
+  会让箭头在宽度收缩期间先跳到右边再左移。
+  改为两态同一横向内边距，箭头一动不动。
+
+  22px 让 12px 箭头中心落在 x=28，与条目图标同列。
+*/
 .sidebar--collapsed .sidebar__toggle {
-  justify-content: center;
-  padding-inline: 0;
+  padding-inline: 22px;
+}
+
+/*
+  UiTooltip 的锚点是 inline-flex，在 flex column 中会收缩成内容宽度，
+  故显式撑满——否则「折叠」这一条的点击区只有文字那么宽。
+
+  scoped 样式能命中子组件根元素（Vue 会给单根子组件带上父组件的 scope id），
+  此处只碰布局不碰外观，符合既定分工。
+*/
+.sidebar__toggle-anchor {
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.sidebar__toggle-anchor > .sidebar__toggle {
+  width: 100%;
+}
+
+/* 「折叠」二字与 brand 内容同一手法：透隐不销毁，保住高度与位置 */
+.sidebar__toggle-text {
+  /*
+    始终 nowrap，不只在折叠态。
+    若只在折叠态加，展开时移除会触发一帧高度重排，表现为按钮被「顶一下」。
+    「折叠」两字永远是一行，写死 nowrap 无副作用。
+  */
+  white-space: nowrap;
+  transition: opacity var(--dur-base) var(--ease-standard);
+}
+
+.sidebar--collapsed .sidebar__toggle-text {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .sidebar__toggle:hover {

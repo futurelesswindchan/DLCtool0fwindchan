@@ -16,6 +16,7 @@
 
 import { onMounted, computed, ref } from 'vue'
 import { useLibraryStore } from '../../stores/library'
+import { useUiStore } from '../../stores/ui'
 import Sidebar from '../../components/layout/Sidebar.vue'
 import SidebarSection from '../../components/layout/SidebarSection.vue'
 import SidebarItem from '../../components/layout/SidebarItem.vue'
@@ -23,6 +24,7 @@ import PaneTransition from '../../components/layout/PaneTransition.vue'
 import { UiInput } from '../../components/ui'
 
 const library = useLibraryStore()
+const ui = useUiStore()
 
 onMounted(() => library.refresh())
 
@@ -52,7 +54,7 @@ function metaOf(item: (typeof library.items)[number]) {
 </script>
 
 <template>
-  <Sidebar>
+  <Sidebar brand-icon="filter">
     <template #brand>
       <UiInput
         v-model="filter"
@@ -73,7 +75,7 @@ function metaOf(item: (typeof library.items)[number]) {
         :to="{ name: 'library' }"
         label="库概览"
         meta="总计与异常检查"
-        icon="📊"
+        icon="chart"
         :warning="library.hasAnomaly"
         exact
       />
@@ -86,9 +88,18 @@ function metaOf(item: (typeof library.items)[number]) {
         :to="{ name: 'library-game', params: { appID: item.mainAppID } }"
         :label="item.gameName"
         :meta="metaOf(item)"
+        :avatar="item.gameName"
         :warning="item.conflicted"
       />
-      <p v-if="!managed.length" class="none">
+      <!--
+        空态提示。它不是 SidebarItem，故折叠态处理要自己写一份——
+        56px 窄条会把这句话压成竖排两列。
+      -->
+      <p
+        v-if="!managed.length"
+        class="none"
+        :class="{ 'none--collapsed': ui.sidebarCollapsed }"
+      >
         {{ filter ? '没有匹配的游戏' : '还没有入库任何游戏' }}
       </p>
     </SidebarSection>
@@ -96,6 +107,10 @@ function metaOf(item: (typeof library.items)[number]) {
     <!--
       外部清单单列一组。它们同样在生效中（注入器加载目录内全部文件的并集），
       所以不能不显示；但不提供 DLC 编辑，故条目不可点进详情。
+
+      不再逐条挂 warning：那个标记恒为真，而「这些是外部清单」已由分组标题
+      说明了。恒真的标记不携带信息——每条都有的黄点等于没有黄点，
+      反而会稀释真正需要注意的那些（如 conflicted）。
     -->
     <SidebarSection
       v-if="external.length"
@@ -107,7 +122,7 @@ function metaOf(item: (typeof library.items)[number]) {
         :key="item.mainAppID"
         :label="item.gameName"
         :meta="metaOf(item)"
-        warning
+        :avatar="item.gameName"
       />
     </SidebarSection>
 
@@ -121,5 +136,17 @@ function metaOf(item: (typeof library.items)[number]) {
   margin: var(--space-2);
   color: var(--color-text-dim);
   font-size: var(--text-xs);
+  transition: opacity var(--dur-base) var(--ease-standard);
+}
+
+/*
+  折叠态：透隐并禁止折行。不写 nowrap 的话，透明度归零前那几帧
+  会看见八个字被 56px 挤成竖排两列。
+*/
+.none--collapsed {
+  opacity: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  pointer-events: none;
 }
 </style>

@@ -13,48 +13,53 @@
  *    本组件只负责呈现，不内置任何术语文本——内置就会出现
  *    同一个术语在三处解释得不一样。
  *
- * 点击展开而非只靠悬停：悬停内容无法复制，而用户常要拿术语去搜索。
- * 故两种触发都给：悬停快速看一眼，点击则钉住不走。
+ * 两种触发分工：
+ *   悬停 → 显示 ariaLabel（短提示，引导点击）
+ *   点击 → 钉住展开面板，显示完整 glossary 解释（可选中复制）
+ *
+ * 这样做的理由：hover 给全答案会让用户不点击——
+ * 而只有点击才能钉住面板、复制文字、去搜索引擎查。
  */
 
-import { ref, onUnmounted } from 'vue'
-import UiTooltip from './UiTooltip.vue'
+import { ref, onUnmounted } from "vue";
+import UiTooltip from "./UiTooltip.vue";
 
 interface Props {
   /** 解释文字。调用方从 glossary 取，组件不内置 */
-  content: string
-  /** 无障碍标签，默认「查看说明」 */
-  ariaLabel?: string
+  content: string;
+  /** 悬浮提示文字与无障碍标签，默认「查看说明」。
+   *  同时也是 hover 时 tooltip 显示的内容——短提示引导点击。 */
+  ariaLabel?: string;
 }
 
-const props = withDefaults(defineProps<Props>(), { ariaLabel: '查看说明' })
+const props = withDefaults(defineProps<Props>(), { ariaLabel: "查看说明" });
 
 /** 点击后钉住的展开态。与悬停提示互不干扰 */
-const pinned = ref(false)
+const pinned = ref(false);
 
 function onDocClick() {
-  pinned.value = false
+  pinned.value = false;
 }
 
 function toggle(e: MouseEvent) {
   // 阻止冒泡，否则本次点击会立刻被下方的关闭监听吃掉
-  e.stopPropagation()
+  e.stopPropagation();
 
-  pinned.value = !pinned.value
+  pinned.value = !pinned.value;
   if (pinned.value) {
     // 延到下一帧再挂监听，同样是为了避开本次点击
-    window.setTimeout(() => document.addEventListener('click', onDocClick), 0)
+    window.setTimeout(() => document.addEventListener("click", onDocClick), 0);
   } else {
-    document.removeEventListener('click', onDocClick)
+    document.removeEventListener("click", onDocClick);
   }
 }
 
-onUnmounted(() => document.removeEventListener('click', onDocClick))
+onUnmounted(() => document.removeEventListener("click", onDocClick));
 </script>
 
 <template>
   <span class="hb__wrap">
-    <UiTooltip :content="pinned ? '' : props.content">
+    <UiTooltip :content="pinned ? '' : props.ariaLabel">
       <button
         type="button"
         class="hb"
@@ -86,9 +91,8 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
      用 outline-offset 负值让焦点环仍贴着可见圆圈。 */
   width: 14px;
   height: 14px;
-  padding: 7px;
-  box-sizing: content-box;
-  margin: -7px 0 -7px 2px;
+  padding: 2px;
+  box-sizing: border-box;
 
   border: 1px solid var(--color-border-str);
   border-radius: 50%;
@@ -100,9 +104,10 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   font-weight: var(--weight-semibold);
   line-height: 1;
 
-  cursor: help;
+  cursor: pointer;
   vertical-align: middle;
-  transition: color var(--dur-instant) var(--ease-standard),
+  transition:
+    color var(--dur-instant) var(--ease-standard),
     border-color var(--dur-instant) var(--ease-standard);
 }
 

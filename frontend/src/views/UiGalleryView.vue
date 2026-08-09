@@ -29,8 +29,26 @@ import {
   UiScrollArea,
   Ornament,
   LogoMark,
+  UiIcon,
   type SelectOption,
+  type IconName,
 } from '../components/ui'
+
+/** 图标全集。加图标后此处也要补，否则预览页看不到新的那个 */
+const iconNames: IconName[] = [
+  'search',
+  'package',
+  'library',
+  'chart',
+  'plug',
+  'globe',
+  'palette',
+  'info',
+  'warn',
+  'star',
+  'filter',
+  'gear',
+]
 
 const checked = ref(true)
 const partial = ref(false)
@@ -237,6 +255,36 @@ function toggleTheme() {
          「颜色随外部走」这件事只有在多个色境下同时成立才算验证过——
          单看一格永远分不清是继承生效了，还是恰好等于那个默认色。
     -->
+    <!--
+      图标集。逐个列出而非只放几个样品：这一页的存在理由是「一眼看全」，
+      而图标最常见的缺陷是「单看没问题，摆在一起才发现线宽或视觉尺寸不一致」。
+
+      同时给三档尺寸——16px 是侧栏实际用的尺寸，也是最容易糊掉的档位。
+    -->
+    <section class="gal__sec">
+      <h2>UiIcon · 图标集</h2>
+
+      <div class="gal__row">
+        <div v-for="n in iconNames" :key="n" class="gal__iconcell">
+          <UiIcon :name="n" class="gal__icon16" />
+          <UiIcon :name="n" class="gal__icon24" />
+          <span class="gal__note">{{ n }}</span>
+        </div>
+      </div>
+
+      <!-- 侧栏实况：16px 图标 + 首字头像并排，验证两类条目对不对得齐 -->
+      <div class="gal__row">
+        <div class="gal__iconrow">
+          <UiIcon name="library" class="gal__icon16" />
+          <span class="gal__note">图标条目</span>
+        </div>
+        <div class="gal__iconrow">
+          <span class="gal__avatar">怪</span>
+          <span class="gal__note">首字头像</span>
+        </div>
+      </div>
+    </section>
+
     <section class="gal__sec">
       <h2>LogoMark · 品牌标识位</h2>
 
@@ -478,6 +526,49 @@ function toggleTheme() {
   justify-content: flex-end;
   min-height: 68px;
   color: var(--color-text);
+}
+
+/* ─── 图标集 ─── */
+
+.gal__iconcell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 68px;
+  color: var(--color-text-muted);
+}
+
+/* 16px 是侧栏实际尺寸，单独列出以便检查这一档会不会糊 */
+.gal__icon16 {
+  width: 16px;
+  height: 16px;
+}
+
+.gal__icon24 {
+  width: 24px;
+  height: 24px;
+}
+
+.gal__iconrow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+}
+
+/* 与 SidebarItem 的 .item__avatar 同规格，此处复刻以便对照 */
+.gal__avatar {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-chip);
+  background: var(--color-surface-2);
+  color: var(--color-text-dim);
+  font-size: 10px;
+  font-weight: var(--weight-medium);
+  line-height: 1;
 }
 
 .gal__logobox {

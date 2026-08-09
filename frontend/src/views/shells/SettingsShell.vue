@@ -27,15 +27,15 @@ import PaneTransition from '../../components/layout/PaneTransition.vue'
  * 源决定能拿到什么，排第二；外观是偏好；关于与诊断是出事时才来的地方。
  */
 const sections = [
-  { name: 'settings-env', label: '环境', icon: '🔌' },
-  { name: 'settings-sources', label: '清单源', icon: '🌐' },
-  { name: 'settings-appearance', label: '外观', icon: '🎨' },
-  { name: 'settings-about', label: '关于与诊断', icon: 'ℹ' },
+  { name: 'settings-env', label: '环境', icon: 'plug' },
+  { name: 'settings-sources', label: '清单源', icon: 'globe' },
+  { name: 'settings-appearance', label: '外观', icon: 'palette' },
+  { name: 'settings-about', label: '关于与诊断', icon: 'info' },
 ] as const
 </script>
 
 <template>
-  <Sidebar>
+  <Sidebar brand-icon="gear">
     <template #brand>
       <span class="title">设置</span>
     </template>

@@ -12,19 +12,20 @@
  * 而不必逐个记路径。
  */
 
-export { default as UiButton } from './UiButton.vue'
-export { default as UiCheckbox } from './UiCheckbox.vue'
-export { default as UiRadio } from './UiRadio.vue'
-export { default as UiSwitch } from './UiSwitch.vue'
-export { default as UiInput } from './UiInput.vue'
-export { default as UiSelect } from './UiSelect.vue'
-export { default as UiSegmented } from './UiSegmented.vue'
-export { default as UiProgress } from './UiProgress.vue'
-export { default as UiTooltip } from './UiTooltip.vue'
-export { default as UiHelpBadge } from './UiHelpBadge.vue'
-export { default as UiEmptyState } from './UiEmptyState.vue'
-export { default as UiScrollArea } from './UiScrollArea.vue'
-export { default as Ornament } from './Ornament.vue'
-export { default as LogoMark } from './LogoMark.vue'
+export { default as UiButton } from "./UiButton.vue";
+export { default as UiCheckbox } from "./UiCheckbox.vue";
+export { default as UiRadio } from "./UiRadio.vue";
+export { default as UiSwitch } from "./UiSwitch.vue";
+export { default as UiInput } from "./UiInput.vue";
+export { default as UiSelect } from "./UiSelect.vue";
+export { default as UiSegmented } from "./UiSegmented.vue";
+export { default as UiProgress } from "./UiProgress.vue";
+export { default as UiTooltip } from "./UiTooltip.vue";
+export { default as UiHelpBadge } from "./UiHelpBadge.vue";
+export { default as UiEmptyState } from "./UiEmptyState.vue";
+export { default as UiScrollArea } from "./UiScrollArea.vue";
+export { default as Ornament } from "./Ornament.vue";
+export { default as LogoMark } from "./LogoMark.vue";
+export { default as UiIcon } from "./UiIcon.vue";
 
-export type { SelectOption, SegmentedOption } from './types'
+export type { SelectOption, SegmentedOption, IconName } from "./types";

@@ -10,11 +10,11 @@
  * 或链接时都要一并加入下方的 no-drag 选择器列表。
  */
 
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useEnvStore } from '../stores/env'
 import { useWindowControls } from '../composables/useWindowControls'
-import { LogoMark } from './ui'
+import { LogoMark, UiTooltip } from './ui'
 
 const env = useEnvStore()
 const router = useRouter()
@@ -111,6 +111,23 @@ const indicatorText: Record<string, string> = {
   nopath: 'Steam 路径未设置',
 }
 
+/**
+ * 悬停提示。
+ *
+ * 就绪态下界面上只有一个点，状态文字全靠这里——按宪法 20 条
+ * 「悬浮提示中不得放唯一一份关键信息」，这需要个理由：
+ * 「OST 就绪」不是用户需要行动的信息，且设置页的环境节完整呈现同一状态。
+ * 此处是便利，不是唯一出口。
+ *
+ * 异常态下文字已在界面上，提示补的是后端诊断详情。
+ */
+const envTip = computed(() => {
+  const label = indicatorText[env.indicator]
+  const detail = env.result?.message
+  if (env.indicator === 'ready') return detail ? `${label} · ${detail}` : label
+  return detail ? `${label} · ${detail}` : `${label} · 点此处理`
+})
+
 /** 点击指示灯跳向能解决问题的页面，就绪时无动作。 */
 function onIndicatorClick() {
   if (env.indicator === 'missing') router.push({ name: 'setup' })
@@ -163,53 +180,72 @@ function onTitleBarDblClick(e: MouseEvent) {
       />
     </nav>
 
-    <button
-      class="env"
-      :class="`env--${env.indicator}`"
-      :disabled="env.indicator === 'ready'"
-      :title="env.result?.message || ''"
-      @click="onIndicatorClick"
-    >
-      <span class="env__dot" aria-hidden="true"></span>
-      {{ indicatorText[env.indicator] }}
-    </button>
+    <!--
+      环境状态。就绪态只是一个点，异常态才升级为带文字的可点条。
+
+      视觉重量跟着「需不需要行动」走，而不是恒定——这与宪法 4.1
+      「饱和主色只给下一步该点的那一个」是同一思路。
+      状态正常时它是背景信息，异常时它是待办事项。
+
+      原设计三态同一外观：有边框、有内边距、全圆胶囊，看起来是个按钮，
+      而就绪态又是 disabled 的——「看起来能点但点不动」正是违和感的来源。
+      现在边框只在异常态出现，可点与不可点在外观上就分开了。
+    -->
+    <UiTooltip :content="envTip" class="env__anchor">
+      <button
+        class="env"
+        :class="[`env--${env.indicator}`, { 'env--idle': env.indicator === 'ready' }]"
+        :disabled="env.indicator === 'ready'"
+        :aria-label="indicatorText[env.indicator]"
+        @click="onIndicatorClick"
+      >
+        <span class="env__dot" aria-hidden="true"></span>
+        <span v-if="env.indicator !== 'ready'" class="env__text">
+          {{ indicatorText[env.indicator] }}
+        </span>
+      </button>
+    </UiTooltip>
 
     <!--
       窗口控制。图标用 SVG 内联而非字符——字体回退会让 ─ □ ✕ 三者的
       粗细与基线各不相同，在小尺寸下尤其明显。
     -->
     <div class="wctl">
-      <button class="wctl__btn" title="最小化" aria-label="最小化" @click="minimise()">
-        <svg viewBox="0 0 10 10" aria-hidden="true">
-          <path d="M0 5h10" />
-        </svg>
-      </button>
+      <UiTooltip content="最小化">
+        <button class="wctl__btn" aria-label="最小化" @click="minimise()">
+          <svg viewBox="0 0 10 10" aria-hidden="true">
+            <path d="M0 5h10" />
+          </svg>
+        </button>
+      </UiTooltip>
 
-      <button
-        class="wctl__btn"
-        :title="maximised ? '还原' : '最大化'"
-        :aria-label="maximised ? '还原' : '最大化'"
-        @click="toggleMaximise()"
-      >
-        <svg v-if="maximised" viewBox="0 0 10 10" aria-hidden="true">
-          <path d="M2.5 0.5h7v7h-7z" />
-          <path d="M0.5 2.5h7v7h-7z" />
-        </svg>
-        <svg v-else viewBox="0 0 10 10" aria-hidden="true">
-          <path d="M0.5 0.5h9v9h-9z" />
-        </svg>
-      </button>
+      <UiTooltip :content="maximised ? '还原' : '最大化'">
+        <button
+          class="wctl__btn"
+          :aria-label="maximised ? '还原' : '最大化'"
+          @click="toggleMaximise()"
+        >
+          <svg v-if="maximised" viewBox="0 0 10 10" aria-hidden="true">
+            <path d="M2.5 0.5h7v7h-7z" />
+            <path d="M0.5 2.5h7v7h-7z" />
+          </svg>
+          <svg v-else viewBox="0 0 10 10" aria-hidden="true">
+            <path d="M0.5 0.5h9v9h-9z" />
+          </svg>
+        </button>
+      </UiTooltip>
 
-      <button
-        class="wctl__btn wctl__btn--close"
-        title="关闭"
-        aria-label="关闭"
-        @click="quit()"
-      >
-        <svg viewBox="0 0 10 10" aria-hidden="true">
-          <path d="M0 0l10 10M10 0L0 10" />
-        </svg>
-      </button>
+      <UiTooltip content="关闭">
+        <button
+          class="wctl__btn wctl__btn--close"
+          aria-label="关闭"
+          @click="quit()"
+        >
+          <svg viewBox="0 0 10 10" aria-hidden="true">
+            <path d="M0 0l10 10M10 0L0 10" />
+          </svg>
+        </button>
+      </UiTooltip>
     </div>
   </header>
 </template>
@@ -320,42 +356,76 @@ function onTitleBarDblClick(e: MouseEvent) {
     width var(--dur-fast) var(--ease-decelerate);
 }
 
-.env {
+/* 锚点承担把状态推到右侧的职责，故 margin-left: auto 移到它身上 */
+.env__anchor {
   margin-left: auto;
+}
+
+/*
+  状态指示。原先三态同一外观（边框 + 内边距 + 999px 胶囊），
+  就绪态又是 disabled——看起来能点但点不动，违和感即来自此。
+
+  现在按「需不需要行动」分两档：
+    就绪（.env--idle）：只有一个色点，无边框无内边距，纯背景信息
+    异常：色点 + 文字 + 边框 + hover 背景，看得出是待办且可点
+
+  胶囊形（999px）只留给异常态。宪法 4.4 禁止全圆胶囊按钮，
+  但那条管的是操作按钮；此处胶囊恰好把「状态」与同屏的方角控件区分开，
+  且它只在异常时出现，不构成界面常态。
+*/
+.env {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-3);
   border: 1px solid var(--color-border);
-  /*
-    ⚠️ 999px 是全圆胶囊，宪法 4.4 节明令禁止（那是消费级 App 的语言）。
-       但此处是**状态指示灯**而非按钮——胶囊形恰好把它与同屏的方角控件
-       区分开，让人一眼看出「这不是一个操作」。
-       第 5 步若要统一，替代方案是去掉边框只留色点与文字，而不是改成方角。
-  */
   border-radius: 999px;
   background: transparent;
   color: var(--color-text-muted);
   font-size: var(--text-sm);
   font-family: inherit;
   cursor: pointer;
+  transition: background var(--dur-instant) var(--ease-standard),
+    border-color var(--dur-instant) var(--ease-standard),
+    color var(--dur-instant) var(--ease-standard);
+}
+
+/*
+  就绪态：退成一个点。
+  去掉边框与横向内边距，只留一个足够大的热区容纳悬停提示。
+*/
+.env--idle {
+  padding: var(--space-1);
+  border-color: transparent;
+  cursor: default;
 }
 
 .env:disabled {
-  cursor: default;
   opacity: 1;
 }
 
 .env:not(:disabled):hover {
   background: var(--color-surface-2);
+  border-color: var(--color-border-str);
   color: var(--color-text);
 }
 
 .env__dot {
+  flex: 0 0 auto;
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: currentColor;
+}
+
+/* 就绪态那个点略放大——它此时是唯一的视觉载体，7px 太容易被忽略 */
+.env--idle .env__dot {
+  width: 8px;
+  height: 8px;
+}
+
+.env__text {
+  white-space: nowrap;
 }
 
 .env--ready { color: var(--state-ok); }

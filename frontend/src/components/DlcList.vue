@@ -14,7 +14,7 @@
 
 import type { DLCInfo } from '../api'
 import type { SyncState } from '../composables/useDlcSelection'
-import { UiCheckbox, UiHelpBadge } from './ui'
+import { UiCheckbox, UiHelpBadge, UiTooltip } from './ui'
 import { glossary } from '../glossary'
 
 defineProps<{
@@ -109,13 +109,25 @@ const syncText: Record<SyncState, string> = {
 
         <span class="row__appid">{{ d.appID }}</span>
 
-        <span
-          class="row__depot"
-          :class="{ 'row__depot--none': !d.manifestID }"
-          :title="d.manifestID ? '含独立内容分支，取消勾选后 Steam 可能删除本地文件' : '纯许可证，不占用磁盘空间'"
+        <!--
+          depot 标记。文案原先写死在 title 属性里，已移入 glossary——
+          它解释的是术语（「含独立内容」与「纯许可证」的区别），
+          按宪法 22 条术语文案唯一来源是 glossary.ts。
+
+          用 UiTooltip 而非 UiHelpBadge：两百行列表里每行放一个可点徽章
+          会把列表变成按钮墙，且这两条解释是同一维度的两个取值，
+          用户扫列时要的是「这一行属哪种」，不是逐行展开阅读。
+        -->
+        <UiTooltip
+          :content="d.manifestID ? glossary['depot-branch'].short : glossary['depot-license'].short"
         >
-          {{ d.manifestID ? '⚑' : '—' }}
-        </span>
+          <span
+            class="row__depot"
+            :class="{ 'row__depot--none': !d.manifestID }"
+          >
+            {{ d.manifestID ? '⚑' : '—' }}
+          </span>
+        </UiTooltip>
       </li>
     </ul>
 

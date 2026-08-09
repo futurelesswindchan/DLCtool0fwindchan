@@ -29,5 +29,11 @@
   --topbar-h: 46px;
   --sidebar-w: 240px;
   --sidebar-w-collapsed: 56px;
+  /*
+    侧栏顶部品牌区高度。写死而非由内容撑开，是为了让折叠态保留同样的高度
+    ——三页 brand 内容各不相同（Logo+两行文字 / 筛选框 / 标题），
+    若由内容决定，折叠时三页各丢不同高度，条目起始位置对不上。
+  */
+  --sidebar-brand-h: 60px;
   --content-max-w: 1040px;
 }

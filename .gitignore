@@ -56,3 +56,5 @@ diag-*
 # Environment
 .env
 .env.local
+
+commitmsg.txt*
