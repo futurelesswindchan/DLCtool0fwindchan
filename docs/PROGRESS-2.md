@@ -408,6 +408,21 @@ UiSegmented `min-height: 24px` 略低 4px，但水平排列的 `<button>` 组宽
 
 ---
 
+## ✅ 08-10 完工内容（高度继承修复 + 拖拽拦截）
+
+### 修复库空态未撑满的高度继承链（2.1）
+
+ContentPane 的 `.pane__inner` 是一个纯 `display: block` + `overflow-y: auto` 的容器。依据 CSS 规范，子元素的 `min-height: 100%` 在该上下文中触发循环高度计算而失效。
+改由 `flex-column` 传递张力：`.pane` → `.pane__inner` → `LibraryOverviewPane .pane` → `.empty-full` 每一级全用 `flex: 1` 贯通。实机已完美撑满可视区。
+
+### 拦截链接拖拽与原生 URL 预览浮层
+
+发现了新缺陷：WebView2 将 RouterLink（即带 href 的 `<a>`）向外拖拽时，会触发原生的链接拖曳并唤出一个灰底半透明的 URL 预览浮层。
+HTML 规范会忽略带 href 的 a 标签上的 `draggable="false"`。
+**修法**：在现有的 `fileDropGuard` 中追加 `dragstart` 的捕获阶段拦截并 `preventDefault()`。整个系统除了 DropZone（依靠 `dragover`/`drop`）原本就没有别处需要外向内层 drag 操作，全局拦截非常安全。
+
+---
+
 ## 🔜 后续路线
 
 1. ✅ 搜索状态缓存与请求生命周期（08-03/04）
@@ -558,7 +573,7 @@ UiSegmented `min-height: 24px` 略低 4px，但水平排列的 `<button>` 组宽
 
 | #   | 项目               | 说明                                                                                                   | 状态 |
 |:---|:---|:---|:---|
-| 2.1 | 库空态未占满详情页 | `.pane` 加 `min-height: 100%` 后 `.empty-full` 的 `flex: 1` 有了参照，实机仍未完全撑满。原因待查，计划与 UiProgress 实装（5.1）一起处理。 | 🔧 部分修复 |
+| 2.1 | 库空态未占满详情页 | 根因在 ContentPane `.pane__inner` 的块级高度继承不通。已改为三层 `flex-column` 链式 `flex: 1` 接力传递高度。实机完全撑满可视区。（08-10） | ✅ |
 
 ### 三、HelpBadge
 
