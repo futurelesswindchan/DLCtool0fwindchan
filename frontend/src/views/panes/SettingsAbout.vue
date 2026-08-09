@@ -11,9 +11,9 @@
  * 若后续调试项增多再拆。
  */
 
-import { ref, onMounted } from 'vue'
-import { useToast } from '../../composables/useToast'
-import { useConfirm } from '../../composables/useConfirm'
+import { ref, onMounted } from "vue";
+import { useToast } from "../../composables/useToast";
+import { useConfirm } from "../../composables/useConfirm";
 import {
   getLogPath,
   openDataDir,
@@ -26,34 +26,34 @@ import {
   openURL,
   type UpdateInfo,
   type BuildInfo,
-} from '../../api'
-import { UiButton } from '../../components/ui'
+} from "../../api";
+import { UiButton } from "../../components/ui";
 
-const toast = useToast()
-const confirm = useConfirm()
+const toast = useToast();
+const confirm = useConfirm();
 
-const logPath = ref('')
-const version = ref('')
+const logPath = ref("");
+const version = ref("");
 
 /**
  * 构建身份。封测期间同一版本号会被反复重新构建，仅凭版本号无法确定
  * 用户手里是哪一次的包，故展示带提交哈希的完整标识供其抄进报障消息。
  */
-const build = ref<BuildInfo | null>(null)
-const releasePage = ref('')
-const update = ref<UpdateInfo | null>(null)
-const checking = ref(false)
+const build = ref<BuildInfo | null>(null);
+const releasePage = ref("");
+const update = ref<UpdateInfo | null>(null);
+const checking = ref(false);
 /** 检查更新的失败原因。与 update 互斥，仅用于在按钮下方就地提示。 */
-const updateError = ref('')
+const updateError = ref("");
 /** 诊断包导出中，用于禁用按钮避免重复生成 */
-const exporting = ref(false)
+const exporting = ref(false);
 
 onMounted(async () => {
-  logPath.value = await getLogPath()
-  version.value = await getAppVersion()
-  build.value = await getBuildInfo()
-  releasePage.value = await getReleasePageURL()
-})
+  logPath.value = await getLogPath();
+  version.value = await getAppVersion();
+  build.value = await getBuildInfo();
+  releasePage.value = await getReleasePageURL();
+});
 
 /**
  * 检查更新。
@@ -63,33 +63,33 @@ onMounted(async () => {
  * 配合下方常驻的发布页链接，用户自己就能完成后续动作。
  */
 async function onCheckUpdate() {
-  checking.value = true
-  update.value = null
-  updateError.value = ''
+  checking.value = true;
+  update.value = null;
+  updateError.value = "";
 
   try {
-    update.value = await checkUpdate()
+    update.value = await checkUpdate();
   } catch (e) {
-    updateError.value = e instanceof Error ? e.message : String(e)
+    updateError.value = e instanceof Error ? e.message : String(e);
   } finally {
-    checking.value = false
+    checking.value = false;
   }
 }
 
 /** 打开外链。后端只放行 http 与 https，此处只需处理失败提示。 */
 async function onOpenURL(url: string) {
   try {
-    await openURL(url)
+    await openURL(url);
   } catch (e) {
-    toast.fromError(e, '打开链接失败')
+    toast.fromError(e, "打开链接失败");
   }
 }
 
 async function onOpenDataDir() {
   try {
-    await openDataDir()
+    await openDataDir();
   } catch (e) {
-    toast.fromError(e, '打开数据目录失败')
+    toast.fromError(e, "打开数据目录失败");
   }
 }
 
@@ -102,18 +102,18 @@ async function onOpenDataDir() {
  * 「凭据已移除」只会困惑。
  */
 async function onExportDiagnostics() {
-  exporting.value = true
+  exporting.value = true;
   try {
-    const r = await exportDiagnostics()
+    const r = await exportDiagnostics();
     toast.success(
       r.masked
         ? `已导出 ${r.fileName}（${r.sizeKB} KB），API 凭据已移除，可安全发送`
         : `已导出 ${r.fileName}（${r.sizeKB} KB），可安全发送`,
-    )
+    );
   } catch (e) {
-    toast.fromError(e, '导出诊断包失败')
+    toast.fromError(e, "导出诊断包失败");
   } finally {
-    exporting.value = false
+    exporting.value = false;
   }
 }
 
@@ -125,20 +125,20 @@ async function onExportDiagnostics() {
  */
 async function onClearHistory() {
   const ok = await confirm({
-    title: '清空安装记录？',
+    title: "清空安装记录？",
     body: [
-      '仅清空本工具的账本，已部署到 Steam 的清单文件不会被删除。',
-      '清空后这些游戏会出现在「已安装」页的对账异常区里。',
+      "仅清空本工具的账本，已部署到 Steam 的清单文件不会被删除。",
+      "清空后这些游戏会出现在「已安装」页的对账异常区里。",
     ],
-    confirmText: '清空记录',
+    confirmText: "清空记录",
     danger: true,
-  })
-  if (!ok) return
+  });
+  if (!ok) return;
 
   try {
-    toast.success(await clearHistory())
+    toast.success(await clearHistory());
   } catch (e) {
-    toast.fromError(e, '清空记录失败')
+    toast.fromError(e, "清空记录失败");
   }
 }
 </script>
@@ -151,14 +151,14 @@ async function onClearHistory() {
       <dt>版本</dt>
       <dd>
         <span class="set-kv__btns">
-          <code>{{ build?.label || version || '—' }}</code>
+          <code>{{ build?.label || version || "—" }}</code>
           <UiButton size="sm" :loading="checking" @click="onCheckUpdate">
-            {{ checking ? '检查中' : '检查更新' }}
+            {{ checking ? "检查中" : "检查更新" }}
           </UiButton>
         </span>
 
         <p class="set-hint">
-          反馈问题时请连括号里的提交哈希一起提供——同一个版本号可能对应
+          反馈问题时请连括号里的提交哈希一起提供。同一个版本号可能对应
           多次构建，只说版本号无法确定你手里是哪一个包。
         </p>
         <p v-if="build?.dirty" class="set-hint set-hint--warn">
@@ -168,7 +168,9 @@ async function onClearHistory() {
 
         <p v-if="update?.hasUpdate" class="set-hint set-hint--accent">
           有新版本 <strong>{{ update.latestVersion }}</strong>
-          <template v-if="update.publishedAt">（{{ update.publishedAt }}）</template>
+          <template v-if="update.publishedAt"
+            >（{{ update.publishedAt }}）</template
+          >
           ——
           <button class="set-linkbtn" @click="onOpenURL(update.releaseURL)">
             前往下载
@@ -191,13 +193,15 @@ async function onClearHistory() {
       </dd>
 
       <dt>日志文件</dt>
-      <dd><code>{{ logPath || '—' }}</code></dd>
+      <dd>
+        <code>{{ logPath || "—" }}</code>
+      </dd>
 
       <dt>报障诊断包</dt>
       <dd>
         <span class="set-kv__btns">
           <UiButton size="sm" :loading="exporting" @click="onExportDiagnostics">
-            {{ exporting ? '正在导出' : '导出诊断包' }}
+            {{ exporting ? "正在导出" : "导出诊断包" }}
           </UiButton>
         </span>
         <!--
@@ -209,8 +213,9 @@ async function onClearHistory() {
           生成后自动打开所在文件夹。反馈问题时请提供这个文件。
         </p>
         <p class="set-hint set-hint--warn">
-          请勿直接分享数据目录里的 <code>config.json</code>——它含有你自己
-          申请的 API 凭据，一旦外泄，额度会被他人消耗，账号也可能被封禁。
+          请勿直接分享数据目录里的
+          <code>config.json</code>，因为它可能含有你自己申请的 API
+          凭据，一旦外泄，额度会被他人消耗，账号也可能被封禁。
         </p>
         <p class="set-hint">
           诊断包不含安装记录与清单内容，只有排查问题所需的日志与环境信息。
@@ -220,7 +225,9 @@ async function onClearHistory() {
       <dt>数据目录</dt>
       <dd>
         <span class="set-kv__btns">
-          <UiButton size="sm" @click="onOpenDataDir">在文件管理器中打开</UiButton>
+          <UiButton size="sm" @click="onOpenDataDir"
+            >在文件管理器中打开</UiButton
+          >
           <UiButton size="sm" variant="danger" @click="onClearHistory">
             清空安装记录
           </UiButton>
@@ -230,8 +237,9 @@ async function onClearHistory() {
           卸载本工具，不会影响已部署到 Steam 的清单文件。
         </p>
         <p class="set-hint">
-          「清空安装记录」只清账本，不删已部署的清单文件——那些游戏仍会留在
-          Steam 库中，只是本工具不再管理它们。
+          「清空安装记录」只清账本，不删已部署的清单文件。那些游戏仍会留在 Steam
+          库中，只是本工具不再管理它们。如果你需要取消 DLC 入库，请去 已安装
+          界面进行彻底移除~
         </p>
       </dd>
     </dl>

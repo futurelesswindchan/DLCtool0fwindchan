@@ -12,29 +12,29 @@
  * 「是否占空间」这一确定可靠的信息。
  */
 
-import type { DLCInfo } from '../api'
-import type { SyncState } from '../composables/useDlcSelection'
-import { UiCheckbox, UiHelpBadge, UiTooltip } from './ui'
-import { glossary } from '../glossary'
+import type { DLCInfo } from "../api";
+import type { SyncState } from "../composables/useDlcSelection";
+import { UiCheckbox, UiHelpBadge, UiTooltip } from "./ui";
+import { glossary } from "../glossary";
 
 defineProps<{
-  dlcs: DLCInfo[]
-  isSelected: (appID: string) => boolean
-  syncState: SyncState
+  dlcs: DLCInfo[];
+  isSelected: (appID: string) => boolean;
+  syncState: SyncState;
   /** Steam 未运行时，同步完成的文案改为「下次启动 Steam 后生效」 */
-  steamRunning?: boolean
+  steamRunning?: boolean;
   /** 只读模式：外部清单无对应的清单包数据，无法得知可选项全貌 */
-  readonly?: boolean
-}>()
+  readonly?: boolean;
+}>();
 
-const emit = defineEmits<{ toggle: [dlc: DLCInfo] }>()
+const emit = defineEmits<{ toggle: [dlc: DLCInfo] }>();
 
 const syncText: Record<SyncState, string> = {
-  idle: '',
-  pending: '⋯ 待同步',
-  syncing: '🔄 同步中',
-  done: '✓ 已同步',
-}
+  idle: "",
+  pending: "⋯ 待同步",
+  syncing: "🔄 同步中",
+  done: "✓ 已同步",
+};
 </script>
 
 <template>
@@ -42,13 +42,16 @@ const syncText: Record<SyncState, string> = {
     <header class="dlc__head">
       <h2 class="dlc__title">
         DLC 列表（{{ dlcs.length }}）
-        <UiHelpBadge :content="glossary['auto-save'].short" aria-label="了解「勾选即保存」" />
+        <UiHelpBadge
+          :content="glossary['auto-save'].short"
+          aria-label="了解「勾选即保存」"
+        />
       </h2>
       <Transition name="sync">
         <span v-if="syncState !== 'idle'" class="dlc__sync">
           {{
-            syncState === 'done' && steamRunning === false
-              ? '✓ 下次启动 Steam 后生效'
+            syncState === "done" && steamRunning === false
+              ? "✓ 下次启动 Steam 后生效"
               : syncText[syncState]
           }}
         </span>
@@ -60,15 +63,16 @@ const syncText: Record<SyncState, string> = {
       <p class="legend__row">
         <span class="legend__mark">⚑</span>
         <span>
-          含独立内容分支，勾选后需由 <strong>Steam 另行下载</strong>
+          这代表此 DLC 含独立的内容分支，勾选后需由
+          <strong>Steam 另行下载文件</strong>
           才能玩到内容。取消勾选时 Steam 可能删除已下载的本地文件。
         </span>
       </p>
       <p class="legend__row">
         <span class="legend__mark legend__mark--none">—</span>
         <span>
-          内容已包含在游戏本体里，勾选后
-          <strong>无需额外下载</strong>，也不占用额外磁盘空间。
+          这代表此 DLC 内容已包含在游戏本体里，勾选后
+          <strong>无需额外下载</strong>，也不占用额外磁盘空间，可以直接游玩~
         </span>
       </p>
     </div>
@@ -119,13 +123,17 @@ const syncText: Record<SyncState, string> = {
           用户扫列时要的是「这一行属哪种」，不是逐行展开阅读。
         -->
         <UiTooltip
-          :content="d.manifestID ? glossary['depot-branch'].short : glossary['depot-license'].short"
+          :content="
+            d.manifestID
+              ? glossary['depot-branch'].short
+              : glossary['depot-license'].short
+          "
         >
           <span
             class="row__depot"
             :class="{ 'row__depot--none': !d.manifestID }"
           >
-            {{ d.manifestID ? '⚑' : '—' }}
+            {{ d.manifestID ? "⚑" : "—" }}
           </span>
         </UiTooltip>
       </li>

@@ -24,15 +24,31 @@
  * 那个色块本身就是最强的强调手段，不必再叠一层字号。
  */
 
-import { useRouter } from 'vue-router'
-import { useLibraryStore } from '../../stores/library'
-import { useSearchStore } from '../../stores/search'
-import GameCard from '../../components/GameCard.vue'
-import { UiButton, UiInput } from '../../components/ui'
+import { useRouter } from "vue-router";
+import { useLibraryStore } from "../../stores/library";
+import { useSearchStore } from "../../stores/search";
+import { openURL } from "../../api";
+import GameCard from "../../components/GameCard.vue";
+import { UiButton, UiInput } from "../../components/ui";
 
-const router = useRouter()
-const library = useLibraryStore()
-const search = useSearchStore()
+const router = useRouter();
+const library = useLibraryStore();
+const search = useSearchStore();
+
+/** 外部链接。后端只放行 http/https，此处统一由 openURL 代理。 */
+const LINKS = [
+  {
+    label: "GitHub",
+    url: "https://github.com/futurelesswindchan/DLCtool0fwindchan",
+  },
+  { label: "博客", url: "https://qwq.windchan0v0.xyz/home" },
+  { label: "B 站", url: "https://space.bilibili.com/273245032" },
+  { label: "爱发电", url: "https://ifdian.net/a/wind-chan" },
+] as const;
+
+function onOpenLink(url: string) {
+  void openURL(url);
+}
 
 /**
  * 触发搜索。由按钮点击或回车调用，不随输入自动执行。
@@ -51,7 +67,7 @@ const search = useSearchStore()
  * 不 await：请求归 store 管，本组件即使被销毁也不影响它跑完。
  */
 function runSearch() {
-  void search.run()
+  void search.run();
 }
 
 /**
@@ -61,11 +77,11 @@ function runSearch() {
  * 否则用户想回到初始状态只能刷新页面。
  */
 function clearSearch() {
-  search.clear()
+  search.clear();
 }
 
 function openGame(appID: string) {
-  router.push({ name: 'game', params: { appID } })
+  router.push({ name: "game", params: { appID } });
 }
 </script>
 
@@ -77,7 +93,7 @@ function openGame(appID: string) {
         class="search__field"
         type="search"
         size="md"
-        placeholder="请搜索游戏本体的简体中文名或 AppID"
+        placeholder="请搜索游戏本体的官方中文、英文名或 AppID"
         autofocus
         :disabled="search.searching"
         @enter="runSearch()"
@@ -89,7 +105,7 @@ function openGame(appID: string) {
         :loading="search.searching"
         @click="runSearch()"
       >
-        {{ search.searching ? '搜索中…' : '搜索' }}
+        {{ search.searching ? "搜索中…" : "搜索" }}
       </UiButton>
       <UiButton
         v-if="search.term || search.status !== 'idle'"
@@ -107,7 +123,7 @@ function openGame(appID: string) {
       记住一条承诺。不用 toast 是因为它恰好相反，是在事情发生后才弹。
     -->
     <p v-if="search.searching" class="hint" role="status">
-      正在搜索，切到其他页面不会中断，回来还在这儿。
+      正在搜索，切到其他页面不会中断，回来还在这儿哦~
     </p>
 
     <!--
@@ -119,10 +135,77 @@ function openGame(appID: string) {
     </p>
 
     <p class="tips">
-      结果只列出游戏本体，DLC 与试玩版已自动排除——清单以整个游戏为单位提供，
-      单独搜 DLC 名找不到东西。搜索走 Steam 官方接口，<strong>偶发失败与本工具
-      无关，稍等再试通常就好。</strong>如需改善，开启网络加速工具可降低失败率。
+      清单以整个游戏本体为单位提供，请搜索游戏本体>w<！单独去搜游戏 DLC
+      名是不行的哦！
+      <br />同时，因为搜索走的是 Steam官方接口，<strong
+        >偶发失败与本工具无关，稍等再试通常就好。</strong
+      >
+      如需改善，开启Steam 网络加速工具可降低失败率。
     </p>
+
+    <!--
+      公告区：仅在 idle 态（未搜索、无结果）显示，搜索中或有结果时让位。
+      三张卡复用书脊色条语言（与 EnvBanner / Toast 同一体系）。
+
+      ┌─ 更新公告时的操作指引 ───────────────────────────────────────────────┐
+      │                                                                   │
+      │  【公告卡】board__card--accent（主色书脊）                           │
+      │    <h2 class="board__title"> 标题文字 </h2>                        │
+      │    <p class="board__body"> 段落一 </p>                             │
+      │    <p class="board__body"> 段落二 </p>  ← 可多段，最后一段无下边距     │
+      │                                                                   │
+      │  【链接卡】board__card--neutral（中性书脊）                          │
+      │    标题与链接按钮由 LINKS 常量驱动，改链接去 script 里改 LINKS          │
+      │                                                                   │
+      │  【防倒卖卡】board__card--warn（警示书脊）                            │
+      │    <p class="board__warn-text"> 文字，<strong> 强调 </strong> </p> │
+      │    固定格式，通常不改                                                │
+      │                                                                   │
+      │  可用书脊颜色修饰类：                                                │
+      │    board__card--accent   主色（公告、亮点）                          │
+      │    board__card--neutral  中性灰（次要信息、链接）                     │
+      │    board__card--warn     警示橙（注意事项）                          │
+      │    board__card--ok       可自行加，--spine-color:var(--state-ok)   │
+      │                                                                   │
+      │  显示条件：v-if="search.status === 'idle'"                         │
+      │  一旦用户开始搜索或有结果，公告区自动让位，无需手动控制                    │
+      └───────────────────────────────────────────────────────────────────┘
+    -->
+    <div v-if="search.status === 'idle'" class="board">
+      <!-- 公告卡：v2.0.0 正式版寄语 -->
+      <section class="board__card board__card--accent">
+        <h2 class="board__title">欢迎使用Kazeusa（风兔盒） v2.0.0</h2>
+        <p class="board__body">
+          这是V2的第一个正式版本。从最初的想法到现在，感谢每一位陪伴咱走到这里的朋友。
+        </p>
+        <p class="board__body">
+          风兔盒会持续维护，有问题欢迎反馈，有建议欢迎告诉咱。希望它能帮到你，也希望你玩得开心(・ω・)
+        </p>
+      </section>
+
+      <!-- 链接卡：仓库 / 博客 / B站 / 爱发电 -->
+      <section class="board__card board__card--neutral">
+        <h2 class="board__title">同时，你可以通过以下途径联系到小风酱！</h2>
+        <div class="board__links">
+          <button
+            v-for="link in LINKS"
+            :key="link.url"
+            class="board__link"
+            type="button"
+            @click="onOpenLink(link.url)"
+          >
+            {{ link.label }}
+          </button>
+        </div>
+      </section>
+
+      <!-- 防倒卖卡 -->
+      <section class="board__card board__card--warn">
+        <p class="board__warn-text">
+          本工具是<strong>开源且免费</strong>的。如果你是花钱买来的...说明被骗了哦QAQ！
+        </p>
+      </section>
+    </div>
 
     <ul v-if="search.results.length" class="results">
       <li v-for="r in search.results" :key="r.appID">
@@ -144,7 +227,6 @@ function openGame(appID: string) {
     <p v-else-if="search.isEmptyResult" class="empty">
       没找到匹配的游戏。可以试试直接输入 AppID，或从左侧的「本地导入」进入。
     </p>
-
   </div>
 </template>
 
@@ -249,4 +331,118 @@ function openGame(appID: string) {
   font-weight: var(--weight-medium);
 }
 
+/* ─── 公告区 ─── */
+
+.board {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/*
+  公告卡基础。书脊色条与 EnvBanner / Toast 同一手法——
+  ::before 伪元素独立设圆角，不用 border-left-width 加宽（加宽在圆角处截断是方的）。
+  --spine-color 由各状态修饰类下发。
+*/
+.board__card {
+  position: relative;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.board__card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--spine-color, var(--color-border));
+}
+
+/* 公告卡用主色书脊 */
+.board__card--accent {
+  --spine-color: var(--color-accent);
+}
+/* 链接卡用中性色书脊 */
+.board__card--neutral {
+  --spine-color: var(--state-neutral);
+}
+/* 防倒卖卡用警示色书脊 */
+.board__card--warn {
+  --spine-color: var(--state-warn);
+}
+
+.board__title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.board__body {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  line-height: var(--leading-normal);
+}
+
+.board__body:last-child {
+  margin-bottom: 0;
+}
+
+/* 链接按钮组：横排，超窄时自动换行 */
+.board__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/*
+  外链按钮。走 set-linkbtn 同一思路——真 <button> 经 openURL 代理，
+  不用 <a href> 以免 WebView2 把整个界面导航走。
+  外观用 chip 圆角 + 细边框，视觉重量低于搜索入口（宪法 4.1）。
+*/
+.board__link {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border-str);
+  border-radius: var(--radius-chip);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition:
+    background var(--dur-instant) var(--ease-standard),
+    color var(--dur-instant) var(--ease-standard),
+    border-color var(--dur-instant) var(--ease-standard);
+}
+
+.board__link:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  border-color: var(--color-accent);
+}
+
+.board__link:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/* 防倒卖文案：紧凑单行，无标题 */
+.board__warn-text {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  line-height: var(--leading-normal);
+}
+
+.board__warn-text strong {
+  color: var(--state-warn);
+  font-weight: var(--weight-medium);
+}
 </style>

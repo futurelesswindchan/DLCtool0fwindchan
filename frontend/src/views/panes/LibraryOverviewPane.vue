@@ -14,17 +14,17 @@
  * 这不违反宪法 3.1：结论性信息正是内容区该承担的。
  */
 
-import { computed } from 'vue'
-import { useRouter } from 'vue-router'
-import { useLibraryStore } from '../../stores/library'
-import { useToast } from '../../composables/useToast'
-import { useConfirm } from '../../composables/useConfirm'
-import { UiButton, UiEmptyState, Ornament } from '../../components/ui'
+import { computed } from "vue";
+import { useRouter } from "vue-router";
+import { useLibraryStore } from "../../stores/library";
+import { useToast } from "../../composables/useToast";
+import { useConfirm } from "../../composables/useConfirm";
+import { UiButton, UiEmptyState, Ornament } from "../../components/ui";
 
-const router = useRouter()
-const library = useLibraryStore()
-const toast = useToast()
-const confirm = useConfirm()
+const router = useRouter();
+const library = useLibraryStore();
+const toast = useToast();
+const confirm = useConfirm();
 
 /**
  * 删除记录丢失的条目。
@@ -39,43 +39,43 @@ async function onRemove(mainAppID: string, name: string) {
   const ok = await confirm({
     title: `删除「${name}」的清单文件？`,
     body: [
-      '本工具的账本里没有这个条目的记录，删除后无法还原当初的 DLC 勾选项。',
-      'Steam 库中的条目可能需要重启 Steam 后才消失。',
+      "本工具的账本里没有这个条目的记录，删除后无法还原当初的 DLC 勾选项。",
+      "Steam 库中的条目可能需要重启 Steam 后才消失。",
     ],
-    confirmText: '删除',
+    confirmText: "删除",
     danger: true,
-  })
-  if (!ok) return
+  });
+  if (!ok) return;
 
   try {
-    toast.success(await library.remove(mainAppID))
+    toast.success(await library.remove(mainAppID));
   } catch (e: any) {
-    toast.warn(e?.message ?? '删除未完全成功')
+    toast.warn(e?.message ?? "删除未完全成功");
   }
 }
 
-const managed = computed(() => library.items.filter((i) => i.record))
-const conflicted = computed(() => library.items.filter((i) => i.conflicted))
+const managed = computed(() => library.items.filter((i) => i.record));
+const conflicted = computed(() => library.items.filter((i) => i.conflicted));
 const orphaned = computed(() =>
   library.items.filter((i) => !i.record && i.hasExternal),
-)
+);
 const lostRecord = computed(() =>
   library.items.filter((i) => !i.record && !i.hasExternal),
-)
+);
 
 /** DLC 总数只统计本工具管理的条目——外部清单拿不到准确的 DLC 数。 */
 const totalDlc = computed(() =>
   managed.value.reduce((n, i) => n + (i.record?.dlcCount ?? 0), 0),
-)
+);
 
 /** 最近一次获取时间。空账本时为空字符串，模板据此隐藏该格。 */
 const latest = computed(() => {
   const times = managed.value
-    .map((i) => i.record?.installedAt ?? '')
+    .map((i) => i.record?.installedAt ?? "")
     .filter(Boolean)
-    .sort()
-  return times.length ? times[times.length - 1].slice(0, 10) : ''
-})
+    .sort();
+  return times.length ? times[times.length - 1].slice(0, 10) : "";
+});
 </script>
 
 <template>
@@ -120,7 +120,7 @@ const latest = computed(() => {
           :loading="library.loading"
           @click="library.refresh()"
         >
-          {{ library.loading ? '扫描中' : '重新扫描' }}
+          {{ library.loading ? "扫描中" : "重新扫描" }}
         </UiButton>
       </header>
 
@@ -140,7 +140,7 @@ const latest = computed(() => {
         </div>
       </dl>
 
-      <p class="hint">从左侧选一个游戏可查看详情并调整 DLC 勾选。</p>
+      <p class="hint">请从左侧选择一个游戏条目，查看详情并调整 DLC 勾选哦~</p>
 
       <!--
         「重新扫描」的作用必须写出来（宪法铁律三：重构只允许折叠信息，
@@ -148,8 +148,9 @@ const latest = computed(() => {
         本页要如实反映的东西——不说明的话，那个按钮看起来只是个刷新。
       -->
       <p class="hint hint--dim">
-        「重新扫描」会核对 Steam 目录里的实际文件与本工具的记录是否一致。
-        若你手动动过清单目录，扫描后这里会如实反映。
+        此页面右上角的「重新扫描」会核对 Steam
+        目录里的实际生效文件与本工具的记录是否一致。
+        若有其他写入情况，扫描后这里会如实反映。
       </p>
 
       <!--
@@ -162,13 +163,13 @@ const latest = computed(() => {
           {{ conflicted.length }} 个游戏同时被外部清单声明
         </h2>
         <p class="warn__body">
-          卸载这些游戏时本工具只能删掉自己那一份文件，游戏会继续留在 Steam 库里。
-          彻底移除需手动删除对应的外部清单文件。
+          卸载这些游戏时本工具只能删掉自己那一份文件，游戏会继续留在 Steam
+          库里。 彻底移除需手动删除对应的外部清单文件。
         </p>
         <ul class="warn__list">
           <li v-for="i in conflicted" :key="i.mainAppID">
             {{ i.gameName }}
-            <span class="warn__files">{{ i.fileNames.join('、') }}</span>
+            <span class="warn__files">{{ i.fileNames.join("、") }}</span>
           </li>
         </ul>
       </section>
@@ -188,7 +189,7 @@ const latest = computed(() => {
         </p>
         <ul class="warn__list">
           <li v-for="i in orphaned" :key="i.mainAppID">
-            <span class="warn__files">{{ i.fileNames.join('、') }}</span>
+            <span class="warn__files">{{ i.fileNames.join("、") }}</span>
           </li>
         </ul>
       </section>
@@ -206,12 +207,12 @@ const latest = computed(() => {
           {{ lostRecord.length }} 个条目的安装记录已丢失
         </h2>
         <p class="warn__body">
-          清单文件仍在生效，但本工具的账本里没有它们，因此无法还原当初的
-          DLC 勾选项。可以直接删除，或重新获取一次以恢复记录。
+          清单文件仍在生效，但本工具的账本里没有它们，因此无法还原当初的 DLC
+          勾选项。可以直接删除，或重新获取一次以恢复记录。
         </p>
         <ul class="lost">
           <li v-for="i in lostRecord" :key="i.mainAppID" class="lost__row">
-            <span class="warn__files">{{ i.fileNames.join('、') }}</span>
+            <span class="warn__files">{{ i.fileNames.join("、") }}</span>
             <UiButton
               size="sm"
               variant="danger"
@@ -231,6 +232,12 @@ const latest = computed(() => {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+  /*
+    height: 100% 是 .empty-full 能 flex: 1 撑满的前提。
+    ContentPane 的 .pane__inner 没有固定高度，子组件必须自己声明
+    100% 才能让 flex 子项有参照。
+  */
+  min-height: 100%;
 }
 
 /*
@@ -313,7 +320,11 @@ const latest = computed(() => {
 */
 .warn--attention {
   border-color: color-mix(in srgb, var(--state-warn) 40%, var(--color-border));
-  background: color-mix(in srgb, var(--state-warn) var(--state-wash), var(--color-surface));
+  background: color-mix(
+    in srgb,
+    var(--state-warn) var(--state-wash),
+    var(--color-surface)
+  );
 }
 
 .warn__title {

@@ -313,12 +313,18 @@ function onTitleBarDblClick(e: MouseEvent) {
   圆角取 ctrl 档而非账本给的 chip 档：页签是可点的按钮性元素，
   而 chip 档（4px）按宪法 4.4 是「角标、小徽章」用的。
   4px 配在 8/12 内边距上会显得几乎没圆角，与同屏其他按钮不同源。
+
+  min-width: 4.5em：三个页签「搜索」「已安装」「设置」字符数不同，
+  不加下限则宽度随文字长短各异，指示器滑移时宽度跳变很明显。
+  4.5em 覆盖最宽的「已安装」（3 字 + 横向内边距），短页签自动居中。
 */
 .nav-tab {
+  min-width: 4.5em;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-ctrl);
   color: var(--color-text-muted);
   font-size: var(--text-base);
+  text-align: center;
   text-decoration: none;
   transition: color var(--dur-instant) var(--ease-standard),
     background var(--dur-instant) var(--ease-standard);

@@ -21,10 +21,10 @@
  * 多数情况下几个月前的清单依然可用；是否重新获取交由用户自行决定。
  */
 
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 // wailsjs 位于 frontend/ 下而非 src/ 内，故比其他 import 多一级
-import { EventsOn, EventsOff } from '../../../wailsjs/runtime/runtime'
+import { EventsOn, EventsOff } from "../../../wailsjs/runtime/runtime";
 import {
   getGameDetail,
   trialSources,
@@ -35,25 +35,25 @@ import {
   type GameDetail,
   type GamePackage,
   type TrialReport,
-} from '../../api'
-import { useLibraryStore } from '../../stores/library'
-import { useEnvStore } from '../../stores/env'
-import { useToast } from '../../composables/useToast'
-import { useConfirm } from '../../composables/useConfirm'
-import { useDlcSelection } from '../../composables/useDlcSelection'
-import DlcList from '../../components/DlcList.vue'
-import { UiButton } from '../../components/ui'
+} from "../../api";
+import { useLibraryStore } from "../../stores/library";
+import { useEnvStore } from "../../stores/env";
+import { useToast } from "../../composables/useToast";
+import { useConfirm } from "../../composables/useConfirm";
+import { useDlcSelection } from "../../composables/useDlcSelection";
+import DlcList from "../../components/DlcList.vue";
+import { UiButton } from "../../components/ui";
 
-const route = useRoute()
-const router = useRouter()
-const library = useLibraryStore()
-const env = useEnvStore()
-const toast = useToast()
-const confirm = useConfirm()
+const route = useRoute();
+const router = useRouter();
+const library = useLibraryStore();
+const env = useEnvStore();
+const toast = useToast();
+const confirm = useConfirm();
 
-const appID = computed(() => String(route.params.appID))
+const appID = computed(() => String(route.params.appID));
 
-const detail = ref<GameDetail | null>(null)
+const detail = ref<GameDetail | null>(null);
 
 /**
  * 各源的试下载结果。替代原先只有源名的字符串列表。
@@ -62,26 +62,26 @@ const detail = ref<GameDetail | null>(null)
  * 的文件，而实测同一个游戏 7 个源全报收录、实得从 200 个 DLC 到 0 个。
  * 只给源名的话，用户唯一的选择方式是盲猜。
  */
-const report = ref<TrialReport | null>(null)
-const looking = ref(false)
-const downloading = ref(false)
+const report = ref<TrialReport | null>(null);
+const looking = ref(false);
+const downloading = ref(false);
 
 /** 正在手动试的认证型源名，空表示无。用于只禁用那一行的按钮。 */
-const quotaTrying = ref('')
+const quotaTrying = ref("");
 /** 下载进度事件推送的当前尝试源，用于让用户看到「正在做什么」 */
-const progressText = ref('')
+const progressText = ref("");
 
 /** 当前加载的清单包。来自留存文件或本次会话的下载。 */
-const pkg = ref<GamePackage | null>(null)
+const pkg = ref<GamePackage | null>(null);
 
 /** 清单的获取时刻，RFC 3339 字符串。空表示本次会话刚下载的。 */
-const savedAt = ref('')
+const savedAt = ref("");
 
 /** 清单的来源源名。空表示本地导入。 */
-const pkgSource = ref('')
+const pkgSource = ref("");
 
-const libItem = computed(() => library.find(appID.value))
-const installed = computed(() => !!libItem.value)
+const libItem = computed(() => library.find(appID.value));
+const installed = computed(() => !!libItem.value);
 
 /**
  * 是否正在读取留存清单。
@@ -99,7 +99,7 @@ const installed = computed(() => !!libItem.value)
  * 初值取 installed 而非 false：以 URL 直入已入库游戏时，首屏渲染发生在
  * onMounted 的 load() 之前，那一帧同样会命中状态 C。
  */
-const storedLoading = ref(installed.value)
+const storedLoading = ref(installed.value);
 
 /**
  * 用户是否主动发起了「重新获取」。
@@ -113,7 +113,7 @@ const storedLoading = ref(installed.value)
  * 不用「report 非空」反推意图：那是拿数据猜语义，读代码的人看不出来，
  * 且一旦将来有别的路径填了 report 就会误触发。意图只有发起处知道。
  */
-const reacquiring = ref(false)
+const reacquiring = ref(false);
 
 /**
  * 当前该渲染哪一个状态。
@@ -136,14 +136,14 @@ const reacquiring = ref(false)
  *   3. 未入库，或已入库但用户主动要换源 → 状态 A（源对比表）
  *   4. 已入库且确认无留存 → 状态 C
  */
-type GameViewState = 'package' | 'loading' | 'sources' | 'noPackage'
+type GameViewState = "package" | "loading" | "sources" | "noPackage";
 
 const viewState = computed<GameViewState>(() => {
-  if (pkg.value) return 'package'
-  if (storedLoading.value) return 'loading'
-  if (!installed.value || reacquiring.value) return 'sources'
-  return 'noPackage'
-})
+  if (pkg.value) return "package";
+  if (storedLoading.value) return "loading";
+  if (!installed.value || reacquiring.value) return "sources";
+  return "noPackage";
+});
 
 /**
  * 状态 B 分支内使用的清单包，已收窄为非空。
@@ -155,8 +155,8 @@ const viewState = computed<GameViewState>(() => {
  * ——日后若 viewState 的判据改动，感叹号不会报错，而这里会。
  */
 const activePkg = computed(() =>
-  viewState.value === 'package' ? pkg.value : null,
-)
+  viewState.value === "package" ? pkg.value : null,
+);
 
 /**
  * 清单获取时间的人性化表述。
@@ -165,16 +165,15 @@ const activePkg = computed(() =>
  * 可用。只陈述事实，让用户自行判断是否值得重新获取。
  */
 const savedAtText = computed(() => {
-  if (!savedAt.value) return ''
+  if (!savedAt.value) return "";
 
-  const then = new Date(savedAt.value)
-  if (Number.isNaN(then.getTime())) return ''
+  const then = new Date(savedAt.value);
+  if (Number.isNaN(then.getTime())) return "";
 
-  const days = Math.floor((Date.now() - then.getTime()) / 86_400_000)
-  const when =
-    days <= 0 ? '今天' : days === 1 ? '昨天' : `${days} 天前`
-  return `清单获取于${when}（${savedAt.value.slice(0, 10)}）`
-})
+  const days = Math.floor((Date.now() - then.getTime()) / 86_400_000);
+  const when = days <= 0 ? "今天" : days === 1 ? "昨天" : `${days} 天前`;
+  return `清单获取于${when}（${savedAt.value.slice(0, 10)}）`;
+});
 
 /**
  * 勾选控制器。
@@ -183,7 +182,7 @@ const savedAtText = computed(() => {
  * useDlcSelection 内部注册了 onUnmounted，放进 watch 回调会注册不到
  * 当前组件实例上，导致待落盘的改动在切页时静默丢失。
  */
-const selection = useDlcSelection(pkg)
+const selection = useDlcSelection(pkg);
 
 onMounted(() => {
   // 必须先注册再 load()。原实现是 `await load()` 之后才注册，而未入库游戏
@@ -192,17 +191,17 @@ onMounted(() => {
   // 那 41 秒里一条进度都收不到，progressText 始终为空。
   //
   // 「进度可见的等待不叫等待，叫围观」——最需要围观的正是最慢的第一次。
-  EventsOn('download:progress', (payload: any) => {
-    if (payload?.appID && payload.appID !== appID.value) return
-    const src = payload?.source ?? ''
-    progressText.value = src ? `正在尝试 ${src}…` : '正在获取…'
-  })
+  EventsOn("download:progress", (payload: any) => {
+    if (payload?.appID && payload.appID !== appID.value) return;
+    const src = payload?.source ?? "";
+    progressText.value = src ? `正在尝试 ${src}…` : "正在获取…";
+  });
 
-  void load()
-})
+  void load();
+});
 
 // 切页面不清理会导致重复注册，同一事件收到多份
-onUnmounted(() => EventsOff('download:progress'))
+onUnmounted(() => EventsOff("download:progress"));
 
 /** 路由参数变化时重新加载（用户可能从已安装页直接跳到另一个游戏） */
 watch(appID, () => {
@@ -210,11 +209,11 @@ watch(appID, () => {
   // library.find(appID) 变为 true。若 storedLoading 慢一步（例如只在
   // load() 体内置位），中间就存在 `installed && !pkg && !storedLoading`
   // 的可观测状态，恰好命中状态 C。
-  pkg.value = null
-  storedLoading.value = installed.value
-  reacquiring.value = false
-  void load()
-})
+  pkg.value = null;
+  storedLoading.value = installed.value;
+  reacquiring.value = false;
+  void load();
+});
 
 /**
  * 兜住「入库状态迟到」的情形。
@@ -229,10 +228,10 @@ watch(appID, () => {
  */
 watch(installed, (now, before) => {
   if (now && !before && !pkg.value && !storedLoading.value) {
-    storedLoading.value = true
-    void loadStored()
+    storedLoading.value = true;
+    void loadStored();
   }
-})
+});
 
 /**
  * 落盘完成后读回权威的获取时间。
@@ -243,28 +242,28 @@ watch(installed, (now, before) => {
 watch(
   () => selection.syncState.value,
   async (state) => {
-    if (state !== 'done') return
+    if (state !== "done") return;
     try {
-      const stored = await getPackage(appID.value)
-      if (stored?.savedAt) savedAt.value = stored.savedAt
-      if (stored?.source !== undefined) pkgSource.value = stored.source
+      const stored = await getPackage(appID.value);
+      if (stored?.savedAt) savedAt.value = stored.savedAt;
+      if (stored?.source !== undefined) pkgSource.value = stored.source;
     } catch {
       // 读不回来只影响「获取于 X 天前」的显示，不值得打扰用户
     }
   },
-)
+);
 
 async function load() {
-  detail.value = null
-  report.value = null
-  progressText.value = ''
-  savedAt.value = ''
-  pkgSource.value = ''
-  reacquiring.value = false
+  detail.value = null;
+  report.value = null;
+  progressText.value = "";
+  savedAt.value = "";
+  pkgSource.value = "";
+  reacquiring.value = false;
 
   // 同步置位，且必须在任何 await 之前，否则中间存在
   // `installed && !pkg && !storedLoading` 的可观测状态，命中状态 C。
-  storedLoading.value = installed.value
+  storedLoading.value = installed.value;
 
   // 详情与留存并发取，不再串联。
   //
@@ -276,10 +275,7 @@ async function load() {
   // 并发之后留存通常先回（读本地文件），状态 B 直接就位，读取态几乎不可见。
   //
   // 未入库分支仍走 lookup()，它本来就是慢操作，进度由 progressText 承担。
-  await Promise.all([
-    loadDetail(),
-    installed.value ? loadStored() : lookup(),
-  ])
+  await Promise.all([loadDetail(), installed.value ? loadStored() : lookup()]);
 }
 
 /**
@@ -287,9 +283,9 @@ async function load() {
  */
 async function loadDetail() {
   try {
-    detail.value = await getGameDetail(appID.value)
+    detail.value = await getGameDetail(appID.value);
   } catch (e) {
-    toast.fromError(e, '获取游戏详情失败')
+    toast.fromError(e, "获取游戏详情失败");
   }
 }
 
@@ -304,14 +300,14 @@ async function loadDetail() {
  * 入库的游戏），提示用户重新获取即可。
  */
 async function loadStored() {
-  storedLoading.value = true
+  storedLoading.value = true;
   try {
-    const stored = await getPackage(appID.value)
-    if (!stored?.package) return
+    const stored = await getPackage(appID.value);
+    if (!stored?.package) return;
 
-    pkg.value = stored.package
-    savedAt.value = stored.savedAt ?? ''
-    pkgSource.value = stored.source ?? ''
+    pkg.value = stored.package;
+    savedAt.value = stored.savedAt ?? "";
+    pkgSource.value = stored.source ?? "";
 
     // 勾选集合一律问后端，不走 library store 的缓存。
     //
@@ -326,12 +322,12 @@ async function loadStored() {
     //
     // 教训：缓存可以回答「这游戏在不在库里」，不能回答「用户选了哪些」。
     // 前者变化时必然伴随一次刷新，后者不是。省一次本地调用换不来这个风险。
-    const record = await findHistory(appID.value)
-    selection.restore(record?.installedIDs ?? [])
+    const record = await findHistory(appID.value);
+    selection.restore(record?.installedIDs ?? []);
   } catch (e) {
-    toast.fromError(e, '读取本地清单失败')
+    toast.fromError(e, "读取本地清单失败");
   } finally {
-    storedLoading.value = false
+    storedLoading.value = false;
   }
 }
 
@@ -344,13 +340,13 @@ async function loadStored() {
  * @param refresh 为真时忽略缓存强制重查
  */
 async function lookup(refresh = false) {
-  looking.value = true
+  looking.value = true;
   try {
-    report.value = await trialSources(appID.value, refresh)
+    report.value = await trialSources(appID.value, refresh);
   } catch (e) {
-    toast.fromError(e, '查询清单源失败')
+    toast.fromError(e, "查询清单源失败");
   } finally {
-    looking.value = false
+    looking.value = false;
   }
 }
 
@@ -361,21 +357,21 @@ async function lookup(refresh = false) {
  * 明确的点击表达，不能夹在自动流程里替用户花掉。
  */
 async function tryQuotaSource(source: string) {
-  if (!report.value) return
+  if (!report.value) return;
 
-  const idx = report.value.trials.findIndex((t) => t.source === source)
-  if (idx < 0) return
+  const idx = report.value.trials.findIndex((t) => t.source === source);
+  if (idx < 0) return;
 
-  quotaTrying.value = source
+  quotaTrying.value = source;
   try {
-    const t = await trialOneSource(appID.value, source)
+    const t = await trialOneSource(appID.value, source);
     // 就地替换该行，不整表重查——重查会把其他源也再跑一遍
-    report.value.trials[idx] = t
-    recomputeBest()
+    report.value.trials[idx] = t;
+    recomputeBest();
   } catch (e) {
-    toast.fromError(e, `试 ${source} 失败`)
+    toast.fromError(e, `试 ${source} 失败`);
   } finally {
-    quotaTrying.value = ''
+    quotaTrying.value = "";
   }
 }
 
@@ -386,20 +382,20 @@ async function tryQuotaSource(source: string) {
  * 一行数据，为它再走一次跨边界调用不值得。
  */
 function recomputeBest() {
-  if (!report.value) return
+  if (!report.value) return;
 
-  let best = ''
-  let max = 0
+  let best = "";
+  let max = 0;
   for (const t of report.value.trials) {
     // 严格大于，与后端 summarizeTrials 保持一致：并列时保留在前者，
     // 使推荐结果稳定可复现
-    if (t.status === 'ok' && t.dlcCount > max) {
-      max = t.dlcCount
-      best = t.source
+    if (t.status === "ok" && t.dlcCount > max) {
+      max = t.dlcCount;
+      best = t.source;
     }
   }
-  report.value.bestSource = best
-  report.value.maxDLC = max
+  report.value.bestSource = best;
+  report.value.maxDLC = max;
 }
 
 /**
@@ -410,37 +406,37 @@ function recomputeBest() {
  */
 async function install(sourceName: string) {
   if (!env.ready) {
-    toast.warn('注入器尚未就绪，请先完成环境配置')
-    router.push({ name: 'setup' })
-    return
+    toast.warn("注入器尚未就绪，请先完成环境配置");
+    router.push({ name: "setup" });
+    return;
   }
 
-  downloading.value = true
-  progressText.value = `正在从 ${sourceName} 入库…`
+  downloading.value = true;
+  progressText.value = `正在从 ${sourceName} 入库…`;
   try {
     // 走 installFromTrial 而非 downloadFromRepo：试下载的产物已缓存，
     // 命中时零网络请求。这是那一轮等待的收益端，缺了它试下载就只是变慢。
-    pkg.value = await installFromTrial(appID.value, sourceName)
+    pkg.value = await installFromTrial(appID.value, sourceName);
     // 下载得到的包默认全选，与本地导入路径保持一致的语义。
     // selectAll 会触发防抖落盘，完成首次部署。
-    selection.selectAll()
-    await library.refresh()
+    selection.selectAll();
+    await library.refresh();
 
     // 先乐观填上来源，让界面立即有信息可显示。权威的 savedAt 要等防抖
     // 落盘真正完成后才存在，故交由 watch 在同步状态转 done 时读回。
-    pkgSource.value = sourceName
-    savedAt.value = ''
+    pkgSource.value = sourceName;
+    savedAt.value = "";
 
     // 意图已达成，撤下标记。留着它不影响渲染（状态 B 的 v-if="pkg" 优先），
     // 但会让「用户还想换源吗」这个问题的答案一直是过期的 true。
-    reacquiring.value = false
+    reacquiring.value = false;
 
-    toast.success(`已获取 ${pkg.value.gameName || appID.value} 的清单`)
+    toast.success(`已获取 ${pkg.value.gameName || appID.value} 的清单`);
   } catch (e) {
-    toast.fromError(e, '获取清单失败')
+    toast.fromError(e, "获取清单失败");
   } finally {
-    downloading.value = false
-    progressText.value = ''
+    downloading.value = false;
+    progressText.value = "";
   }
 }
 
@@ -453,12 +449,12 @@ async function install(sourceName: string) {
  * 任何固定顺序是对的。
  */
 async function reacquire() {
-  pkg.value = null
-  reacquiring.value = true
-  await lookup(true)
+  pkg.value = null;
+  reacquiring.value = true;
+  await lookup(true);
 
   if (!report.value?.usableCount) {
-    toast.warn('没有源能提供该游戏的清单，可尝试本地导入清单包')
+    toast.warn("没有源能提供该游戏的清单，可尝试本地导入清单包");
   }
 }
 
@@ -473,22 +469,22 @@ async function uninstall() {
   const ok = await confirm({
     title: `彻底卸载「${detail.value?.name || appID.value}」？`,
     body: [
-      '将删除本工具部署的清单文件与安装记录。',
-      'Steam 库中的条目可能需要重启 Steam 后才消失。',
+      "将删除本工具部署的清单文件与安装记录。",
+      "Steam 库中的条目可能需要重启 Steam 后才消失。",
     ],
-    confirmText: '彻底卸载',
+    confirmText: "彻底卸载",
     danger: true,
-  })
-  if (!ok) return
+  });
+  if (!ok) return;
 
   try {
-    const msg = await library.remove(appID.value)
-    toast.success(msg)
-    await resetToUninstalled()
+    const msg = await library.remove(appID.value);
+    toast.success(msg);
+    await resetToUninstalled();
   } catch (e: any) {
     // 外部声明导致的不彻底卸载，文案已由后端组装好，原样呈现
-    toast.warn(e?.message ?? '卸载未完全成功')
-    await resetToUninstalled()
+    toast.warn(e?.message ?? "卸载未完全成功");
+    await resetToUninstalled();
   }
 }
 
@@ -507,10 +503,10 @@ async function uninstall() {
  * 复用它可让「卸载 → 换源重装」几乎无等待。
  */
 async function resetToUninstalled() {
-  pkg.value = null
-  savedAt.value = ''
-  pkgSource.value = ''
-  await lookup()
+  pkg.value = null;
+  savedAt.value = "";
+  pkgSource.value = "";
+  await lookup();
 }
 </script>
 
@@ -524,19 +520,26 @@ async function resetToUninstalled() {
     <header class="hero">
       <img
         class="hero__cover"
-        :src="detail?.headerImage || `https://cdn.cloudflare.steamstatic.com/steam/apps/${appID}/header.jpg`"
+        :src="
+          detail?.headerImage ||
+          `https://cdn.cloudflare.steamstatic.com/steam/apps/${appID}/header.jpg`
+        "
         :alt="detail?.name || appID"
       />
       <div class="hero__info">
         <h1 class="hero__name">{{ detail?.name || appID }}</h1>
         <p class="hero__meta">
           AppID {{ appID }}
-          <template v-if="detail?.releaseDate"> · {{ detail.releaseDate }}</template>
+          <template v-if="detail?.releaseDate">
+            · {{ detail.releaseDate }}</template
+          >
           <template v-if="detail?.developers?.length">
-            · {{ detail.developers.join('、') }}
+            · {{ detail.developers.join("、") }}
           </template>
         </p>
-        <p v-if="detail?.description" class="hero__desc">{{ detail.description }}</p>
+        <p v-if="detail?.description" class="hero__desc">
+          {{ detail.description }}
+        </p>
       </div>
     </header>
 
@@ -554,8 +557,8 @@ async function resetToUninstalled() {
       <template v-if="looking">
         <p class="hint">正在逐个试取清单，这一步会实际下载并解析…</p>
         <p class="hint">
-          比单纯查询「有没有」慢一些，但能看出各源实际能给多少 DLC。
-          结果会缓存 30 分钟，稍后再来不必重等。
+          比单纯查询「有没有」慢一些，但能看出各源实际能给多少 DLC。 结果会缓存
+          30 分钟，稍后再来不必重等。
         </p>
       </template>
 
@@ -566,7 +569,8 @@ async function resetToUninstalled() {
             v-if="report.bestSource"
           >
             ，实得最多的是
-            <strong>{{ report.bestSource }}</strong>（{{ report.maxDLC }} 个 DLC）</template
+            <strong>{{ report.bestSource }}</strong
+            >（{{ report.maxDLC }} 个 DLC）</template
           >。
         </p>
         <p class="hint">
@@ -627,7 +631,9 @@ async function resetToUninstalled() {
                 class="trial__num"
                 :class="{ 'trial__num--text': t.status !== 'ok' }"
               >
-                <template v-if="t.status === 'ok'">{{ t.dlcCount }} DLC</template>
+                <template v-if="t.status === 'ok'"
+                  >{{ t.dlcCount }} DLC</template
+                >
                 <template v-else-if="t.status === 'empty'">仅本体</template>
                 <template v-else>?</template>
               </span>
@@ -641,7 +647,7 @@ async function resetToUninstalled() {
                 :loading="quotaTrying === t.source"
                 @click="tryQuotaSource(t.source)"
               >
-                {{ quotaTrying === t.source ? '获取中…' : '试这个源' }}
+                {{ quotaTrying === t.source ? "获取中…" : "试这个源" }}
               </UiButton>
               <UiButton
                 v-else-if="t.status === 'ok' || t.status === 'empty'"
@@ -716,8 +722,8 @@ async function resetToUninstalled() {
       </div>
 
       <p class="hint hint--dim">
-        勾选后约 1 秒自动写入，无需点保存。「重新获取清单」会从源下载最新版本
-        并覆盖本地这一份——若当前一切正常，通常不必操作。
+        勾选后约 1秒自动写入，无需额外点击保存哦！
+        「重新获取清单」会从源下载最新版本并覆盖本地这一份（也就是手动更新啦），若当前一切正常，通常不必操作。
       </p>
 
       <DlcList
@@ -743,12 +749,10 @@ async function resetToUninstalled() {
     <!-- 状态 C：已入库但确认没有留存清单 -->
     <section v-else class="block">
       <h2 class="block__title">已入库</h2>
-      <p class="hint">
-        已部署清单文件：{{ libItem?.fileNames.join('、') }}
-      </p>
+      <p class="hint">已部署清单文件：{{ libItem?.fileNames.join("、") }}</p>
       <p v-if="libItem?.record" class="hint">
         {{ libItem.record.dlcCount }} 个 DLC · 获取于
-        {{ libItem.record.installedAt.slice(0, 16).replace('T', ' ') }}
+        {{ libItem.record.installedAt.slice(0, 16).replace("T", " ") }}
       </p>
       <p v-if="libItem?.conflicted" class="hint hint--warn">
         该游戏同时被本工具之外的清单文件声明，卸载后可能仍留在库中。
@@ -900,7 +904,11 @@ async function resetToUninstalled() {
      行底色由它与 surface 混出，浓度走 --state-wash（深色 6% / 浅色 4%，
      浅底对淡染更敏感故取下限）。 */
   --trial-hue: var(--state-neutral);
-  background: color-mix(in srgb, var(--trial-hue) var(--state-wash), var(--color-surface));
+  background: color-mix(
+    in srgb,
+    var(--trial-hue) var(--state-wash),
+    var(--color-surface)
+  );
 
   font-size: var(--text-sm);
 }
