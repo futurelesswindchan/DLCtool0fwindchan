@@ -943,3 +943,114 @@ Library 页装 100 个游戏时有 100 个 `UiTooltip` 实例。`useAnchoredLaye
 构造时**不注册任何监听**（滚动/resize 只在浮层真正显示时才挂），
 浮层本体 `v-if` + `Teleport` 零 DOM。代价约 100 份 JS 对象，参照
 08-06 实测 200 个 `UiCheckbox` 无掉帧，推算无感——但未实测，已记入残留清单。
+
+---
+
+## 2026-08-10: 库空态高度继承链——`overflow-y: auto` 容器内百分比高度失效
+
+### 背景
+
+`LibraryOverviewPane` 的 `.empty-full` 设有 `flex: 1`，用来撑满 ContentPane
+的剩余可视高度。08-09 给 `.pane`（LibraryOverviewPane 根元素）加了
+`min-height: 100%` 后，实机仍未完全撑满。
+
+根因在 ContentPane 的 `.pane__inner`：它是一个纯 `display: block` 容器，
+且带 `overflow-y: auto`。**CSS 规范规定：在 `overflow` 非 `visible` 的块容器
+内，子元素的百分比高度会触发循环高度计算，浏览器将其视为 `auto`。**
+换句话说，`min-height: 100%` 在这个上下文里天然无效——`.pane__inner` 本身没有
+高度，子项向它要百分比，得到的是 `auto`。
+
+### 结论
+
+改为三层 `flex-column` 接力，把「确定高度」通过 flex 张力沿链路向下传递：
+
+1. `ContentPane` 的 `.pane__inner` 补 `display: flex; flex-direction: column; flex: 1`
+2. `LibraryOverviewPane` 的 `.pane` 弃用 `min-height: 100%`，改用 `flex: 1`
+3. 底层的 `.empty-full` 同样 `flex: 1`
+
+`flex-column` 链路中，每一级 `flex: 1` 的含义是「在父级主轴方向撑满剩余空间」，
+不依赖百分比计算，从而绕开了 `overflow-y: auto` 里的循环高度陷阱。
+
+**此改动的副作用极小**：`.pane__inner` 里永远只有一个子元素（当前挂载的
+那个组件），且所有原本随内容流往下排的子组件转成 flex 布局后仍会乖乖呆着。
+
+---
+
+## 2026-08-10: 拦截链接拖拽与原生 URL 预览浮层
+
+### 背景
+
+WebView2 会接管包含 `href` 的拖拽事件——将 RouterLink 或任何带 `href` 的
+`<a>` 元素拖到别处时，会弹出一个灰色的半透明浮层（文字 + 链接的 URL 预览），
+这是浏览器原生的 drag 行为。
+
+08-04 加的 `fileDropGuard` 挡在了 `dragover` / `drop` 阶段，防住了**外面拖进
+里面**的文件。但它管不到**里面往外拖**引发的内部元素 drag 行为。
+
+试图用 `draggable="false"` 封堵，无效：HTML 规范里，只要 `<a>` 存在
+`href` 属性，浏览器就会强制让它可以被拖拽，无视 `draggable="false"`。
+
+### 结论
+
+在 `fileDropGuard` 里追加 `window.addEventListener('dragstart', e => e.preventDefault(), { capture: true })`。
+
+- 由全局安全网统一处理，不让各处的 link 自己挂监听
+- 必须用捕获阶段（`capture: true`）以先于浏览器原生行为介入
+- 整个界面（除了 DropZone）不存在「把某物拖到别处」的功能设计，因此全盘阻止
+  `dragstart` 没有任何负面影响
+- `DropZone` 依靠的是 `dragover` / `drop`，与 `dragstart` 无关，不受影响
+
+---
+
+## 2026-08-10: 库空态高度继承链——`overflow-y: auto` 容器内百分比高度失效
+
+### 背景
+
+`LibraryOverviewPane` 的 `.empty-full` 设有 `flex: 1`，用来撑满 ContentPane
+的剩余可视高度。08-09 给 `.pane`（LibraryOverviewPane 的根元素）加了
+`min-height: 100%` 后，实机仍未能完全撑满。
+
+向上排查发现，根因在 ContentPane 的 `.pane__inner` 上：它是一个纯
+`display: block` 容器，且它外层的容器（或它自身在部分场景下）处于
+`overflow-y: auto` 的滚动上下文中。
+
+**CSS 规范规定：在块级格式化上下文中，如果没有显式确定的父容器高度，
+子元素的百分比高度（如 `100%`）会被视为 `auto`。** 换句话说，
+`min-height: 100%` 在向一个没有显式绝对高度的块容器要百分比时，天然失效。
+
+### 结论
+
+放弃百分比高度，改走 `flex` 继承链。将「撑满剩余空间」的任务从顶层
+ContentPane 一直用 `flex: 1` 接力传递到底部：
+
+1. `ContentPane .pane`（已是 `flex-column` 容器）
+2. `ContentPane .pane__inner`：从 `block` 改为 `display: flex; flex-direction: column; flex: 1`。这样它就能确切吃满外层容器的高度，并作为新的 flex 容器。
+3. `LibraryOverviewPane .pane`：`min-height: 100%` → `flex: 1`。吃满 `.pane__inner`。
+4. `.empty-full`：原本就是 `flex: 1`，现在它的父级终于有了确定的 flex 高度供其参照。
+
+一连串的 `flex: 1` 保障了高度的绝对传递，有效解决了多层嵌套下高度塌陷的问题。
+
+---
+
+## 2026-08-10: 拦截 `<a href>` 默认拖拽行为，防止 WebView2 弹出 URL 预览浮层
+
+### 背景
+
+实测发现，WebView2 里的 `<a href>` 元素（如 `RouterLink`）在被长按拖拽时，
+会触发浏览器原生的 link drag 行为。症状是：鼠标旁边会凭空跳出一个灰色半透明的
+URL 预览浮层（写着链接文字与 href URL）。这严重破坏了沉浸式应用的 UI 错觉。
+
+更要命的是，`draggable="false"` 对带有 `href` 属性的 `<a>` 标签是**无效**的
+——存在 href 时，浏览器规范会无视该属性，继续它的拖拽响应。
+
+### 结论
+
+在 `fileDropGuard.ts` 的 `window` 捕获阶段，追加 `dragstart` 的监听器，
+并直接 `ev.preventDefault()`。
+
+由于全局界面设计上**没有任何元素需要被往外拖拽**（我们的拖拽都是从外部拖文件
+进来装 DLC，即 `DropZone` 处理的 `dragover`/`drop` ），因此在全局层面
+一刀切干掉 `dragstart` 不会有任何副作用。
+
+不影响文件拖入（文件拖入是向内，只触发 dragover/drop），从根本上解决了
+WebView2 渲染引擎在某些交互操作下的原生行为泄露问题。
