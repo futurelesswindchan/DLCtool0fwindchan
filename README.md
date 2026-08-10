@@ -1,139 +1,170 @@
-# 🎮 DLC 库管理工具 (DLCtool0fwindchan)
+# 🐰 风兔盒 (KAZEUSA)
 
-![Wails](https://img.shields.io/badge/Wails-v2.0+-red.svg?style=flat)
-![Vue.js](https://img.shields.io/badge/vuejs-%2335495e.svg?style=flat&logo=vuedotjs&logoColor=%234FC08D)
-![TypeScript](https://img.shields.io/badge/typescript-%23007ACC.svg?style=flat&logo=typescript&logoColor=white)
-![Go](https://img.shields.io/badge/Go-1.21+-00ADD8.svg?style=flat&logo=go&logoColor=white)
-![License](https://img.shields.io/badge/license-CC%20BY--NC--SA%204.0-lightgrey)
+![Wails](https://img.shields.io/badge/Wails-v2.11+-red.svg?style=flat&logo=wails)
+![Vue.js](https://img.shields.io/badge/Vue-3.4+-%2335495e.svg?style=flat&logo=vuedotjs&logoColor=%234FC08D)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.3+-%23007ACC.svg?style=flat&logo=typescript&logoColor=white)
+![Go](https://img.shields.io/badge/Go-1.23+-00ADD8.svg?style=flat&logo=go&logoColor=white)
+![Powered by OST](https://img.shields.io/badge/Powered_by-OpenSteamTool-2ea44f.svg?style=flat&logo=steam&logoColor=white)
+![License](https://img.shields.io/badge/license-CC%20BY--NC--SA%204.0-lightgrey.svg?style=flat)
 
-> 一个优雅、安全、简单易用的 Steam DLC 本地一键解锁与管理工具 ✨
+---
+
+> 极为优雅的 Steam 游戏 DLC 清单包在线管理与调度中心 🚀
 >
-> A simple and elegant Steam DLC local unlocker and manager built with Wails, Vue 3 & Go.
+> An elegant, secure, and decoupled Steam Game DLC manifest package manager.
 
-<table>
-  <tr>
-    <td><img width="445" alt="preview_light" src="https://github.com/futurelesswindchan/DLCtool0fwindchan/blob/main/.github/images/preview_light.png" /></td>
-    <td><img width="445" alt="preview_dark" src="https://github.com/futurelesswindchan/DLCtool0fwindchan/blob/main/.github/images/preview_dark.png" /></td>
-  </tr>
-  <tr>
-    <td align="center">☀️ 浅色模式</td>
-    <td align="center">🌙 深色模式</td>
-  </tr>
-</table>
----
-
-## 📖 项目简介 (Introduction)
-
-你好——！👋 欢迎来到「风风的 DLC 魔法工坊」！
-
-这不仅仅是一个枯燥的解锁器，我希望把它打造成一个兼具 **高颜值** 与 **极简交互** 的管理工具。  
-整个项目抛弃了传统单调的界面，采用了现代化的双面板设计，从底层解析到前端 UI 都是精心重构的产物！ヽ( ^ω^ ゞ )
-
-- **前端 [Frontend]**: 基于 Vue 3 全家桶，负责所有赏心悦目的视觉效果与顺滑的拖拽交互。
-- **后端 [Backend]**: 基于 Go 和 Wails 框架，提供安全、极速的系统级文件操作与 VDF 解析。
-
-## 💖 核心亮点 (Core Features)
-
-- **🎨 现代化沉浸 UI 设计**
-  全新双面板设计，支持深浅色模式无缝切换！并且与 Windows 原生标题栏沉浸整合，带来极致的视觉享受！ヾ(_´∀ ˋ_)ﾉ
-
-- **📦 傻瓜式拖拽体验**
-  告别繁琐的手动解压！只需将 `.zip` 格式的 DLC 解锁包直接拖入软件，它就能自动把一切安排得明明白白~
-
-- **🔍 智能解析与安全引擎**
-  底层重构了 VDF 解析与 Steamtools Lua 注入机制。自动读取 Lua 脚本，精准识别游戏与 DLC，同时拥有极高的容错与幂等性，**绝对不会损坏你的 Steam 配置文件**！
-
-- **⚙️ 精细化状态管理**
-  支持对 DLC 进行全选、反选、单选安装，甚至可以一键清除所有伪入库，让你的库干干净净！
+<div align="center">
+  <table>
+    <tr>
+      <td><img width="445" alt="preview_light" src="https://github.com/futurelesswindchan/DLCtool0fwindchan/blob/main/.github/images/preview_light.png" /></td>
+      <td><img width="445" alt="preview_dark" src="https://github.com/futurelesswindchan/DLCtool0fwindchan/blob/main/.github/images/preview_dark.png" /></td>
+    </tr>
+    <tr>
+      <td align="center">☀️ 浅色模式（默认）</td>
+      <td align="center">🌙 深色模式</td>
+    </tr>
+  </table>
+</div>
 
 ---
 
-## 🚀 食用指南 (User Guide)
+## 📖 重新向世界介绍自己
 
-> **想立刻开始给游戏添加 DLC 吗？或者不知道去哪里找解锁包？**
->
-> 考虑到能逛到 GitHub 的大佬们肯定都有魔法基础啦，再加上配合其他神秘工具的进阶玩法比较多，风酱已经把 **最最最详细的保姆级图文教程** 写在博客里啦！(o ゜ ▽ ゜)o☆
->
-> 👉 **[点击这里前往风风博客，查看完整使用教程与进阶玩法~](https://qwq.windchan0v0.xyz/articles/topics/ark-dlc-add)**
+你好呀——！👋 欢迎来到风风的 DLC 魔法工坊 v2.0 时代！
 
----
+在 V2 版本中，本作正式更名为 **「风兔盒 (kazeusa)」**。它不再是过去那个包揽一切的“注入器配置工具”，而是进化成为了一个强大且克制的 **Steam 游戏 DLC 清单包管理器**。
 
-## 💬 反馈与许愿 (Issue & Feedback)
-
-> **遇到 Bug 报错了？或者有什么天马行空的新功能点子？**
-
-风酱非常欢迎大家来提交反馈！不过为了不让各种问题乱作一团，咱统一使用 GitHub 的 Issue 来进行追踪处理哦~
-
-- 🐞 遇到程序报错无法使用？👉 [点击这里提交 Bug 车祸现场](https://github.com/futurelesswindchan/DLCtool0fwindchan/issues/new/choose)
-- 💡 想要更好用的新功能？界面不好看？👉 [点击这里向灵感许愿池投币](https://github.com/futurelesswindchan/DLCtool0fwindchan/issues/new/choose)
-
-⚠️ 注意：如果您遇到的是 **Steam 无限崩溃重启/游戏闪退**，这是底层工具与 Steam 客户端神仙打架导致的，不关咱的管理器事哦awa！
-
----
-
-## 🛠️ 源码编译与本地开发 (Build & Develop)
-
-想亲自动手给工具加点料，或者自己从源码编译出绿色的 EXE？欢迎来到本地开发频道！(`・ω・´)
-
-### 开发环境准备
-
-1. 安装 [Go (1.21+)](https://golang.org/doc/install)
-2. 安装 [Node.js (16+)](https://nodejs.org/en/)
-3. 安装 Wails CLI：
-   ```bash
-   go install github.com/wailsapp/wails/v2/cmd/wails@latest
-   ```
-4. 拉取代码并安装前端依赖：
-   ```bash
-   git clone https://github.com/futurelesswindchan/DLCtool0fwindchan.git
-   cd DLCtool0fwindchan/frontend
-   npm install
-   cd ..
-   ```
-
-### 开始施法！(开发指令)
-
-```bash
-# 🔮 启动实时开发模式 (支持前端热更新，修改代码实时可见哦！)
-wails dev
-
-# 🔨 编译打包最终的 EXE 可执行文件
-wails build
-```
-
-_(编译输出的独立可执行文件会乖乖躺在 `build/bin/` 目录下~)_
-
----
-
-## 📂 项目结构 (Project Structure)
+为了绝对的稳定与安全，咱们设计了严谨的 **三层解耦架构**：
 
 ```text
-DLCtool0fwindchan/
-├── main.go               # Go 应用入口
-├── app.go                # Wails 生命周期与核心前端接口绑定
-├── steam.go              # Steam 路径检测与操作逻辑
-├── vdf_helper.go         # VDF 配置文件安全解析与重写引擎
-├── lua_parser.go         # Lua 脚本解析器
-├── wails.json            # Wails 工程配置
-├── frontend/             # Vue 3 前端魔法阵
-│   ├── src/
-│   │   ├── components/   # 拆分的 UI 积木 (DropZone, DlcCard等)
-│   │   ├── App.vue       # 前端主视图
-│   │   ├── main.ts       # 前端入口
-│   │   └── style.css     # 全局扁平化设计与动画 CSS
-│   └── vite.config.ts    # Vite 构建配置
-└── build/                # 编译资源与输出目录
+🌐 在线清单仓库 (社区维护)
+       ↓
+       ↓ 获取、探查、解析、比对
+       ↓
+📦 风兔盒 kazeusa (我们的领地！)
+       ↓
+       ↓ 将清洗后的 .lua 清单精准放入 config/lua 目录
+       ↓
+🔧 注入器层 (OpenSteamTool)
+```
+
+⚠️ **不可逾越的三条铁律**：
+为了不与 Steam 客户端及底层解锁器“神仙打架”，风兔盒做出了以下承诺：
+
+1. **绝不写入或修改 `config.vdf` 等 Steam 客户端相关文件**。
+2. **绝不写入或干涉注入器自身的配置文件**。
+3. **绝不负责安装、更新或修复注入器本身**。
+
+如果你遇到了 Steam 崩溃或闪退，那绝对不是风兔盒的锅哦！我们只是一个乖巧的文件搬运工~ 📦
+
+---
+
+## ✨ 核心亮点 (Core Features)
+
+- 🍻 **干净、小巧、便携**\
+  风兔盒会将所有运行时以及数据文件放在 `.exe` 同级的 `.kazeusa` 文件夹中，完全不依赖注册表和系统目录。不会在你的系统里留下任何痕>w<！且得益于 Wails 和 GO 的强大，风兔盒编译产物为仅 **10+ MB** 的单文件 EXE，下载即用，删除即走~
+- 🌍 **魔法寻源：清单在线对撞**\
+  还在到处求 DLC 的清单文件？输入游戏昵称或 AppID ，风兔盒会瞬间并发探查多个内置在线仓库，直接生成实力对比表，告诉你能装上多少个 DLC。选最优的那个，一键入库！
+- ⚡ **无感热重载：0.5 秒魔法生效**\
+  得益于 OST 底层强大的文件监听机制，在盒子中勾选完想要的 DLC，切回 Steam 即可在 500ms 内瞬间完成识别！告别过去反复重启 Steam 的痛苦折磨。
+- 📦 **精细化留存管控**\
+  获取清单后，不想全装？DLC 列表提供单页细粒度勾选，修改自动落盘记录，你的选择会被永久记住。当然，如果你更喜欢手动导入本地 `.zip` 压缩包，我们依然提供丝滑拖拽支持~
+- 🎨 **强迫症级别的纯手工 UI**\
+  拒绝臃肿的组件库！前端基于 Vue 3，从按钮到单选框全部都是原生自绘的。现代扁平化视觉、无边框沉浸设计、双重色彩主题、所有动效全程可中断计算~(๑•̀ㅂ•́)و✧
+
+---
+
+## 🚀 食用指南 (Quick Start)
+
+> **不知道怎么开始？没有任何基础？**
+>
+> 考虑到能逛到 GitHub 的大佬虽然很强，但风兔盒配合底层工具的食用姿势还有很多花样，风风已经为大家准备好了 **最最最新版保姆级图文教程** 啦！
+>
+> 👉 **[那个...其实教程还没写好，再等几天哦w](https://github.com/futurelesswindchan/DLCtool0fwindchan)**
+
+---
+
+## 💬 发现 BUG 啦？ (Issues)
+
+- 🐞&💡 工具层面报错、界面卡死、白屏，或者有更好的改进点子？
+- 👉 [欢迎在 Issue 里向灵感许愿池投币~ ](https://github.com/futurelesswindchan/DLCtool0fwindchan/issues)
+- ⚠️ 注意：**Steam 崩溃 / 游戏进不去 / 装了也没效果**，请移步 OST 、或清单源的社区进行提问和求助，这真的不归本盒子管哦！
+
+---
+
+## 🛠️ 执剑指南 (本地开发与源码编译)
+
+如果你想自己从源码编译出纯绿色的 EXE，或者想研究下这个严密运转的工程，欢迎加入本地开发序列！
+
+### 环境准备
+
+1. 配置 [Go (1.23+)](https://golang.org/doc/install) 环境。
+2. 配置 [Node.js (18+)](https://nodejs.org/en/) (前端构建使用)。
+3. 安装 Wails 开发脚手架：
+
+```bash
+go install github.com/wailsapp/wails/v2/cmd/wails@latest
+```
+
+### 施法指令
+
+```bash
+# 克隆仓库与安装前端依赖
+git clone https://github.com/futurelesswindchan/DLCtool0fwindchan.git
+cd DLCtool0fwindchan/frontend
+npm i
+
+# 退回根目录
+cd ..
+
+# 🔮 启动实时开发模式 (支持前端增量热更与后端重载哦！)
+wails dev
+
+# 🔨 编译发布，在 build/bin/ 中召唤最终免安装 EXE
+wails build -clean
 ```
 
 ---
+
+## 💖 鸣谢 (Special Thanks)
+
+风兔盒 (Kazeusa) 能够以如此轻盈且优雅的姿态运行，离不开开源社区的伟大贡献。
+
+向以下在幕后默默发光发热的神仙项目与开发者们致以最深的敬意！（单方面疯狂贴贴 awa）
+
+<div align="center">
+  <table>
+    <tr>
+      <td align="center" width="45%">
+        <br/>
+        <a href="https://github.com/OpenSteam001/OpenSteamTool">
+          <img src="https://raw.githubusercontent.com/OpenSteam001/OpenSteamTool/main/docs/logo-animated.svg" width="180" alt="OpenSteamTool Logo">
+          <br/>
+          <h3>OpenSteamTool</h3>
+        </a>
+        强大的新一代 Steam 开源底层解锁引擎<br/>
+        （本项目的核心动力源泉 🚀）
+        <br/><br/>
+      </td>
+      <td align="center" width="55%">
+        <br/>
+        <a href="https://wails.io/">
+          <!-- Wails 的官方 Logo -->
+          <img src="https://wails.io/img/wails-logo-horizontal.svg" width="360" alt="Wails Logo">
+          <br/>
+          <h3>Wails</h3>
+        </a>
+        无比优雅的 Go + Web 桌面应用构建框架<br/>
+        （赋予了风兔盒轻盈的体态与绝美的容颜 🎨）
+        <br/><br/>
+      </td>
+    </tr>
+  </table>
+</div>
 
 ## 📄 使用许可 (License)
 
 本项目采用 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh) 协议进行许可。  
 简单来说：欢迎学习、分享和修改，但请 **注明出处**，并且 **绝对不要用于商业用途** 哦 awa！
 
----
-
-> **Copyright © 2026 没有未来的小风酱 (futurelesswindchan)**
->
-> Made with ♡ and lots of —⊂ZZZ⊃.
+_Made with love and magic by [futurelesswindchan](https://github.com/futurelesswindchan)_
