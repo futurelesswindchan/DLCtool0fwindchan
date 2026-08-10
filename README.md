@@ -81,7 +81,7 @@
 >
 > 考虑到长图文教程塞在 GitHub 里不太方便，所以风酱打算在博客为大家准备 **最最最新版保姆级图文教程** 啦！
 >
-> 👉 **[那个...其实教程还没写好，再等几天哦w](https://github.com/futurelesswindchan/DLCtool0fwindchan)**
+> 👉 **[风兔盒（KAZEUSA）食用教程](https://qwq.windchan0v0.xyz/admin/dashboard/editor/frontend/kazeusa)**
 
 ---
 
