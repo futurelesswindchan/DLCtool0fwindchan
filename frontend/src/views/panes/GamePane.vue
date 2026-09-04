@@ -42,7 +42,7 @@ import { useToast } from "../../composables/useToast";
 import { useConfirm } from "../../composables/useConfirm";
 import { useDlcSelection } from "../../composables/useDlcSelection";
 import DlcList from "../../components/DlcList.vue";
-import { UiButton } from "../../components/ui";
+import { UiButton, UiProgress } from "../../components/ui";
 
 const route = useRoute();
 const router = useRouter();
@@ -54,6 +54,14 @@ const confirm = useConfirm();
 const appID = computed(() => String(route.params.appID));
 
 const detail = ref<GameDetail | null>(null);
+
+/**
+ * 切换游戏标记。
+ *
+ * 用于防止切换瞬间 `pkg` 被清空但新数据未到时，`viewState` 跳到错误状态导致闪烁。
+ * 切换期间 `viewState` 优先返回 `"loading"`，避免状态跳变。
+ */
+const switching = ref(false);
 
 /**
  * 各源的试下载结果。替代原先只有源名的字符串列表。
@@ -70,6 +78,27 @@ const downloading = ref(false);
 const quotaTrying = ref("");
 /** 下载进度事件推送的当前尝试源，用于让用户看到「正在做什么」 */
 const progressText = ref("");
+
+/**
+ * 源状态追踪（实时多源状态）
+ *
+ * 记录每个源的实时下载状态，供前端显示哪个源正在试、哪个已完成、哪个失败。
+ * 状态值：waiting | trying | success | failed
+ */
+type SourceState = {
+  status: "waiting" | "trying" | "success" | "failed";
+  dlcCount?: number;
+  depotCount?: number;
+  message?: string;
+};
+const sourceStates = ref<Record<string, SourceState>>({});
+
+/**
+ * 安全获取源状态（防止模板中访问 undefined）
+ */
+const getSourceState = (sourceName: string): SourceState => {
+  return sourceStates.value[sourceName] || { status: 'unknown', dlcCount: 0 };
+};
 
 /** 当前加载的清单包。来自留存文件或本次会话的下载。 */
 const pkg = ref<GamePackage | null>(null);
@@ -131,16 +160,30 @@ const reacquiring = ref(false);
  * 而非依赖作者的记性。
  *
  * 顺序即优先级，从上到下第一个成立者胜出：
- *   1. pkg 在手 → 状态 B，无论其他标记如何
- *   2. 正在读留存 → 读取态，必须先于状态 C（否则把「还不知道」说成「没有」）
- *   3. 未入库，或已入库但用户主动要换源 → 状态 A（源对比表）
- *   4. 已入库且确认无留存 → 状态 C
+ *   1. switching = true 时保持上一状态（避免切换时闪白）
+ *   2. pkg 在手 → 状态 B，无论其他标记如何
+ *   3. 正在读留存 → 暂时不渲染（避免闪现错误的"正在读取"提示）
+ *   4. 未入库，或已入库但用户主动要换源 → 状态 A（源对比表）
+ *   5. 已入库且确认无留存 → 状态 C
+ *
+ * 🆕 v2.1.0 修复：删除了单独的 loading 模板后，switching 期间不再返回
+ * "loading"（那会导致空白），而是让状态保持不变，通过其他方式表达加载中。
  */
-type GameViewState = "package" | "loading" | "sources" | "noPackage";
+type GameViewState = "package" | "sources" | "noPackage";
 
 const viewState = computed<GameViewState>(() => {
+  // 🆕 切换期间：如果已有 pkg 就保持 package 状态，否则进入 sources
+  // 这样避免了切换时的空白闪烁
+  if (switching.value) {
+    return pkg.value ? "package" : "sources";
+  }
+  
   if (pkg.value) return "package";
-  if (storedLoading.value) return "loading";
+  
+  // 正在读取留存时，暂时不显示内容（storedLoading 保护）
+  // 避免过早显示状态 C 的"没有留存"文案
+  if (storedLoading.value) return "sources";
+  
   if (!installed.value || reacquiring.value) return "sources";
   return "noPackage";
 });
@@ -197,14 +240,51 @@ onMounted(() => {
     progressText.value = src ? `正在尝试 ${src}…` : "正在获取…";
   });
 
+  // 🆕 监听实时多源状态推送
+  EventsOn("source:progress", (payload: any) => {
+    console.log("[source:progress] 收到事件:", payload);
+    if (payload?.appID !== appID.value) {
+      console.log("[source:progress] AppID 不匹配，跳过", payload?.appID, appID.value);
+      return;
+    }
+    const sourceName = payload.source;
+    if (!sourceName) {
+      console.log("[source:progress] 缺少 source 字段，跳过");
+      return;
+    }
+
+    console.log(`[source:progress] 更新 ${sourceName} 状态为 ${payload.status}`);
+    sourceStates.value[sourceName] = {
+      status: payload.status,
+      dlcCount: payload.dlcCount,
+      depotCount: payload.depotCount,
+      message: payload.message,
+    };
+
+    // 🆕 同时更新 progressText，让进度条显示当前正在处理的源
+    if (payload.status === 'trying') {
+      progressText.value = `正在尝试 ${sourceName}…`;
+    } else if (payload.status === 'waiting') {
+      progressText.value = `等待处理 ${sourceName}…`;
+    }
+    // success/failed 状态不更新 progressText，让它保持最后的 trying 消息
+  });
+
   void load();
 });
 
 // 切页面不清理会导致重复注册，同一事件收到多份
-onUnmounted(() => EventsOff("download:progress"));
+onUnmounted(() => {
+  EventsOff("download:progress");
+  EventsOff("source:progress"); // 🆕 取消实时多源状态监听
+});
 
 /** 路由参数变化时重新加载（用户可能从已安装页直接跳到另一个游戏） */
-watch(appID, () => {
+watch(appID, async (newID, oldID) => {
+  if (!newID || newID === oldID) return;
+
+  switching.value = true; // 🆕 置位切换标记
+
   // 三行必须同步完成再让渲染发生：pkg 置空的同一刻，installed 已因
   // library.find(appID) 变为 true。若 storedLoading 慢一步（例如只在
   // load() 体内置位），中间就存在 `installed && !pkg && !storedLoading`
@@ -212,7 +292,9 @@ watch(appID, () => {
   pkg.value = null;
   storedLoading.value = installed.value;
   reacquiring.value = false;
-  void load();
+
+  await load();
+  switching.value = false; // 🆕 复位切换标记
 });
 
 /**
@@ -341,6 +423,7 @@ async function loadStored() {
  */
 async function lookup(refresh = false) {
   looking.value = true;
+  sourceStates.value = {}; // 🆕 清空上次的实时状态
   try {
     report.value = await trialSources(appID.value, refresh);
   } catch (e) {
@@ -554,6 +637,13 @@ async function resetToUninstalled() {
     <section v-if="viewState === 'sources'" class="block">
       <h2 class="block__title">清单源</h2>
 
+      <!-- 进度指示：显示后端推送的下载进度 -->
+      <UiProgress
+        v-if="looking && progressText"
+        :label="progressText"
+        class="trial-progress"
+      />
+
       <template v-if="looking">
         <p class="hint">正在逐个试取清单，这一步会实际下载并解析…</p>
         <p class="hint">
@@ -584,20 +674,49 @@ async function resetToUninstalled() {
             v-for="t in report.trials.filter((x) => !x.needsQuota)"
             :key="t.source"
             class="trial"
-            :class="`trial--${t.status}`"
+            :class="`trial--${getSourceState(t.source).status || t.status}`"
           >
             <span class="trial__name">{{ t.source }}</span>
             <span
               class="trial__num"
-              :class="{ 'trial__num--text': t.status !== 'ok' }"
+              :class="{
+                'trial__num--text': getSourceState(t.source).status !== 'success' && t.status !== 'ok',
+              }"
             >
-              <template v-if="t.status === 'ok'">{{ t.dlcCount }} DLC</template>
+              <!-- 优先显示实时状态 -->
+              <template v-if="getSourceState(t.source).status === 'waiting'">
+                ⏳
+              </template>
+              <template v-else-if="getSourceState(t.source).status === 'trying'">
+                🔄
+              </template>
+              <template
+                v-else-if="getSourceState(t.source).status === 'success'"
+              >
+                {{ getSourceState(t.source).dlcCount }} DLC
+              </template>
+              <template v-else-if="getSourceState(t.source).status === 'failed'">
+                ❌
+              </template>
+              <!-- 回退到最终结果 -->
+              <template v-else-if="t.status === 'ok'"
+                >{{ t.dlcCount }} DLC</template
+              >
               <template v-else-if="t.status === 'empty'">仅本体</template>
               <template v-else>—</template>
             </span>
             <span class="trial__msg">
-              {{ t.message }}
-              <template v-if="t.cached">（缓存）</template>
+              <!-- 🆕 优先显示实时状态消息 -->
+              <template v-if="getSourceState(t.source).status === 'waiting'">
+                等待中…
+              </template>
+              <template v-else-if="getSourceState(t.source).status === 'trying'">
+                下载中…
+              </template>
+              <template v-else>
+                {{ t.message }}
+                <template v-if="t.cached">（缓存）</template>
+              </template>
             </span>
             <UiButton
               v-if="t.status === 'ok' || t.status === 'empty'"
@@ -734,18 +853,6 @@ async function resetToUninstalled() {
       />
     </template>
 
-    <!--
-      读取态：已入库、留存尚未读回。
-
-      必须排在状态 C 之前。这里只说「正在读」，不对有没有留存下任何结论——
-      读取中与「确认没有留存」是两件事，混在一起就会让用户看到一段错的解释
-      并可能据此去点「重新获取」。
-    -->
-    <section v-else-if="viewState === 'loading'" class="block">
-      <h2 class="block__title">已入库</h2>
-      <p class="hint">正在读取本地清单…</p>
-    </section>
-
     <!-- 状态 C：已入库但确认没有留存清单 -->
     <section v-else class="block">
       <h2 class="block__title">已入库</h2>
@@ -848,6 +955,10 @@ async function resetToUninstalled() {
   font-weight: var(--weight-medium);
 }
 
+.trial-progress {
+  margin-bottom: var(--space-3);
+}
+
 .hint {
   margin: 0 0 var(--space-2);
   color: var(--color-text-muted);
@@ -923,6 +1034,28 @@ async function resetToUninstalled() {
 
 .trial--empty {
   --trial-hue: var(--state-warn);
+}
+
+/* 🆕 实时状态：waiting 与 trying */
+.trial--waiting {
+  --trial-hue: var(--state-neutral);
+  opacity: 0.6;
+}
+
+.trial--trying {
+  --trial-hue: var(--color-accent);
+  /* 🆕 微动画提示正在工作 */
+  animation: trial-pulse 2s ease-in-out infinite;
+}
+
+@keyframes trial-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
 }
 
 /* unsupported 与 miss 都是「该源没有可用内容」，同色处理——
