@@ -1,6 +1,6 @@
 # 🐰 风兔盒 (KAZEUSA)
 
-![Wails](https://img.shields.io/badge/Wails-v2.11+-red.svg?style=flat&logo=wails)
+![Wails](https://img.shields.io/badge/Wails-v2.15+-red.svg?style=flat&logo=wails)
 ![Vue.js](https://img.shields.io/badge/Vue-3.4+-%2335495e.svg?style=flat&logo=vuedotjs&logoColor=%234FC08D)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3+-%23007ACC.svg?style=flat&logo=typescript&logoColor=white)
 ![Go](https://img.shields.io/badge/Go-1.27.0+-%2300ADD8.svg?style=flat&logo=go&logoColor=white)
@@ -104,7 +104,7 @@
 3. 安装 Wails 开发脚手架：
 
 ```bash
-go install github.com/wailsapp/wails/v2/cmd/wails@latest
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
 ```
 
 ### 施法指令

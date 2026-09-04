@@ -1148,3 +1148,31 @@ EventsOn("download:progress", (payload: any) => {
 ```
 
 只是没在界面上显示，补个 `<UiProgress>` 即可。
+
+## 2026-09-04：安全漏洞修复与依赖升级
+
+### 背景
+
+收到来自 @begininvoke 的安全报告（PR #3, Issue #4, Issue #5），经过 govulncheck 官方扫描确认，项目存在真实安全漏洞。
+
+### 决策
+
+1. **PostCSS 升级** (commit 54895b1)
+   - `postcss@8.5.8` → `8.5.28`
+   - 修复 CVE-2026-45623 (HIGH)
+   - 前端构建验证通过
+
+2. **Go 升级** (commit 116592b)
+   - `go1.25.5` → `go1.27.0`
+   - 修复 15 个标准库漏洞 (CRITICAL/HIGH)
+   - govulncheck: 0 vulnerabilities affecting code
+
+3. **Wails 升级至 v2.15.0**
+   - **Wails v3 尚在 beta**，不适合生产使用
+   - 当前版本稳定，无安全问题，等 v3 正式版发布后再继续考虑升级
+
+### 验证结果
+
+- ✅ `npm run verify` - 前端构建通过
+- ✅ `go test ./...` - 后端测试通过
+- ✅ `govulncheck ./...` - 0 个漏洞影响代码
