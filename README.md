@@ -3,7 +3,7 @@
 ![Wails](https://img.shields.io/badge/Wails-v2.11+-red.svg?style=flat&logo=wails)
 ![Vue.js](https://img.shields.io/badge/Vue-3.4+-%2335495e.svg?style=flat&logo=vuedotjs&logoColor=%234FC08D)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3+-%23007ACC.svg?style=flat&logo=typescript&logoColor=white)
-![Go](https://img.shields.io/badge/Go-1.23+-00ADD8.svg?style=flat&logo=go&logoColor=white)
+![Go](https://img.shields.io/badge/Go-1.27.0+-%2300ADD8.svg?style=flat&logo=go&logoColor=white)
 ![Powered by OST](https://img.shields.io/badge/Powered_by-OpenSteamTool-2ea44f.svg?style=flat&logo=steam&logoColor=white)
 ![License](https://img.shields.io/badge/license-CC%20BY--NC--SA%204.0-lightgrey.svg?style=flat)
 
@@ -99,7 +99,7 @@
 
 ### 环境准备
 
-1. 配置 [Go (1.23+)](https://golang.org/doc/install) 环境。
+1. 配置 [Go (1.27.0+)](https://golang.org/doc/install) 环境。
 2. 配置 [Node.js (18+)](https://nodejs.org/en/) (前端构建使用)。
 3. 安装 Wails 开发脚手架：
 
