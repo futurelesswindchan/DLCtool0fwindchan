@@ -154,6 +154,52 @@
 
 ## 📝 施工日志
 
+### 2026-09-05
+
+**上午-下午**
+
+- ✅ Bug #1 深度修复：延迟清空数据 + 过期响应检测
+  - 实现方案 A：切换时不立即清空 `pkg`，保持视觉连续性
+  - 为所有异步加载函数添加过期响应检测机制
+  - 修改涉及：`load()`, `loadDetail()`, `loadStored()`, `lookup()` 及所有调用点
+  - 新增调试日志追踪切换流程
+  
+- ✅ Hero 区域布局优化：固定高度防跳动
+  - 问题：不同游戏简介长度不同，导致 hero 区域高度跳变，封面图被拉伸
+  - 方案：
+    - 固定 `.hero__info` 高度与封面对齐（~108px）
+    - 标题和 meta 限制一行，超出省略号
+    - 描述区固定 3 行高度（`min-height`），即使内容不足也占位
+    - 移除 `v-if`，让 `hero__desc` 始终渲染
+  - 修改文件：`frontend/src/views/panes/GamePane.vue`
+
+**待实施**
+
+- 方案 B：路由守卫预加载（需测试方案 A 效果后再决定）
+- 清理调试日志（待主人确认效果后）
+
+### 2026-09-04
+
+**上午**
+
+- ✅ 创建 PROGRESS.md
+- ✅ Bug #1: GamePane 切换闪烁修复（初步）
+  - 增加 `switching` 标记，在 `watch(appID)` 中设置，防止切换瞬间 `viewState` 跳到错误状态
+- ✅ Bug #2: 实时多源状态追踪
+  - 后端：`app_trial_run.go` 添加 `runtime.EventsEmit` 推送逻辑
+  - 前端：`GamePane.vue` 监听 `source:progress` 事件并实时更新 UI
+  - 添加 `trial--waiting` 和 `trial--trying` 样式，trying 带呼吸动画
+
+**待测试**
+
+- 需要主人实机测试 Bug #1 和 Bug #2 的效果，确认无误后提交 commit
+ 项
+- 待开始：24 项
+
+---
+
+## 📝 施工日志
+
 ### 2026-09-04
 
 **上午**

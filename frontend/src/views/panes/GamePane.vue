@@ -97,7 +97,7 @@ const sourceStates = ref<Record<string, SourceState>>({});
  * 安全获取源状态（防止模板中访问 undefined）
  */
 const getSourceState = (sourceName: string): SourceState => {
-  return sourceStates.value[sourceName] || { status: 'unknown', dlcCount: 0 };
+  return sourceStates.value[sourceName] || { status: "unknown", dlcCount: 0 };
 };
 
 /** 当前加载的清单包。来自留存文件或本次会话的下载。 */
@@ -120,8 +120,7 @@ const installed = computed(() => !!libItem.value);
  * true（来自同步的 library.find），`pkg` 还是 null，于是状态 C 被真实渲染，
  * 而它的文案写着「本地没有这个游戏的清单内容」。
  *
- * 那不是闪一帧的瑕疵，是在读取期间对用户断言了一件尚未查明的事——与后端
- * 静默改写枚举值同形状：把「还不知道」伪装成「已确认没有」。
+ * 总之就是看着很不爽awa
  *
  * 故三个状态的判据都要排除读取中，另给一个明确的读取态。
  *
@@ -172,18 +171,21 @@ const reacquiring = ref(false);
 type GameViewState = "package" | "sources" | "noPackage";
 
 const viewState = computed<GameViewState>(() => {
-  // 🆕 切换期间：如果已有 pkg 就保持 package 状态，否则进入 sources
-  // 这样避免了切换时的空白闪烁
+  // 🆕 v2.1.0 Bug #1 深度修复：切换期间优先保持有内容的状态
+  // 如果有 pkg（可能是旧游戏的，也可能新数据已加载完成），就显示 package 状态
+  // 这样切换时不会闪现"没有该游戏"的错误提示，而是平滑过渡
   if (switching.value) {
-    return pkg.value ? "package" : "sources";
+    const state = pkg.value ? "package" : "sources";
+
+    return state;
   }
-  
+
   if (pkg.value) return "package";
-  
+
   // 正在读取留存时，暂时不显示内容（storedLoading 保护）
   // 避免过早显示状态 C 的"没有留存"文案
   if (storedLoading.value) return "sources";
-  
+
   if (!installed.value || reacquiring.value) return "sources";
   return "noPackage";
 });
@@ -242,18 +244,14 @@ onMounted(() => {
 
   // 🆕 监听实时多源状态推送
   EventsOn("source:progress", (payload: any) => {
-    console.log("[source:progress] 收到事件:", payload);
     if (payload?.appID !== appID.value) {
-      console.log("[source:progress] AppID 不匹配，跳过", payload?.appID, appID.value);
       return;
     }
     const sourceName = payload.source;
     if (!sourceName) {
-      console.log("[source:progress] 缺少 source 字段，跳过");
       return;
     }
 
-    console.log(`[source:progress] 更新 ${sourceName} 状态为 ${payload.status}`);
     sourceStates.value[sourceName] = {
       status: payload.status,
       dlcCount: payload.dlcCount,
@@ -262,9 +260,9 @@ onMounted(() => {
     };
 
     // 🆕 同时更新 progressText，让进度条显示当前正在处理的源
-    if (payload.status === 'trying') {
+    if (payload.status === "trying") {
       progressText.value = `正在尝试 ${sourceName}…`;
-    } else if (payload.status === 'waiting') {
+    } else if (payload.status === "waiting") {
       progressText.value = `等待处理 ${sourceName}…`;
     }
     // success/failed 状态不更新 progressText，让它保持最后的 trying 消息
@@ -285,15 +283,13 @@ watch(appID, async (newID, oldID) => {
 
   switching.value = true; // 🆕 置位切换标记
 
-  // 三行必须同步完成再让渲染发生：pkg 置空的同一刻，installed 已因
-  // library.find(appID) 变为 true。若 storedLoading 慢一步（例如只在
-  // load() 体内置位），中间就存在 `installed && !pkg && !storedLoading`
-  // 的可观测状态，恰好命中状态 C。
-  pkg.value = null;
+  // 🆕 v2.1.0 Bug #1 深度修复：不立即清空 pkg，让旧内容在动画期间保留
+  // pkg.value = null; // ❌ 删除：不再立即清空
   storedLoading.value = installed.value;
   reacquiring.value = false;
 
   await load();
+
   switching.value = false; // 🆕 复位切换标记
 });
 
@@ -311,7 +307,7 @@ watch(appID, async (newID, oldID) => {
 watch(installed, (now, before) => {
   if (now && !before && !pkg.value && !storedLoading.value) {
     storedLoading.value = true;
-    void loadStored();
+    void loadStored(appID.value);
   }
 });
 
@@ -336,6 +332,9 @@ watch(
 );
 
 async function load() {
+  // 🆕 保存当前 appID，用于检测过期响应
+  const currentAppID = appID.value;
+
   detail.value = null;
   report.value = null;
   progressText.value = "";
@@ -357,17 +356,32 @@ async function load() {
   // 并发之后留存通常先回（读本地文件），状态 B 直接就位，读取态几乎不可见。
   //
   // 未入库分支仍走 lookup()，它本来就是慢操作，进度由 progressText 承担。
-  await Promise.all([loadDetail(), installed.value ? loadStored() : lookup()]);
+  await Promise.all([
+    loadDetail(currentAppID),
+    installed.value ? loadStored(currentAppID) : lookup(currentAppID),
+  ]);
 }
 
 /**
  * 取商店详情。失败只提示，不阻断——详情是锦上添花，勾选功能不依赖它。
+ *
+ * @param targetAppID - 目标 appID，用于检测过期响应
  */
-async function loadDetail() {
+async function loadDetail(targetAppID: string) {
   try {
-    detail.value = await getGameDetail(appID.value);
+    const result = await getGameDetail(targetAppID);
+
+    // 🆕 检测过期响应：如果加载期间用户又切换了游戏，丢弃这个结果
+    if (appID.value !== targetAppID) {
+      return;
+    }
+
+    detail.value = result;
   } catch (e) {
-    toast.fromError(e, "获取游戏详情失败");
+    // 同样检查：错误提示也不该显示给已经切走的游戏
+    if (appID.value === targetAppID) {
+      toast.fromError(e, "获取游戏详情失败");
+    }
   }
 }
 
@@ -380,12 +394,22 @@ async function loadDetail() {
  *
  * 留存不存在时静默停留在状态 C，不弹错——那是正常处境（留存功能上线前
  * 入库的游戏），提示用户重新获取即可。
+ *
+ * @param targetAppID - 目标 appID，用于检测过期响应
  */
-async function loadStored() {
+async function loadStored(targetAppID: string) {
   storedLoading.value = true;
   try {
-    const stored = await getPackage(appID.value);
-    if (!stored?.package) return;
+    const stored = await getPackage(targetAppID);
+
+    // 🆕 检测过期响应：如果加载期间用户又切换了游戏，丢弃这个结果
+    if (appID.value !== targetAppID) {
+      return;
+    }
+
+    if (!stored?.package) {
+      return;
+    }
 
     pkg.value = stored.package;
     savedAt.value = stored.savedAt ?? "";
@@ -404,10 +428,19 @@ async function loadStored() {
     //
     // 教训：缓存可以回答「这游戏在不在库里」，不能回答「用户选了哪些」。
     // 前者变化时必然伴随一次刷新，后者不是。省一次本地调用换不来这个风险。
-    const record = await findHistory(appID.value);
+    const record = await findHistory(targetAppID);
+
+    // 🆕 再次检测过期响应：findHistory 是异步的
+    if (appID.value !== targetAppID) {
+      return;
+    }
+
     selection.restore(record?.installedIDs ?? []);
   } catch (e) {
-    toast.fromError(e, "读取本地清单失败");
+    // 同样检查：错误提示也不该显示给已经切走的游戏
+    if (appID.value === targetAppID) {
+      toast.fromError(e, "读取本地清单失败");
+    }
   } finally {
     storedLoading.value = false;
   }
@@ -419,15 +452,26 @@ async function loadStored() {
  * 比原先的收录查询慢得多（要真下载并解析），但换来的是用户能看见差异。
  * 等待成本由缓存与「选定源后免二次下载」两处摊平。
  *
+ * @param targetAppID - 目标 appID，用于检测过期响应
  * @param refresh 为真时忽略缓存强制重查
  */
-async function lookup(refresh = false) {
+async function lookup(targetAppID: string, refresh = false) {
   looking.value = true;
   sourceStates.value = {}; // 🆕 清空上次的实时状态
   try {
-    report.value = await trialSources(appID.value, refresh);
+    const result = await trialSources(targetAppID, refresh);
+
+    // 🆕 检测过期响应：如果加载期间用户又切换了游戏，丢弃这个结果
+    if (appID.value !== targetAppID) {
+      return;
+    }
+
+    report.value = result;
   } catch (e) {
-    toast.fromError(e, "查询清单源失败");
+    // 同样检查：错误提示也不该显示给已经切走的游戏
+    if (appID.value === targetAppID) {
+      toast.fromError(e, "查询清单源失败");
+    }
   } finally {
     looking.value = false;
   }
@@ -534,7 +578,7 @@ async function install(sourceName: string) {
 async function reacquire() {
   pkg.value = null;
   reacquiring.value = true;
-  await lookup(true);
+  await lookup(appID.value, true);
 
   if (!report.value?.usableCount) {
     toast.warn("没有源能提供该游戏的清单，可尝试本地导入清单包");
@@ -589,7 +633,7 @@ async function resetToUninstalled() {
   pkg.value = null;
   savedAt.value = "";
   pkgSource.value = "";
-  await lookup();
+  await lookup(appID.value);
 }
 </script>
 
@@ -680,14 +724,18 @@ async function resetToUninstalled() {
             <span
               class="trial__num"
               :class="{
-                'trial__num--text': getSourceState(t.source).status !== 'success' && t.status !== 'ok',
+                'trial__num--text':
+                  getSourceState(t.source).status !== 'success' &&
+                  t.status !== 'ok',
               }"
             >
               <!-- 优先显示实时状态 -->
               <template v-if="getSourceState(t.source).status === 'waiting'">
                 ⏳
               </template>
-              <template v-else-if="getSourceState(t.source).status === 'trying'">
+              <template
+                v-else-if="getSourceState(t.source).status === 'trying'"
+              >
                 🔄
               </template>
               <template
@@ -695,7 +743,9 @@ async function resetToUninstalled() {
               >
                 {{ getSourceState(t.source).dlcCount }} DLC
               </template>
-              <template v-else-if="getSourceState(t.source).status === 'failed'">
+              <template
+                v-else-if="getSourceState(t.source).status === 'failed'"
+              >
                 ❌
               </template>
               <!-- 回退到最终结果 -->
@@ -710,7 +760,9 @@ async function resetToUninstalled() {
               <template v-if="getSourceState(t.source).status === 'waiting'">
                 等待中…
               </template>
-              <template v-else-if="getSourceState(t.source).status === 'trying'">
+              <template
+                v-else-if="getSourceState(t.source).status === 'trying'"
+              >
                 下载中…
               </template>
               <template v-else>
@@ -783,7 +835,7 @@ async function resetToUninstalled() {
         </template>
 
         <div class="actions">
-          <UiButton :loading="looking" @click="lookup(true)">
+          <UiButton :loading="looking" @click="lookup(appID, true)">
             全部重新试取
           </UiButton>
           <UiButton @click="router.push({ name: 'search' })">
@@ -809,7 +861,9 @@ async function resetToUninstalled() {
           若已从其他渠道拿到清单包，可回到搜索页用底部的本地导入功能。
         </p>
         <div class="actions">
-          <UiButton :loading="looking" @click="lookup()">重新查询</UiButton>
+          <UiButton :loading="looking" @click="lookup(appID)"
+            >重新查询</UiButton
+          >
           <UiButton @click="router.push({ name: 'search' })">
             去本地导入
           </UiButton>
@@ -920,18 +974,29 @@ async function resetToUninstalled() {
   margin: 0 0 var(--space-1);
   /* 1.25rem(20px) -> --text-lg(19)。这是页面标题 */
   font-size: var(--text-lg);
+  /* 🆕 限制一行，超出省略 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hero__meta {
   margin: 0 0 var(--space-2);
   color: var(--color-text-dim);
   font-size: var(--text-sm);
+  /* 🆕 限制一行，超出省略 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hero__desc {
   margin: 0;
   color: var(--color-text-muted);
   font-size: var(--text-base);
+  line-height: 1.6; /* 🆕 设置行高便于计算 */
+  /* 🆕 固定显示 3 行高度，即使内容不足也占位 */
+  min-height: calc(1.6em * 3); /* 3 行的高度 */
   /* 简介可能很长，限制三行以免挤压下方的操作区 */
   display: -webkit-box;
   -webkit-line-clamp: 3;
