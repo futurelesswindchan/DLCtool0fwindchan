@@ -527,3 +527,113 @@ Hook `BuildDepotDependency`——Steam 构建 depot 下载列表时调用：
 ---
 
 > 被太阳烤化掉的风酱 于 2026-07-08 进行了最后的编辑
+
+---
+
+## 附录 B : 2026-11 社区现状补充（issue / PR 调研）
+
+> 数据来源：2026-11-04 通过 GitHub REST API 只读拉取 OpenSteam001/OpenSteamTool 全部 203 条 issue / PR，以及 OpenSteam001/steam-monitor 各分支提交记录。正文 §1–§16 的源码分析不受影响，本附录只补充运行时现状与架构层面的教训。
+
+### B.1 仓库状态
+
+| 指标                          | 数值                                                    |
+| ----------------------------- | ------------------------------------------------------- |
+| Star / Fork                   | 2562 / 439                                              |
+| Issue                         | 152 条（68 open / 84 closed）                           |
+| PR                            | 51 条（12 open / 23 merged / 16 关闭未合并）            |
+| 最后一次合并                  | #153 Cloud RPC 时序修复 + stats 同步，2026-07-06        |
+| 最后一个 Release              | 1.4.8，2026-06-13                                       |
+| 维护者回复                    | 最近 100 条评论中无 OWNER / MEMBER / COLLABORATOR       |
+| steam-monitor `pattern` 分支  | 最后更新 2026-09-06（stable / beta 1788652215）         |
+| steam-monitor `ipc` 分支      | 最后更新 2026-09-26（beta 1790380355）                  |
+
+7 月后关闭的 issue 经抽查均由提问者自行关闭，不是维护者处理。
+
+**阶段划分**：
+
+- 2026-05 ~ 06：高速迭代，1.4.0 → 1.4.8 共 10 个 Release，合入热重载删除、远端 Pattern、Denuvo、Injection、stats API、CloudRedirect。
+- 2026-07 ~ 08：基本停滞，仅合入 #153，PR 积压。
+- 2026-09 至今：下文 B.2 的三类故障相继出现，主仓库无响应。
+
+### B.2 当前三类故障
+
+#### ① Pattern / IPC TOML 断供
+
+steam-monitor 机器人停更后，新 Steam 构建没有对应的 `<sha256>.toml`。表现为启动弹窗 `signature file not found` / `IPC spec missing`，对应 DLL 的钩子被禁用，`addappid` 失效（§6.2 第 7 步的降级路径）。
+
+| Steam BuildID | 首次出现           | 相关 issue        |
+| ------------- | ------------------ | ----------------- |
+| 1791918634    | 2026-10-14         | #208、#209、#213  |
+| 1792618285    | 2026-10-21（stable）| #226、#227        |
+| 1793235415    | 2026-10-30         | #224              |
+
+同类报告还有 #205（BuildID 1788652215）、#214、#216、#223。#227 中有用户用 Ghidra 手工逆向出 1792618285 的 IPC spec，steamclient / steamui 的 pattern 仍缺。
+
+#### ② CNetPacket 结构体布局变化导致启动崩溃
+
+自 1791918634 起，`CNetPacket::m_pubData` 前多出 8 字节，其后字段整体后移：
+
+| 字段                 | 旧偏移 | 新偏移 |
+| -------------------- | ------ | ------ |
+| `m_pubData`          | +0x08  | +0x10  |
+| `m_cubData`          | +0x10  | +0x18  |
+| `m_cRef`             | +0x14  | +0x1C  |
+| `m_pubNetworkBuffer` | +0x18  | +0x20  |
+| `m_pNext`            | +0x20  | +0x28  |
+
+`RecvPkt` 钩子按旧偏移读取，触发访问违例。补 TOML 无法修复，必须改源码。PR #212 给出根因与补丁，#218 也包含同一修复，均未合并。
+
+#### ③ 自动 manifest request code 失效
+
+2026-09-09 起 Valve 在服务端对 request code 校验 depot 所有权。内置三个上游（opensteamtool / steamrun / wudrm）全部返回 `Access Denied`，客户端表现为 "No Internet Connection"（#195、#197、#194）。`manifest.opensteamtool.com` 同时返回 Cloudflare 403。社区替代 ManifestDeX（PR #200）后端闭源，且多次因请求过载不可用。
+
+### B.3 未合并的 PR
+
+| PR   | 内容                                                                 | 备注                                             |
+| ---- | -------------------------------------------------------------------- | ------------------------------------------------ |
+| #218 | 签名源改为第三方仓库 + 修复 CNetPacket 崩溃                          | 作者自述有风险；Codex 自动审查存在未解决问题     |
+| #212 | 修复 CNetPacket +8 偏移                                              | 根因分析最完整                                   |
+| #204 | manifest 多上游自动切换：失败源冷却 60 s，单次请求总时长上限 11 s    | 上游本身已失效                                   |
+| #201 | `[manifest] url` 支持自定义 URL 模板 + `format` 解析器              | 向后兼容                                         |
+| #200 | 新增 ManifestDeX 上游                                                | 依赖闭源服务                                     |
+| #178 | 递归加载 `config/lua` 子目录（`WatchSubtree=TRUE`）                  | 改动小                                           |
+| #148 | 修复 Denuvo 88500012 的三种失败模式                                  | 新能力均需 Lua 显式开启                          |
+| #146 | Injection 多库 + 条件注入；OnlineFix 支持已拥有游戏；修复 P2P 游戏  | 作者称仍在修问题                                 |
+| #144 | 未拥有游戏的 Rich Presence 广播给好友（借用 appid 480）             | 作者为 CONTRIBUTOR                               |
+| #121 | ProtectionScan 不再对主 exe 套用 80 MB 大小下限                      | 对应 #120（狙击精英4 主程序 70.97 MB 被漏检）    |
+| #173 | README 补充云存档配置说明                                            | 仅文档                                           |
+| #74  | 便携模式                                                             | 注入器部分缺失                                   |
+
+### B.4 其他长期 open 的主题
+
+- **Denuvo**：#139（88500012）、#162；关闭未合并的 #128（SteamID 偏移）。
+- **OnlineFix**：#52、#181（邀请好友崩溃）、#185（自定义 appid）、#158（已拥有游戏无法启用）。
+- **云存档**：#96、#113（CloudRedirect 兼容）、#116（云同步报错）。
+- **跨平台**：Linux（#142、#166）、macOS（#165）未实现。
+- **体验类**：#160 首次启动约 1 分钟后才显示入库游戏；#152 `steam://launch` 卡顿；#127、#124 显示延迟。
+- **安全**：#222 下载被 Windows Defender 报毒。
+
+### B.5 社区分叉与安全风险
+
+主仓库停摆后出现大量 fork 与替代签名源（madoiscool/BetterSteamTools、JYM34/steam-monitor、matheeshapathirana netfix2、isxlan0、AllRange1337 等），评论区还有用户直接分发编译好的 DLL 压缩包。这些二进制来源无法验证，且会被注入 `steam.exe`。实测时只使用自行从源码编译的版本，签名 TOML 需人工核对。
+
+### B.6 对正文的修正与补充
+
+1. **§6.2 镜像链**：README 说明配置自定义 `[remote] url_template` 后会**替换**内置的 GitHub raw / jsDelivr，不是追加在其后；本地缓存回退保留。
+2. **§6 Pattern 系统的覆盖范围**：远端 TOML 只适配函数地址（RVA / sig）。`CNetPacket` 等结构体布局硬编码在源码中，Steam 改布局即崩溃（B.2 ②）。另有字段偏移被嵌在 sig 字节串里，例如 `GetAppIDForCurrentPipe` 的 `0xD30 → 0x10D0`，sig 一失配就连带失效。
+3. **§10.2 `GetManifestRequestCode` 拦截**：客户端拦截链路仍然有效，但上游 request code 已被服务端封堵（B.2 ③），客户端钩子无法解决。
+4. **§16「依赖上游 steam-monitor 更新节奏」**：该风险已发生。单一机器人 + 单一仓库构成单点故障。
+
+### B.7 对 kazeusa 的架构启示（追加）
+
+| 维度         | OST 暴露的问题                         | kazeusa 设计建议                                                     |
+| ------------ | -------------------------------------- | -------------------------------------------------------------------- |
+| 结构体偏移   | 硬编码在源码，Steam 改布局即崩溃       | 偏移与函数签名一起作为远程元数据下发，带版本号与校验                 |
+| 元数据来源   | 单一 steam-monitor 仓库，停更即全面失效 | 支持多个签名源按优先级切换，并允许用户本地覆盖                       |
+| 失配降级     | 只能弹窗 + 禁用整个 DLL 的钩子         | 按功能粒度降级，读取前校验偏移合理性，失败时拒绝安装钩子而不是崩溃   |
+| manifest 获取 | 依赖第三方 request code 服务           | 视为不可控的外部依赖，优先支持本地 `.manifest` 导入流程              |
+| 二进制分发   | 社区靠来路不明的 DLL 续命              | 提供可复现构建与发布签名 / 哈希，方便用户自行校验                    |
+
+---
+
+> 架构军师·风风酱 于 2026-11-04 追加附录 B
