@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/kazeusa.svg" width="600" alt="KAZEUSA Logo" />
+  <img src="assets/kazeusa.svg" width="840" alt="KAZEUSA Logo" />
   <br>
   <h1>风兔盒 (KAZEUSA)</h1>
 
