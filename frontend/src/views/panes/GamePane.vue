@@ -689,10 +689,12 @@ async function resetToUninstalled() {
       />
 
       <template v-if="looking">
-        <p class="hint">正在逐个试取清单，这一步会实际下载并解析…</p>
         <p class="hint">
-          比单纯查询「有没有」慢一些，但能看出各源实际能给多少 DLC。 结果会缓存
-          30 分钟，稍后再来不必重等。
+          正在逐个尝试各源，实际下载并解析清单以确认可用的 DLC 数量。
+        </p>
+        <p class="hint">
+          这比单纯查询「有没有」慢一些，但能看出各源实际能给多少 DLC。
+          结果会缓存 30 分钟，稍后再来不必重等。
         </p>
       </template>
 
@@ -874,7 +876,7 @@ async function resetToUninstalled() {
         </div>
       </template>
 
-      <p v-if="progressText" class="hint">{{ progressText }}</p>
+      <p v-if="looking && progressText" class="hint">{{ progressText }}</p>
     </section>
 
     <!-- 状态 B：已入库且有留存清单 -->
@@ -1000,6 +1002,7 @@ async function resetToUninstalled() {
   /* 简介可能很长，限制三行以免挤压下方的操作区 */
   display: -webkit-box;
   -webkit-line-clamp: 3;
+  line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
