@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // trialCacheEntry 是单个源试下载结果的缓存条目。
@@ -121,6 +123,21 @@ func (a *App) TrialSources(appID string, refresh bool) (*TrialReport, error) {
 		QuotaSources: []string{},
 	}
 
+	// 推送所有源的初始状态（waiting）
+	a.logger.Info("[source:progress] 开始推送初始 waiting 状态，appID=%s, 源数量=%d", appID, len(sources))
+	for _, src := range sources {
+		if src.Kind == KindAPIZip {
+			// 认证型源直接标为 skipped，不推送 waiting
+			continue
+		}
+		a.logger.Info("[source:progress] 推送 waiting 状态: appID=%s, source=%s", appID, src.Name)
+		runtime.EventsEmit(a.ctx, "source:progress", map[string]any{
+			"appID":  appID,
+			"source": src.Name,
+			"status": "waiting",
+		})
+	}
+
 	// 按下标写入固定长度切片，不在 goroutine 中 append——保证结果顺序与
 	// 配置顺序一致，用户每次看到的排列都相同。
 	var wg sync.WaitGroup
@@ -215,10 +232,28 @@ func (a *App) trialOne(appID string, src RepoSource) SourceTrial {
 		NeedsQuota: src.Kind == KindAPIZip,
 	}
 
+	// 推送开始状态
+	a.logger.Info("[source:progress] 推送 trying 状态: appID=%s, source=%s", appID, src.Name)
+	runtime.EventsEmit(a.ctx, "source:progress", map[string]any{
+		"appID":  appID,
+		"source": src.Name,
+		"status": "trying",
+	})
+
 	pkg, err := a.DownloadFromRepo(appID, src.Name)
 	if err != nil {
 		t.Status, t.Message = classifyTrialError(err)
 		a.logger.Info("试下载 %s / %s：%s（%v）", appID, src.Name, t.Status, err)
+		
+		// 推送失败状态
+		a.logger.Info("[source:progress] 推送 failed 状态: appID=%s, source=%s, message=%s", appID, src.Name, t.Message)
+		runtime.EventsEmit(a.ctx, "source:progress", map[string]any{
+			"appID":   appID,
+			"source":  src.Name,
+			"status":  "failed",
+			"message": t.Message,
+		})
+		
 		return t
 	}
 
@@ -240,6 +275,16 @@ func (a *App) trialOne(appID string, src RepoSource) SourceTrial {
 			t.Message += "（主游戏无密钥）"
 		}
 	}
+
+	// 推送成功状态
+	a.logger.Info("[source:progress] 推送 success 状态: appID=%s, source=%s, dlcCount=%d", appID, src.Name, t.DLCCount)
+	runtime.EventsEmit(a.ctx, "source:progress", map[string]any{
+		"appID":      appID,
+		"source":     src.Name,
+		"status":     "success",
+		"dlcCount":   t.DLCCount,
+		"depotCount": t.DepotCount,
+	})
 
 	a.trials.put(appID, src.Name, t, pkg)
 	return t
