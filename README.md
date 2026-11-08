@@ -1,11 +1,17 @@
-# 🐰 风兔盒 (KAZEUSA)
+<div align="center">
+  <img src="assets/kazeusa.svg" width="600" alt="KAZEUSA Logo" />
+  <br>
+  <h1>风兔盒 (KAZEUSA)</h1>
 
-![Wails](https://img.shields.io/badge/Wails-v2.15+-red.svg?style=flat&logo=wails)
-![Vue.js](https://img.shields.io/badge/Vue-3.4+-%2335495e.svg?style=flat&logo=vuedotjs&logoColor=%234FC08D)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.3+-%23007ACC.svg?style=flat&logo=typescript&logoColor=white)
-![Go](https://img.shields.io/badge/Go-1.27.0+-%2300ADD8.svg?style=flat&logo=go&logoColor=white)
-![Powered by OST](https://img.shields.io/badge/Powered_by-OpenSteamTool-2ea44f.svg?style=flat&logo=steam&logoColor=white)
-![License](https://img.shields.io/badge/license-CC%20BY--NC--SA%204.0-lightgrey.svg?style=flat)
+  <p>
+    <img src="https://img.shields.io/badge/Wails-v2.15+-red.svg?style=flat&logo=wails" alt="Wails" />
+    <img src="https://img.shields.io/badge/Vue-3.4+-%2335495e.svg?style=flat&logo=vuedotjs&logoColor=%234FC08D" alt="Vue.js" />
+    <img src="https://img.shields.io/badge/TypeScript-5.3+-%23007ACC.svg?style=flat&logo=typescript&logoColor=white" alt="TypeScript" />
+    <img src="https://img.shields.io/badge/Go-1.27.0+-%2300ADD8.svg?style=flat&logo=go&logoColor=white" alt="Go" />
+    <img src="https://img.shields.io/badge/Powered_by-OpenSteamTool-2ea44f.svg?style=flat&logo=steam&logoColor=white" alt="Powered by OST" />
+    <img src="https://img.shields.io/badge/license-CC%20BY--NC--SA%204.0-lightgrey.svg?style=flat" alt="License" />
+  </p>
+</div>
 
 ---
 
@@ -16,8 +22,8 @@
 <div align="center">
   <table>
     <tr>
-      <td><img width="445" alt="preview_light" src="https://github.com/futurelesswindchan/DLCtool0fwindchan/blob/main/.github/images/preview_light.png" /></td>
-      <td><img width="445" alt="preview_dark" src="https://github.com/futurelesswindchan/DLCtool0fwindchan/blob/main/.github/images/preview_dark.png" /></td>
+      <td><img width="445" alt="preview_light" src=".github/images/preview_light.png" /></td>
+      <td><img width="445" alt="preview_dark" src=".github/images/preview_dark.png" /></td>
     </tr>
     <tr>
       <td align="center">☀️ 浅色模式（默认）</td>
